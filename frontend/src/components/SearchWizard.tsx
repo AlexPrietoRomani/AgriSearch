@@ -26,7 +26,30 @@ export default function SearchWizard() {
         const id = params.get("id");
         if (!id) { window.location.href = "/"; return; }
         setProjectId(id);
-        getProject(id).then((p) => setProjectName(p.name)).catch(() => window.location.href = "/");
+        getProject(id).then(async (p) => {
+            setProjectName(p.name);
+            try {
+                const { articles, total } = await listArticles(id, 0, 500);
+                if (total > 0) {
+                    setArticles(articles);
+                    const counts: Record<string, number> = {};
+                    articles.forEach(a => {
+                        counts[a.source_database] = (counts[a.source_database] || 0) + 1;
+                    });
+                    setSearchResults({
+                        project_id: id,
+                        query_id: "historical",
+                        total_found: total,
+                        duplicates_removed: 0,
+                        articles: articles,
+                        counts_by_source: counts
+                    });
+                    setStep("results");
+                }
+            } catch (e) {
+                console.error("No historical articles loaded", e);
+            }
+        }).catch(() => window.location.href = "/");
     }, []);
     // State
     const [step, setStep] = useState<Step>("describe");
