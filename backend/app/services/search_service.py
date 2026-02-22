@@ -214,8 +214,9 @@ async def get_project_articles(
     skip: int = 0,
     limit: int = 50,
     download_status: str | None = None,
+    search_query_id: str | None = None,
 ) -> tuple[list[Article], int]:
-    """Get paginated articles for a project, optionally filtered by download status."""
+    """Get paginated articles for a project, optionally filtered by download status or search query id."""
     base_query = select(Article).where(
         Article.project_id == project_id,
         Article.is_duplicate == False,  # noqa: E712
@@ -223,6 +224,9 @@ async def get_project_articles(
 
     if download_status:
         base_query = base_query.where(Article.download_status == download_status)
+    
+    if search_query_id:
+        base_query = base_query.where(Article.search_query_id == search_query_id)
 
     # Get total count
     count_query = select(func.count()).select_from(base_query.subquery())

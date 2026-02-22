@@ -11,8 +11,8 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.models.project import Project, Article
-from app.models.schemas import ProjectCreate, ProjectResponse, ProjectListResponse
+from app.models.project import Project, Article, SearchQuery
+from app.models.schemas import ProjectCreate, ProjectResponse, ProjectListResponse, SearchQueryResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -145,4 +145,20 @@ async def open_project_folder(project_id: str):
     except Exception as e:
         logger.error("Failed to open folder: %s", str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project_id}/searches", response_model=list[SearchQueryResponse], summary="List searches for a project")
+async def list_project_searches(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[SearchQueryResponse]:
+    """Get all executed searches within a project."""
+    query = (
+        select(SearchQuery)
+        .where(SearchQuery.project_id == project_id)
+        .order_by(SearchQuery.created_at.asc())
+    )
+    result = await db.execute(query)
+    searches = result.scalars().all()
+    return [SearchQueryResponse.model_validate(s) for s in searches]
 

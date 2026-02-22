@@ -105,15 +105,17 @@ async def list_articles(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     download_status: str | None = Query(None),
+    search_query_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Get paginated articles for a project, optionally filtered by download status."""
+    """Get paginated articles for a project, optionally filtered by download status or search query id."""
     articles, total = await get_project_articles(
         db=db,
         project_id=project_id,
         skip=skip,
         limit=limit,
         download_status=download_status,
+        search_query_id=search_query_id,
     )
 
     return {

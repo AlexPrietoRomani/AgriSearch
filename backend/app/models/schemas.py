@@ -59,6 +59,19 @@ class GeneratedQuery(BaseModel):
     explanation: str = Field("", description="Explanation of the generated query")
 
 
+class SearchQueryResponse(BaseModel):
+    id: str
+    project_id: str
+    raw_input: str
+    generated_query: str
+    databases_used: str
+    total_results: int
+    duplicates_removed: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class SearchExecuteRequest(BaseModel):
     """Schema for executing a search across databases."""
     project_id: str = Field(..., description="Project UUID")
