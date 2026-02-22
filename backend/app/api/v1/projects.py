@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.project import Project, Article, SearchQuery
-from app.models.schemas import ProjectCreate, ProjectResponse, ProjectListResponse, SearchQueryResponse
+from app.models.schemas import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse, SearchQueryResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -93,6 +93,49 @@ async def get_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    count_query = select(func.count(Article.id)).where(
+        Article.project_id == project_id,
+        Article.is_duplicate == False,  # noqa: E712
+    )
+    count = (await db.execute(count_query)).scalar() or 0
+
+    return ProjectResponse(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        agri_area=project.agri_area,
+        language=project.language,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        article_count=count,
+    )
+
+
+@router.put("/{project_id}", response_model=ProjectResponse, summary="Update a project")
+async def update_project(
+    project_id: str,
+    payload: ProjectUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> ProjectResponse:
+    """Update project metadata."""
+    logger.info(f"Updating project {project_id} with payload: {payload.dict(exclude_unset=True)}")
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if payload.name is not None:
+        project.name = payload.name
+    if payload.description is not None:
+        project.description = payload.description
+    if payload.agri_area is not None:
+        project.agri_area = payload.agri_area
+    if payload.language is not None:
+        project.language = payload.language
+
+    await db.commit()
+    await db.refresh(project)
+
+    # Get count for response
     count_query = select(func.count(Article.id)).where(
         Article.project_id == project_id,
         Article.is_duplicate == False,  # noqa: E712

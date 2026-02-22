@@ -66,7 +66,7 @@ class Project(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    agri_area = Column(Enum(AgriArea), default=AgriArea.GENERAL)
+    agri_area = Column(String(500), default="general")
     language = Column(String(10), default="es")  # BCP-47
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

@@ -19,6 +19,14 @@ class ProjectCreate(BaseModel):
     language: str = Field("es", description="Primary language (BCP-47)")
 
 
+class ProjectUpdate(BaseModel):
+    """Schema for updating an existing project."""
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = Field(None)
+    agri_area: str | None = Field(None)
+    language: str | None = Field(None)
+
+
 class ProjectResponse(BaseModel):
     """Schema for project API responses."""
     id: str

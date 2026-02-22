@@ -25,7 +25,9 @@ export default function Dashboard() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
-    const [newProject, setNewProject] = useState({ name: "", description: "", agri_area: "general", language: "es" });
+    const [newProject, setNewProject] = useState({ name: "", description: "", language: "es" });
+    const [selectedAreas, setSelectedAreas] = useState<string[]>(["general"]);
+    const [customArea, setCustomArea] = useState("");
     const [creating, setCreating] = useState(false);
 
     useEffect(() => {
@@ -47,9 +49,24 @@ export default function Dashboard() {
         if (!newProject.name.trim()) return;
         setCreating(true);
         try {
-            await createProject(newProject);
+            // Combine selected areas and custom area
+            let finalAreas = selectedAreas.filter(a => a !== "other").map(a =>
+                AGRI_AREAS.find(ref => ref.value === a)?.label || a
+            );
+            if (selectedAreas.includes("other") && customArea.trim()) {
+                finalAreas.push(customArea.trim());
+            }
+
+            const agriAreaStr = finalAreas.length > 0 ? finalAreas.join(", ") : "General";
+
+            await createProject({
+                ...newProject,
+                agri_area: agriAreaStr
+            });
             setShowCreate(false);
-            setNewProject({ name: "", description: "", agri_area: "general", language: "es" });
+            setNewProject({ name: "", description: "", language: "es" });
+            setSelectedAreas(["general"]);
+            setCustomArea("");
             await loadProjects();
         } catch (e) {
             console.error("Failed to create project:", e);
@@ -57,6 +74,14 @@ export default function Dashboard() {
             setCreating(false);
         }
     }
+
+    const toggleArea = (val: string) => {
+        if (selectedAreas.includes(val)) {
+            setSelectedAreas(selectedAreas.filter(a => a !== val));
+        } else {
+            setSelectedAreas([...selectedAreas, val]);
+        }
+    };
 
     async function handleDelete(id: string, name: string) {
         if (!confirm(`¿Eliminar el proyecto "${name}" y todos sus datos?`)) return;
@@ -104,13 +129,22 @@ export default function Dashboard() {
                                 NUEVO PROYECTO
                             </button>
                             <a
-                                href="http://www.prisma-statement.org/documents/PRISMA_2020_flow_diagram_new_SRs_v2.pdf"
+                                href="https://www.eshackathon.org/software/PRISMA2020.html"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-6 py-4 backdrop-blur-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold rounded-2xl transition-all flex items-center gap-3"
+                            >
+                                <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" /><path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" /></svg>
+                                Software PRISMA 2020
+                            </a>
+                            <a
+                                href="https://www.prisma-statement.org/prisma-2020"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-6 py-4 backdrop-blur-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold rounded-2xl transition-all flex items-center gap-3"
                             >
                                 <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V6.414A2 2 0 0016.414 5L14 2.586A2 2 0 0012.586 2H9z" /><path d="M3 8a2 2 0 012-2v10h8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" /></svg>
-                                Guía PRISMA 2020
+                                Archivos PRISMA 2020
                             </a>
                         </div>
                     </div>
@@ -196,21 +230,37 @@ export default function Dashboard() {
                             />
                         </label>
 
-                        <div className="grid grid-cols-2 gap-3 mb-4">
+                        <label className="block mb-4">
+                            <span className="text-sm text-slate-400 font-medium mb-2 block">Áreas Agrícolas (Puedes elegir varias)</span>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                                {AGRI_AREAS.map((a) => (
+                                    <button
+                                        key={a.value}
+                                        type="button"
+                                        onClick={() => toggleArea(a.value)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${selectedAreas.includes(a.value)
+                                                ? "bg-emerald-500 border-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20"
+                                                : "bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500"
+                                            }`}
+                                    >
+                                        {a.label}
+                                    </button>
+                                ))}
+                            </div>
+                            {selectedAreas.includes("other") && (
+                                <input
+                                    type="text"
+                                    value={customArea}
+                                    onChange={(e) => setCustomArea(e.target.value)}
+                                    placeholder="Especifica tu área..."
+                                    className="mt-2 w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-sm"
+                                />
+                            )}
+                        </label>
+
+                        <div className="grid grid-cols-1 gap-4 mb-6">
                             <label className="block">
-                                <span className="text-sm text-slate-400 font-medium">Área Agrícola</span>
-                                <select
-                                    value={newProject.agri_area}
-                                    onChange={(e) => setNewProject({ ...newProject, agri_area: e.target.value })}
-                                    className="mt-1 w-full px-4 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-                                >
-                                    {AGRI_AREAS.map((a) => (
-                                        <option key={a.value} value={a.value}>{a.label}</option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label className="block">
-                                <span className="text-sm text-slate-400 font-medium">Idioma</span>
+                                <span className="text-sm text-slate-400 font-medium">Idioma Principal</span>
                                 <select
                                     value={newProject.language}
                                     onChange={(e) => setNewProject({ ...newProject, language: e.target.value })}

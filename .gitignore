@@ -58,3 +58,10 @@ frontend/yarn-error.log*
 # Documentos
 *.pdf
 *.docx
+
+# Agent and Planning
+.agents/
+plan_a_seguir.md
+
+# Logs
+*.log
