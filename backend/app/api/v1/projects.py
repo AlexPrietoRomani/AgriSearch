@@ -123,3 +123,26 @@ async def delete_project(
 
     await db.delete(project)
     logger.info("Deleted project: %s", project_id)
+
+
+@router.post("/{project_id}/open-folder", summary="Open the local PDF folder on the server")
+async def open_project_folder(project_id: str):
+    """Open the host OS file explorer at the project's PDF directory."""
+    import os
+    import subprocess
+    from app.core.config import get_settings
+    
+    settings = get_settings()
+    pdf_dir = settings.get_project_pdfs_dir(project_id)
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        if os.name == 'nt': # Windows
+            os.startfile(pdf_dir)
+        elif os.name == 'posix':
+            subprocess.Popen(['xdg-open', str(pdf_dir)])
+        return {"status": "opened", "path": str(pdf_dir)}
+    except Exception as e:
+        logger.error("Failed to open folder: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+

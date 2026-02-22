@@ -20,8 +20,13 @@ def _parse_arxiv_entry(entry: ET.Element) -> dict[str, Any]:
     """Parse an ArXiv Atom entry into our standard article format."""
     # Extract ID and DOI
     arxiv_id = entry.findtext("atom:id", "", NS).split("/abs/")[-1]
+    arxiv_id_match = arxiv_id.split('v')[0] if arxiv_id else None
+    
     doi_elem = entry.find("atom:doi", NS)
     doi = doi_elem.text if doi_elem is not None else None
+    
+    if not doi and arxiv_id_match:
+        doi = f"10.48550/arXiv.{arxiv_id_match}"
 
     # Extract authors
     authors = ", ".join(
