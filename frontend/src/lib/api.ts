@@ -118,6 +118,7 @@ export interface Article {
   keywords: string | null;
   source_database: string;
   download_status: string;
+  local_pdf_path: string | null;
   is_duplicate: boolean;
   created_at: string;
 }

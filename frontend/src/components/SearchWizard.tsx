@@ -8,13 +8,25 @@ import { useState, useEffect } from "react";
 import type { GeneratedQuery, Article, SearchResults, DownloadProgress, SearchQuery } from "../lib/api";
 import { buildQuery, executeSearch, downloadArticles, listArticles, getProject, openProjectFolder, getProjectSearches } from "../lib/api";
 
-type Step = "describe" | "review_query" | "searching" | "results" | "downloading";
+export type Step = "describe" | "review_query" | "searching" | "results" | "downloading";
 
-const DB_OPTIONS = [
+export interface DbOption {
+    id: string;
+    label: string;
+    icon: string;
+    desc: string;
+}
+
+export const DB_OPTIONS: DbOption[] = [
     { id: "openalex", label: "OpenAlex", icon: "📚", desc: ">200M works" },
     { id: "semantic_scholar", label: "Semantic Scholar", icon: "🔬", desc: "AI-powered" },
     { id: "arxiv", label: "ArXiv", icon: "📄", desc: "Preprints" },
 ];
+
+import SearchWizardDescribe from "./SearchWizardDescribe";
+import SearchWizardReview from "./SearchWizardReview";
+import SearchWizardSearching from "./SearchWizardSearching";
+import SearchWizardResults from "./SearchWizardResults";
 
 export default function SearchWizard() {
     // Project info (loaded from URL param)
@@ -39,6 +51,7 @@ export default function SearchWizard() {
             handleSelectSearch(queryId, id);
         }
     }, []);
+
     const [yearFrom, setYearFrom] = useState<number | undefined>();
     const [yearTo, setYearTo] = useState<number | undefined>();
     const [selectedDBs, setSelectedDBs] = useState(["openalex", "semantic_scholar", "arxiv"]);
@@ -50,9 +63,6 @@ export default function SearchWizard() {
     const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [expandedAbstract, setExpandedAbstract] = useState<string | null>(null);
-    const [sortField, setSortField] = useState<keyof Article>("authors");
-    const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
     async function handleSelectSearch(queryId: string, projId: string) {
         setLoading(true);
@@ -79,30 +89,6 @@ export default function SearchWizard() {
             setLoading(false);
         }
     }
-
-    const sortedArticles = [...articles].sort((a, b) => {
-        let valA = a[sortField];
-        let valB = b[sortField];
-
-        if (typeof valA === "string") valA = valA.toLowerCase();
-        if (typeof valB === "string") valB = valB.toLowerCase();
-
-        if (valA === valB) return 0;
-        if (valA === undefined || valA === null) return 1;
-        if (valB === undefined || valB === null) return -1;
-
-        const comparison = valA < valB ? -1 : 1;
-        return sortDirection === "asc" ? comparison : -comparison;
-    });
-
-    const handleSort = (field: keyof Article) => {
-        if (sortField === field) {
-            setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-        } else {
-            setSortField(field);
-            setSortDirection("asc");
-        }
-    };
 
     // ── Step 1: Generate Query ──
     async function handleGenerateQuery() {
@@ -211,7 +197,7 @@ export default function SearchWizard() {
 
             {/* Step indicator */}
             {searchResults?.query_id !== "historical" && step !== "results" && (
-                <div className="flex items-center gap-2 mb-8">
+                <div className="flex items-center gap-2 mb-8 flex-wrap">
                     {[
                         { id: "describe", label: "1. Describir" },
                         { id: "review_query", label: "2. Revisar Query" },
@@ -219,7 +205,7 @@ export default function SearchWizard() {
                         { id: "results", label: "4. Resultados" },
                     ].map((s, i) => (
                         <div key={s.id} className="flex items-center gap-2">
-                            {i > 0 && <div className="w-8 h-px bg-slate-700" />}
+                            {i > 0 && <div className="w-8 h-px bg-slate-700 hidden sm:block" />}
                             <div
                                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${step === s.id
                                     ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/25"
@@ -266,363 +252,56 @@ export default function SearchWizard() {
             )}
 
             {/* ── STEP 1: Describe ── */}
-            {
-                step === "describe" && (
-                    <div className="max-w-3xl">
-                        <h2 className="text-2xl font-bold text-white mb-2">¿Qué quieres investigar?</h2>
-                        <p className="text-slate-400 mb-6">
-                            Describe en lenguaje natural tu tema de investigación agrícola. El LLM generará una query optimizada.
-                        </p>
-
-                        <textarea
-                            value={userInput}
-                            onChange={(e) => setUserInput(e.target.value)}
-                            placeholder="Ej: Quiero investigar el control biológico de Telenomus podisi como parasitoide de huevos de chinches (Euschistus heros) en cultivos de soja en Sudamérica, evaluando tasas de parasitismo y eficacia en campo..."
-                            rows={5}
-                            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all resize-none mb-4"
-                        />
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                            <label className="block">
-                                <span className="text-sm text-slate-400">Año desde</span>
-                                <input
-                                    type="number"
-                                    value={yearFrom || ""}
-                                    onChange={(e) => setYearFrom(e.target.value ? parseInt(e.target.value) : undefined)}
-                                    placeholder="2015"
-                                    className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                                />
-                            </label>
-                            <label className="block">
-                                <span className="text-sm text-slate-400">Año hasta</span>
-                                <input
-                                    type="number"
-                                    value={yearTo || ""}
-                                    onChange={(e) => setYearTo(e.target.value ? parseInt(e.target.value) : undefined)}
-                                    placeholder="2025"
-                                    className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                                />
-                            </label>
-                            <label className="block">
-                                <span className="text-sm text-slate-400">Máx por fuente</span>
-                                <input
-                                    type="number"
-                                    value={maxResults}
-                                    onChange={(e) => setMaxResults(parseInt(e.target.value) || 50)}
-                                    min={10}
-                                    max={500}
-                                    className="mt-1 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                                />
-                            </label>
-                        </div>
-
-                        {/* Database Selection */}
-                        <div className="mb-6">
-                            <span className="text-sm text-slate-400 block mb-2">Bases de datos a consultar</span>
-                            <div className="flex gap-3">
-                                {DB_OPTIONS.map((db) => (
-                                    <button
-                                        key={db.id}
-                                        onClick={() => toggleDB(db.id)}
-                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-200 ${selectedDBs.includes(db.id)
-                                            ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
-                                            : "bg-slate-800 border-slate-700 text-slate-500 hover:border-slate-600"
-                                            }`}
-                                    >
-                                        <span>{db.icon}</span>
-                                        <span className="font-medium">{db.label}</span>
-                                        <span className="text-xs opacity-60">{db.desc}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={handleGenerateQuery}
-                            disabled={loading || !userInput.trim() || selectedDBs.length === 0}
-                            className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/50 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-200 flex items-center gap-2"
-                        >
-                            {loading ? (
-                                <>
-                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    Generando query...
-                                </>
-                            ) : (
-                                "🔍 Generar Query con IA"
-                            )}
-                        </button>
-                    </div>
-                )
-            }
+            {step === "describe" && (
+                <SearchWizardDescribe
+                    userInput={userInput}
+                    setUserInput={setUserInput}
+                    yearFrom={yearFrom}
+                    setYearFrom={setYearFrom}
+                    yearTo={yearTo}
+                    setYearTo={setYearTo}
+                    maxResults={maxResults}
+                    setMaxResults={setMaxResults}
+                    selectedDBs={selectedDBs}
+                    toggleDB={toggleDB}
+                    handleGenerateQuery={handleGenerateQuery}
+                    loading={loading}
+                />
+            )}
 
             {/* ── STEP 2: Review Query ── */}
-            {
-                step === "review_query" && generatedQuery && (
-                    <div className="max-w-3xl">
-                        <h2 className="text-2xl font-bold text-white mb-2">Revisa la Query Generada</h2>
-                        <p className="text-slate-400 mb-6">Puedes editar la query antes de ejecutar la búsqueda.</p>
-
-                        {/* PICO Breakdown */}
-                        {Object.keys(generatedQuery.pico_breakdown).length > 0 && (
-                            <div className="grid grid-cols-2 gap-3 mb-6">
-                                {Object.entries(generatedQuery.pico_breakdown).map(([key, value]) => (
-                                    <div key={key} className="p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl">
-                                        <span className="text-xs text-emerald-400 font-semibold uppercase">{key}</span>
-                                        <p className="text-sm text-slate-300 mt-1">{value}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Suggested Terms */}
-                        {generatedQuery.suggested_terms.length > 0 && (
-                            <div className="mb-4">
-                                <span className="text-sm text-slate-400">Términos sugeridos:</span>
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    {generatedQuery.suggested_terms.map((term) => (
-                                        <span key={term} className="px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg text-xs font-medium">
-                                            {term}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Editable Query */}
-                        <label className="block mb-4">
-                            <span className="text-sm text-slate-400 font-medium">Query de búsqueda (editable)</span>
-                            <textarea
-                                value={editedQuery}
-                                onChange={(e) => setEditedQuery(e.target.value)}
-                                rows={4}
-                                className="mt-1 w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all resize-none"
-                            />
-                        </label>
-
-                        {/* Explanation */}
-                        {generatedQuery.explanation && (
-                            <div className="p-4 bg-slate-800/30 border border-slate-700/50 rounded-xl mb-6">
-                                <span className="text-xs text-slate-500 uppercase font-semibold">Explicación de la estrategia</span>
-                                <p className="text-sm text-slate-300 mt-1">{generatedQuery.explanation}</p>
-                            </div>
-                        )}
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setStep("describe")}
-                                className="px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors"
-                            >
-                                ← Volver
-                            </button>
-                            <button
-                                onClick={handleExecuteSearch}
-                                disabled={!editedQuery.trim()}
-                                className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/50 hover:scale-[1.02] disabled:opacity-50 transition-all duration-200 flex items-center gap-2"
-                            >
-                                🚀 Ejecutar Búsqueda
-                            </button>
-                        </div>
-                    </div>
-                )
-            }
+            {step === "review_query" && generatedQuery && (
+                <SearchWizardReview
+                    generatedQuery={generatedQuery}
+                    editedQuery={editedQuery}
+                    setEditedQuery={setEditedQuery}
+                    setStep={setStep}
+                    handleExecuteSearch={handleExecuteSearch}
+                />
+            )}
 
             {/* ── STEP 3: Searching ── */}
-            {
-                step === "searching" && (
-                    <div className="flex flex-col items-center justify-center py-20">
-                        <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-6" />
-                        <h2 className="text-xl text-white font-semibold mb-2">Buscando artículos...</h2>
-                        <p className="text-slate-400">Consultando {selectedDBs.length} bases de datos en paralelo</p>
-                        <div className="flex gap-3 mt-4">
-                            {selectedDBs.map((db) => (
-                                <span key={db} className={`px-3 py-1 rounded-lg text-xs font-medium animate-pulse ${sourceColor(db)}`}>
-                                    {DB_OPTIONS.find((d) => d.id === db)?.label}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )
-            }
+            {step === "searching" && (
+                <SearchWizardSearching
+                    selectedDBs={selectedDBs}
+                    sourceColor={sourceColor}
+                />
+            )}
 
             {/* ── STEP 4: Results ── */}
-            {
-                step === "results" && searchResults && (
-                    <div>
-                        {/* Stats Bar */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                            <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-center">
-                                <div className="text-2xl font-bold text-emerald-400">{searchResults.total_found}</div>
-                                <div className="text-xs text-slate-400 mt-1">Artículos Únicos</div>
-                            </div>
-                            <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-center">
-                                <div className="text-2xl font-bold text-yellow-400">{searchResults.duplicates_removed}</div>
-                                <div className="text-xs text-slate-400 mt-1">Duplicados Removidos</div>
-                            </div>
-                            {Object.entries(searchResults.counts_by_source).map(([source, count]) => (
-                                <div key={source} className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-center">
-                                    <div className="text-2xl font-bold text-slate-200">{count}</div>
-                                    <div className="text-xs text-slate-400 mt-1">{source}</div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Download Progress */}
-                        {downloadProgress && (
-                            <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                                <div className="flex items-center gap-6 text-sm">
-                                    <span className="text-emerald-400 font-medium">✅ {downloadProgress.downloaded} descargados</span>
-                                    <span className="text-red-400">❌ {downloadProgress.failed} fallidos</span>
-                                    <span className="text-yellow-400">🔒 {downloadProgress.paywall} paywall</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Actions */}
-                        <div className="flex flex-wrap gap-3 mb-6">
-                            <a
-                                href={`/project?id=${projectId}`}
-                                className="px-4 py-2 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors"
-                            >
-                                ← Volver
-                            </a>
-                            <button
-                                onClick={handleDownload}
-                                disabled={loading}
-                                className="px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-blue-500/25 hover:scale-[1.02] disabled:opacity-50 transition-all flex items-center gap-2"
-                            >
-                                {loading ? (
-                                    <>
-                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                        Descargando...
-                                    </>
-                                ) : (
-                                    "📥 Descargar PDFs Open Access"
-                                )}
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    try {
-                                        await openProjectFolder(projectId);
-                                    } catch (e) {
-                                        console.error(e);
-                                        alert("No se pudo abrir la carpeta o aún no existe.");
-                                    }
-                                }}
-                                className="px-5 py-2 bg-slate-800 text-emerald-400 font-medium rounded-xl border border-emerald-500/30 hover:bg-slate-700 hover:text-emerald-300 transition-all flex items-center gap-2 ml-auto"
-                            >
-                                📂 Abrir Carpeta Local
-                            </button>
-                        </div>
-
-                        {/* Articles Table */}
-                        <div className="border border-slate-700/50 rounded-2xl overflow-hidden mt-6 overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-slate-800/80">
-                                    <tr>
-                                        <th
-                                            className="text-left px-4 py-3 text-slate-400 font-medium cursor-pointer hover:text-emerald-400 transition-colors"
-                                            onClick={() => handleSort("title")}
-                                        >
-                                            Título {sortField === "title" && (sortDirection === "asc" ? "↑" : "↓")}
-                                        </th>
-                                        <th
-                                            className="text-left px-4 py-3 text-slate-400 font-medium cursor-pointer hover:text-emerald-400 transition-colors"
-                                            onClick={() => handleSort("authors")}
-                                        >
-                                            Autor {sortField === "authors" && (sortDirection === "asc" ? "↑" : "↓")}
-                                        </th>
-                                        <th
-                                            className="text-left px-4 py-3 text-slate-400 font-medium w-20 cursor-pointer hover:text-emerald-400 transition-colors"
-                                            onClick={() => handleSort("year")}
-                                        >
-                                            Año {sortField === "year" && (sortDirection === "asc" ? "↑" : "↓")}
-                                        </th>
-                                        <th
-                                            className="text-left px-4 py-3 text-slate-400 font-medium w-32 cursor-pointer hover:text-emerald-400 transition-colors"
-                                            onClick={() => handleSort("source_database")}
-                                        >
-                                            Fuente {sortField === "source_database" && (sortDirection === "asc" ? "↑" : "↓")}
-                                        </th>
-                                        <th
-                                            className="text-left px-4 py-3 text-slate-400 font-medium w-28 cursor-pointer hover:text-emerald-400 transition-colors"
-                                            onClick={() => handleSort("download_status")}
-                                        >
-                                            Estado {sortField === "download_status" && (sortDirection === "asc" ? "↑" : "↓")}
-                                        </th>
-                                        <th
-                                            className="text-left px-4 py-3 text-slate-400 font-medium w-24 cursor-pointer hover:text-emerald-400 transition-colors"
-                                            onClick={() => handleSort("doi")}
-                                        >
-                                            DOI {sortField === "doi" && (sortDirection === "asc" ? "↑" : "↓")}
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {sortedArticles.map((a) => (
-                                        <tr key={a.id} className="border-t border-slate-700/30 hover:bg-slate-800/30 transition-colors">
-                                            <td className="px-4 py-3">
-                                                <div>
-                                                    <button
-                                                        onClick={() => setExpandedAbstract(expandedAbstract === a.id ? null : a.id)}
-                                                        className="text-left text-emerald-400 hover:text-emerald-300 transition-colors font-medium line-clamp-2"
-                                                        title={a.title}
-                                                    >
-                                                        {a.title}
-                                                    </button>
-                                                    {expandedAbstract === a.id && a.abstract && (
-                                                        <p className="text-xs text-slate-400 mt-2 p-3 bg-slate-800/50 rounded-lg leading-relaxed shadow-inner">
-                                                            {a.abstract}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 max-w-[200px]">
-                                                <div className="line-clamp-2 text-slate-300 font-medium" title={a.authors || "Desconocido"}>
-                                                    {a.authors || "—"}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-slate-400 text-center">{a.year || "—"}</td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 rounded-lg text-xs font-medium ${sourceColor(a.source_database)}`}>
-                                                    {a.source_database}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 rounded-lg text-xs font-medium ${statusBadge(a.download_status)}`}>
-                                                    {a.download_status}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                {a.doi ? (
-                                                    <a
-                                                        href={a.doi.startsWith("http") ? a.doi : `https://doi.org/${a.doi}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-emerald-400 hover:text-emerald-300 text-xs underline"
-                                                    >
-                                                        {a.doi.length > 15 ? "Link DOI ↗" : a.doi}
-                                                    </a>
-                                                ) : a.url ? (
-                                                    <a
-                                                        href={a.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-emerald-400 hover:text-emerald-300 text-xs underline"
-                                                    >
-                                                        Ver Fuente ↗
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-slate-600 text-xs">—</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )
-            }
-        </div >
+            {step === "results" && searchResults && (
+                <SearchWizardResults
+                    searchResults={searchResults}
+                    articles={articles}
+                    loading={loading}
+                    downloadProgress={downloadProgress}
+                    projectId={projectId}
+                    handleDownload={handleDownload}
+                    openProjectFolder={openProjectFolder}
+                    sourceColor={sourceColor}
+                    statusBadge={statusBadge}
+                />
+            )}
+        </div>
     );
 }
