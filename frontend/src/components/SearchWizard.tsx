@@ -249,12 +249,12 @@ export default function SearchWizard() {
                                 : "Estos son los resultados de la última búsqueda sistemática guardada."}
                         </p>
                     </div>
-                    <button
-                        onClick={() => setStep("dashboard")}
+                    <a
+                        href={`/project?id=${projectId}`}
                         className="px-4 py-2 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors"
                     >
                         Volver a Búsquedas
-                    </button>
+                    </a>
                 </div>
             )}
             {/* Error Banner */}
@@ -479,12 +479,12 @@ export default function SearchWizard() {
 
                         {/* Actions */}
                         <div className="flex flex-wrap gap-3 mb-6">
-                            <button
-                                onClick={() => { setSearchResults(null); setStep("dashboard"); }}
+                            <a
+                                href={`/project?id=${projectId}`}
                                 className="px-4 py-2 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors"
                             >
                                 ← Volver
-                            </button>
+                            </a>
                             <button
                                 onClick={handleDownload}
                                 disabled={loading}

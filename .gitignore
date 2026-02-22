@@ -54,3 +54,7 @@ frontend/yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Documentos
+*.pdf
+*.docx

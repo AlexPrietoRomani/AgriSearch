@@ -70,18 +70,78 @@ export default function Dashboard() {
 
     return (
         <div>
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8">
-                <div>
-                    <h1 className="text-3xl font-bold text-white">Mis Proyectos de Revisión</h1>
-                    <p className="text-slate-400 mt-1">Gestiona tus revisiones sistemáticas agrícolas</p>
+            {/* Premium Hero / Info Section */}
+            <div className="mb-10 p-8 rounded-3xl bg-gradient-to-br from-slate-800/80 to-slate-900 border border-slate-700/50 shadow-2xl relative overflow-hidden">
+                {/* Decorative background blur */}
+                <div className="absolute -top-24 -right-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
+                    <div className="max-w-3xl">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-4">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                            Optimizando Flujo PRISMA 2020
+                        </div>
+                        <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 mb-4">
+                            Tus Revisiones Sistemáticas, Aceleradas con Inteligencia Artificial.
+                        </h1>
+                        <p className="text-slate-400 text-lg leading-relaxed mb-6">
+                            Bienvenido a <span className="text-emerald-400 font-semibold">AgriSearch</span>. Esta plataforma utiliza IA (Llama 3.1) para automatizar la extracción,
+                            filtrado y análisis de miles de artículos científicos de múltiples bases de datos.
+                            Cumplimos rigurosamente con el estándar <strong>PRISMA 2020</strong>: desde la identificación
+                            hasta la síntesis cualitativa/cuantitativa, removiendo duplicados e indexando PDFs en una base local vectorial (Qdrant).
+                        </p>
+
+                        <div className="flex flex-wrap gap-4">
+                            <a
+                                href="https://www.eshackathon.org/software/PRISMA2020.html"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-5 py-2 backdrop-blur-md bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white font-medium rounded-xl transition-all flex items-center gap-2"
+                            >
+                                📄 Ver Documento Oficial PRISMA 2020
+                            </a>
+                            <button
+                                onClick={() => setShowCreate(true)}
+                                className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                                Iniciar Nuevo Proyecto
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Simple PRISMA Steps Visual */}
+                    <div className="hidden lg:flex flex-col gap-3 w-64 flex-shrink-0">
+                        <div className="bg-slate-800/80 border border-slate-700/50 p-3 rounded-lg flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-md bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold">1</div>
+                            <span className="text-sm text-slate-300 font-medium">Búsqueda Ámbito<br /><span className="text-xs text-slate-500">Múltiples APIs</span></span>
+                        </div>
+                        <div className="bg-slate-800/80 border border-slate-700/50 p-3 rounded-lg flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">2</div>
+                            <span className="text-sm text-slate-300 font-medium">Screening & Deduplicación<br /><span className="text-xs text-slate-500">Automático</span></span>
+                        </div>
+                        <div className="bg-slate-800/80 border border-slate-700/50 p-3 rounded-lg flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-md bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">3</div>
+                            <span className="text-sm text-slate-300 font-medium">Extracción PDF<br /><span className="text-xs text-slate-500">Almacenamiento Local</span></span>
+                        </div>
+                        <div className="bg-slate-800/80 border border-slate-700/50 p-3 rounded-lg flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">4</div>
+                            <span className="text-sm text-slate-300 font-medium">Análisis Vectorial<br /><span className="text-xs text-slate-500">VectorDB Inteligente</span></span>
+                        </div>
+                    </div>
                 </div>
-                <button
-                    onClick={() => setShowCreate(true)}
-                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/50 hover:scale-105 transition-all duration-200"
-                >
-                    + Nuevo Proyecto
-                </button>
+            </div>
+
+            {/* Title Section For Projects */}
+            <div className="flex items-center justify-between mb-6">
+                <div>
+                    <h2 className="text-2xl font-bold text-white">Biblioteca de Proyectos</h2>
+                    <p className="text-slate-400 mt-1 text-sm">Escoge un proyecto existente para revisar su estado.</p>
+                </div>
             </div>
 
             {/* Create Project Modal */}
