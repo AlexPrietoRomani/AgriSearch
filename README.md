@@ -33,12 +33,16 @@ ollama run llama3.1:8b
 *(Mantén Ollama corriendo en segundo plano antes de iniciar AgriSearch).*
 
 ### ▶️ Ejecución Rápida (Recomendado para Windows)
-Hemos incluido un archivo ejecutable `.bat` en la raíz del proyecto para facilitar el arranque. 
+Hemos incluido un script inteligente en la raíz del proyecto para facilitar el arranque y **su primera ejecución**.
 
 Simplemente haz doble clic en el archivo:
 > `start_agrisearch.bat`
 
-Esto abrirá automáticamente dos ventanas de terminal (una para el Backend y otra para el Frontend) y lanzará directamente la web en tu navegador predeterminado.
+Al hacer esto por primera vez, el script se encargará automáticamente de:
+- Verificar o instalar el entorno virtual en `backend/` usando `uv` (o recursando a `pip` tradicional si no tienes `uv` instalado).
+- Descargar e instalar todas las dependencias de Python y Node (`npm install`).
+- Crear las carpetas de datos locales para SQLite y Qdrant.
+- Abrir las terminales independientes y lanzar el navegador.
 
 ---
 
