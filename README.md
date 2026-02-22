@@ -24,9 +24,27 @@ El proyecto está separado en dos contenedores lógicos principales:
 
 ## 🛠 Instalación y Ejecución Local
 
-Para ejecutar este proyecto en tu entorno de desarrollo, asegúrate de tener instalados **Node.js** y **Python 3.11+**. Además, se recomienda tener instalado **Ollama** si deseas probar la generación de queries optimizadas con IA de forma local (ej. modelo `llama3.1:8b`).
+Para ejecutar este proyecto en tu entorno de desarrollo, asegúrate de tener instalados **Node.js** y **Python 3.11+**. 
 
-### Paso 1: Configuración del Backend
+⚠️ **Requisito Previo de IA:** Debes tener instalado y ejecutándose **Ollama** si deseas probar la generación de queries optimizadas con IA de forma local. Asegúrate de tener descargado algún modelo, por ejemplo:
+```bash
+ollama run llama3.1:8b
+```
+*(Mantén Ollama corriendo en segundo plano antes de iniciar AgriSearch).*
+
+### ▶️ Ejecución Rápida (Recomendado para Windows)
+Hemos incluido un archivo ejecutable `.bat` en la raíz del proyecto para facilitar el arranque. 
+
+Simplemente haz doble clic en el archivo:
+> `start_agrisearch.bat`
+
+Esto abrirá automáticamente dos ventanas de terminal (una para el Backend y otra para el Frontend) y lanzará directamente la web en tu navegador predeterminado.
+
+---
+
+### Instalación Manual Paso a Paso
+
+#### 1. Configuración del Backend
 
 1. Navega al directorio del backend:
    ```bash
@@ -44,11 +62,11 @@ Para ejecutar este proyecto en tu entorno de desarrollo, asegúrate de tener ins
    ```
 4. Inicia el servidor de desarrollo Uvicorn:
    ```bash
-   uvicorn app.main:app --reload --port 8000
+   uvicorn app.main:app --port 8000
    ```
 La API estará disponible en `http://localhost:8000` (documentación Swagger en `/docs`).
 
-### Paso 2: Configuración del Frontend
+#### 2. Configuración del Frontend
 
 1. Abre una nueva terminal y navega al directorio del frontend:
    ```bash
