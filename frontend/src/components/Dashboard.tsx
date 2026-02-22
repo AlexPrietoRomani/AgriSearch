@@ -71,76 +71,97 @@ export default function Dashboard() {
     return (
         <div>
             {/* Premium Hero / Info Section */}
-            <div className="mb-10 p-8 rounded-3xl bg-gradient-to-br from-slate-800/80 to-slate-900 border border-slate-700/50 shadow-2xl relative overflow-hidden">
-                {/* Decorative background blur */}
-                <div className="absolute -top-24 -right-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="mb-10 p-10 rounded-[2rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-slate-700/50 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-1/2 h-full bg-emerald-500/5 skew-x-[-20deg] translate-x-32 group-hover:bg-emerald-500/10 transition-all duration-700 pointer-events-none" />
 
-                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-                    <div className="max-w-3xl">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-4">
+                <div className="relative z-10 grid lg:grid-cols-12 gap-12 items-center">
+                    <div className="lg:col-span-7">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-6">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                             </span>
-                            Optimizando Flujo PRISMA 2020
+                            Research Assistant Pro
                         </div>
-                        <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 mb-4">
-                            Tus Revisiones Sistemáticas, Aceleradas con Inteligencia Artificial.
+
+                        <h1 className="text-4xl md:text-6xl font-black text-white leading-[1.1] mb-6">
+                            Ciencia de Datos <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Para la Agricultura.</span>
                         </h1>
-                        <p className="text-slate-400 text-lg leading-relaxed mb-6">
-                            Bienvenido a <span className="text-emerald-400 font-semibold">AgriSearch</span>. Esta plataforma utiliza IA (Llama 3.1) para automatizar la extracción,
-                            filtrado y análisis de miles de artículos científicos de múltiples bases de datos.
-                            Cumplimos rigurosamente con el estándar <strong>PRISMA 2020</strong>: desde la identificación
-                            hasta la síntesis cualitativa/cuantitativa, removiendo duplicados e indexando PDFs en una base local vectorial (Qdrant).
+
+                        <p className="text-slate-400 text-lg leading-relaxed mb-8 max-w-2xl">
+                            AgriSearch es su centro de comando para revisiones sistemáticas avanzadas.
+                            Utilizamos LLMs de última generación para orquestar búsquedas complejas,
+                            eliminar el sesgo de selección y automatizar el flujo de trabajo <span className="text-white font-medium underline underline-offset-4 decoration-emerald-500">PRISMA 2020</span>.
                         </p>
 
                         <div className="flex flex-wrap gap-4">
-                            <a
-                                href="https://www.eshackathon.org/software/PRISMA2020.html"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-5 py-2 backdrop-blur-md bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white font-medium rounded-xl transition-all flex items-center gap-2"
-                            >
-                                📄 Ver Documento Oficial PRISMA 2020
-                            </a>
                             <button
                                 onClick={() => setShowCreate(true)}
-                                className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2"
+                                className="px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:shadow-[0_0_50px_rgba(16,185,129,0.5)] hover:-translate-y-1 transition-all duration-300 flex items-center gap-3"
                             >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-                                Iniciar Nuevo Proyecto
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
+                                NUEVO PROYECTO
                             </button>
+                            <a
+                                href="http://www.prisma-statement.org/documents/PRISMA_2020_flow_diagram_new_SRs_v2.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-6 py-4 backdrop-blur-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold rounded-2xl transition-all flex items-center gap-3"
+                            >
+                                <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V6.414A2 2 0 0016.414 5L14 2.586A2 2 0 0012.586 2H9z" /><path d="M3 8a2 2 0 012-2v10h8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" /></svg>
+                                Guía PRISMA 2020
+                            </a>
                         </div>
                     </div>
 
-                    {/* Simple PRISMA Steps Visual */}
-                    <div className="hidden lg:flex flex-col gap-3 w-64 flex-shrink-0">
-                        <div className="bg-slate-800/80 border border-slate-700/50 p-3 rounded-lg flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-md bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold">1</div>
-                            <span className="text-sm text-slate-300 font-medium">Búsqueda Ámbito<br /><span className="text-xs text-slate-500">Múltiples APIs</span></span>
-                        </div>
-                        <div className="bg-slate-800/80 border border-slate-700/50 p-3 rounded-lg flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">2</div>
-                            <span className="text-sm text-slate-300 font-medium">Screening & Deduplicación<br /><span className="text-xs text-slate-500">Automático</span></span>
-                        </div>
-                        <div className="bg-slate-800/80 border border-slate-700/50 p-3 rounded-lg flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-md bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">3</div>
-                            <span className="text-sm text-slate-300 font-medium">Extracción PDF<br /><span className="text-xs text-slate-500">Almacenamiento Local</span></span>
-                        </div>
-                        <div className="bg-slate-800/80 border border-slate-700/50 p-3 rounded-lg flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">4</div>
-                            <span className="text-sm text-slate-300 font-medium">Análisis Vectorial<br /><span className="text-xs text-slate-500">VectorDB Inteligente</span></span>
-                        </div>
+                    <div className="lg:col-span-5 grid grid-cols-2 gap-4">
+                        {[
+                            { label: "Búsqueda Multi-Fuente", desc: "API OpenAlex, ArXiv y Semantic Scholar.", icon: "🔍", color: "blue" },
+                            { label: "Deduplicación IA", desc: "Algoritmos de similitud avanzados.", icon: "⚡", color: "emerald" },
+                            { label: "RAG Local", desc: "Búsqueda vectorial en tus PDFs.", icon: "🧠", color: "purple" },
+                            { label: "Exportación PRO", desc: "BibTeX y CSV listos para publicar.", icon: "📊", color: "amber" }
+                        ].map((stat, i) => (
+                            <div key={i} className="p-5 bg-slate-950/40 border border-slate-700/30 rounded-2xl hover:border-white/20 transition-all group/item">
+                                <div className="text-3xl mb-3 group-hover/item:scale-125 transition-transform duration-300">{stat.icon}</div>
+                                <div className="text-white font-bold text-sm mb-1">{stat.label}</div>
+                                <div className="text-slate-500 text-xs leading-snug">{stat.desc}</div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
 
-            {/* Title Section For Projects */}
-            <div className="flex items-center justify-between mb-6">
+            {/* Workflow Steps */}
+            <div className="mb-12">
+                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-[0.3em] mb-8 text-center">Protocolo de Trabajo Sistematizado</h3>
+                <div className="flex flex-col md:flex-row justify-between items-start gap-8 relative">
+                    <div className="absolute top-10 left-0 w-full h-px bg-slate-800 hidden md:block" />
+                    {[
+                        { step: "Identificación", text: "Extracción masiva de registros candidatos desde APIs científicas." },
+                        { step: "Cribado", text: "Remoción de duplicados y filtrado por metadatos/abstracts." },
+                        { step: "Elegibilidad", text: "Evaluación de textos completos y descarga automatizada." },
+                        { step: "Inclusión", text: "Indexación en base de datos vectorial para asistencia LLM." }
+                    ].map((s, i) => (
+                        <div key={i} className="flex-1 relative z-10 group/step">
+                            <div className="w-10 h-10 rounded-full bg-slate-800 border-4 border-slate-950 text-emerald-400 flex items-center justify-center font-black mb-4 group-hover/step:bg-emerald-500 group-hover/step:text-slate-950 transition-colors duration-300">
+                                {i + 1}
+                            </div>
+                            <h4 className="text-white font-bold mb-2">{s.step}</h4>
+                            <p className="text-slate-500 text-sm leading-relaxed">{s.text}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Project List Header */}
+            <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-800">
                 <div>
-                    <h2 className="text-2xl font-bold text-white">Biblioteca de Proyectos</h2>
-                    <p className="text-slate-400 mt-1 text-sm">Escoge un proyecto existente para revisar su estado.</p>
+                    <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                        <span className="w-2 h-8 bg-emerald-500 rounded-full" />
+                        Biblioteca de Proyectos
+                    </h2>
+                    <p className="text-slate-400 mt-1 text-sm">Gestiona tus investigaciones activas.</p>
                 </div>
             </div>
 
