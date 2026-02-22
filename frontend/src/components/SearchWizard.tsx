@@ -29,7 +29,7 @@ export default function SearchWizard() {
         getProject(id).then(async (p) => {
             setProjectName(p.name);
             try {
-                const { articles, total } = await listArticles(id, 0, 500);
+                const { articles, total } = await listArticles(id, 0, 200);
                 if (total > 0) {
                     setArticles(articles);
                     const counts: Record<string, number> = {};
