@@ -8,7 +8,7 @@ import { useState, useEffect } from "react";
 import type { GeneratedQuery, Article, SearchResults, DownloadProgress, SearchQuery } from "../lib/api";
 import { buildQuery, executeSearch, downloadArticles, listArticles, getProject, openProjectFolder, getProjectSearches } from "../lib/api";
 
-type Step = "dashboard" | "describe" | "review_query" | "searching" | "results" | "downloading";
+type Step = "describe" | "review_query" | "searching" | "results" | "downloading";
 
 const DB_OPTIONS = [
     { id: "openalex", label: "OpenAlex", icon: "📚", desc: ">200M works" },
@@ -21,8 +21,7 @@ export default function SearchWizard() {
     const [projectId, setProjectId] = useState("");
     const [projectName, setProjectName] = useState("Cargando...");
 
-    const [searches, setSearches] = useState<SearchQuery[]>([]);
-    const [step, setStep] = useState<Step>("dashboard");
+    const [step, setStep] = useState<Step>("describe");
     const [userInput, setUserInput] = useState("");
 
     useEffect(() => {
@@ -30,28 +29,16 @@ export default function SearchWizard() {
         const id = params.get("id");
         if (!id) { window.location.href = "/"; return; }
         setProjectId(id);
-        getProject(id).then(async (p) => {
-            setProjectName(p.name);
-            try {
-                const projectSearches = await getProjectSearches(id);
-                setSearches(projectSearches);
-                if (projectSearches.length > 0) {
-                    setStep("dashboard");
-                } else {
-                    setStep("describe");
-                }
-            } catch (e) {
-                console.error("No historical searches loaded", e);
-                setStep("describe");
-            }
-        }).catch(() => window.location.href = "/");
-    }, []);
 
-    useEffect(() => {
-        if (step === "dashboard" && projectId) {
-            getProjectSearches(projectId).then(setSearches).catch(console.error);
+        getProject(id)
+            .then(p => setProjectName(p.name))
+            .catch(() => window.location.href = "/");
+
+        const queryId = params.get("query_id");
+        if (queryId) {
+            handleSelectSearch(queryId, id);
         }
-    }, [step, projectId]);
+    }, []);
     const [yearFrom, setYearFrom] = useState<number | undefined>();
     const [yearTo, setYearTo] = useState<number | undefined>();
     const [selectedDBs, setSelectedDBs] = useState(["openalex", "semantic_scholar", "arxiv"]);
@@ -67,18 +54,18 @@ export default function SearchWizard() {
     const [sortField, setSortField] = useState<keyof Article>("authors");
     const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
-    async function handleSelectSearch(queryId: string) {
+    async function handleSelectSearch(queryId: string, projId: string) {
         setLoading(true);
         setError(null);
         try {
-            const { articles, total } = await listArticles(projectId, 0, 500, undefined, queryId);
+            const { articles, total } = await listArticles(projId, 0, 200, undefined, queryId);
             setArticles(articles);
             const counts: Record<string, number> = {};
             articles.forEach(a => {
                 counts[a.source_database] = (counts[a.source_database] || 0) + 1;
             });
             setSearchResults({
-                project_id: projectId,
+                project_id: projId,
                 query_id: queryId,
                 total_found: total,
                 duplicates_removed: 0, // Mock, actual is not easily recovered from db here
@@ -212,68 +199,18 @@ export default function SearchWizard() {
             <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
                 <a href="/" className="hover:text-emerald-400 transition-colors">Proyectos</a>
                 <span>/</span>
-                <span
-                    onClick={() => { setSearchResults(null); setStep("dashboard"); }}
+                <a
+                    href={`/project?id=${projectId}`}
                     className="text-slate-300 hover:text-emerald-400 transition-colors cursor-pointer"
                 >
                     {projectName}
-                </span>
+                </a>
                 <span>/</span>
                 <span className="text-emerald-400">Búsqueda Sistemática</span>
             </div>
 
-            {/* ── Dashboard: Historial de Búsquedas ── */}
-            {
-                step === "dashboard" && (
-                    <div className="max-w-5xl">
-                        <div className="flex items-center justify-between mb-8">
-                            <div>
-                                <h1 className="text-3xl font-bold text-white mb-2">Búsquedas del Proyecto</h1>
-                                <p className="text-slate-400">Selecciona una búsqueda anterior o inicia una nueva.</p>
-                            </div>
-                            <button
-                                onClick={() => setStep("describe")}
-                                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-xl shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2"
-                            >
-                                <span className="text-lg">+</span> Nueva Búsqueda
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {searches.map((s, idx) => (
-                                <div
-                                    key={s.id}
-                                    onClick={() => handleSelectSearch(s.id)}
-                                    className="p-6 bg-slate-800/80 border border-slate-700/50 hover:border-emerald-500/50 rounded-2xl cursor-pointer transition-all hover:-translate-y-1 group"
-                                >
-                                    <div className="flex justify-between items-start mb-4">
-                                        <h3 className="text-lg font-bold text-white group-hover:text-emerald-400 transition-colors">
-                                            Búsqueda {searches.length - idx}
-                                        </h3>
-                                        <span className="text-xs text-slate-500 bg-slate-900/50 px-2 py-1 rounded-md">
-                                            {new Date(s.created_at).toLocaleDateString()}
-                                        </span>
-                                    </div>
-                                    <p className="text-sm text-slate-400 line-clamp-3 mb-4 h-[60px]" title={s.generated_query}>
-                                        {s.generated_query || s.raw_input}
-                                    </p>
-                                    <div className="flex items-center justify-between mt-auto">
-                                        <div className="text-xs font-medium text-emerald-400 bg-emerald-400/10 px-3 py-1.5 rounded-lg">
-                                            {s.total_results} Artículos
-                                        </div>
-                                        <div className="text-xs text-slate-500">
-                                            {s.databases_used.split(',').length} Fuentes
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )
-            }
-
             {/* Step indicator */}
-            {step !== "dashboard" && searchResults?.query_id !== "historical" && step !== "results" && (
+            {searchResults?.query_id !== "historical" && step !== "results" && (
                 <div className="flex items-center gap-2 mb-8">
                     {[
                         { id: "describe", label: "1. Describir" },

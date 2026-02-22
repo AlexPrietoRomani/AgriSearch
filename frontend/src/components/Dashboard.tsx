@@ -173,7 +173,7 @@ export default function Dashboard() {
                     {projects.map((p) => (
                         <a
                             key={p.id}
-                            href={`/search?id=${p.id}`}
+                            href={`/project?id=${p.id}`}
                             className="group block p-5 bg-slate-800/50 border border-slate-700/50 rounded-2xl hover:border-emerald-500/40 hover:bg-slate-800/80 hover:shadow-lg hover:shadow-emerald-500/5 transition-all duration-300"
                         >
                             <div className="flex items-start justify-between mb-3">
