@@ -208,6 +208,7 @@ Interfaz principal de cribado artículo-por-artículo, estilo Rayyan:
 - **Autores** (truncados a 3 + "et al." si son más de 3), **Año**, **Journal**, **DOI** (enlace clicable al artículo original).
 - **Abstract original** completo.
 - **Abstract traducido** (si el idioma de lectura ≠ idioma original): traducción estrictamente literal ejecutada por el LLM local. **No se resume ni se parafrasea**: se traduce oración por oración manteniendo exactamente el contenido original.
+- **Visor de PDF integrado:** Un botón permite desplegar un visor de PDF (iframe) directamente debajo del abstract para consultar el artículo original sin salir de la sesión.
 - **Keywords** del artículo (si disponibles).
 - **Fuente de la búsqueda** (badge: OpenAlex / Semantic Scholar / ArXiv).
 
@@ -215,8 +216,8 @@ Interfaz principal de cribado artículo-por-artículo, estilo Rayyan:
 - ✅ **Incluir** (verde) — El artículo es relevante para la revisión.
 - ❌ **Excluir** (rojo) — El artículo no cumple los criterios. Se solicita un **motivo de exclusión** (dropdown configurable: "Fuera de alcance", "No es artículo original", "Idioma no aceptado", "Duplicado no detectado", "Sin acceso al texto completo", "Otro").
 - 🟡 **Tal Vez** (amarillo) — Dudoso, se revisará después.
-
-**Nota del revisor:** Campo de texto opcional para anotar observaciones sobre el artículo.
+- 📄 **Ver PDF** (gris) — Abre un iframe inferiør para visualizar el PDF cargado localmente.
+- 📝 **Nota** (gris) — Campo de texto opcional para anotar observaciones.
 
 **Atajos de teclado:**
 - `I` → Incluir
@@ -224,6 +225,7 @@ Interfaz principal de cribado artículo-por-artículo, estilo Rayyan:
 - `M` → Tal Vez (Maybe)
 - `←` / `→` → Artículo anterior / siguiente
 - `N` → Abrir campo de nota
+- `P` → Abrir / Cerrar visor de PDF
 
 **Panel lateral — Estadísticas en vivo:**
 - Barra de progreso: N revisados / N total.

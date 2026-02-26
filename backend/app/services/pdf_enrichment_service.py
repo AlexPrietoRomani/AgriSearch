@@ -195,14 +195,16 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
 
         stats["pdfs_matched"] += 1
 
-        # Extract abstract if missing
-        if not article.abstract or article.abstract.strip() == "":
-            abstract = extract_abstract_from_pdf(actual_path)
-            if abstract:
-                article.abstract = abstract
+        # Try to extract abstract from PDF and overwrite if it's better
+        new_abstract = extract_abstract_from_pdf(actual_path)
+        if new_abstract:
+            old_abstract = article.abstract or ""
+            # If current abstract is missing, or very short (less than 250 chars), or the new one is significantly longer
+            if not article.abstract or len(old_abstract) < 250 or len(new_abstract) > len(old_abstract) + 100:
+                article.abstract = new_abstract
                 stats["abstracts_extracted"] += 1
                 changed = True
-                logger.info("Extracted abstract for article %s (%d chars)", article.id[:8], len(abstract))
+                logger.info("Updated abstract for article %s (new length: %d)", article.id[:8], len(new_abstract))
 
         # Extract keywords if missing
         if not article.keywords or article.keywords.strip() == "":

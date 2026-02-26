@@ -262,6 +262,31 @@ async def list_screening_articles(
 # ── Decision Updates ──
 
 
+from fastapi.responses import FileResponse
+import os
+
+@router.get("/sessions/{session_id}/articles/{article_id}/pdf")
+async def get_article_pdf(
+    session_id: str,
+    article_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Serve the local PDF file for a specific article.
+    """
+    stmt = select(Article).where(Article.id == article_id)
+    result = await db.execute(stmt)
+    article = result.scalar_one_or_none()
+
+    if not article or not article.local_pdf_path or not os.path.exists(article.local_pdf_path):
+        raise HTTPException(status_code=404, detail="PDF not found for this article.")
+
+    return FileResponse(
+        path=article.local_pdf_path,
+        media_type="application/pdf",
+        filename=os.path.basename(article.local_pdf_path)
+    )
+
 @router.put("/decisions/{decision_id}", response_model=ScreeningArticleResponse)
 async def update_decision(
     decision_id: str,

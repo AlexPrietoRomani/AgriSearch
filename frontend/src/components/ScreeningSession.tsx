@@ -58,6 +58,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
     const [excludeReason, setExcludeReason] = useState(EXCLUSION_REASONS[0]);
     const [translating, setTranslating] = useState(false);
     const [deciding, setDeciding] = useState(false);
+    const [showPdf, setShowPdf] = useState(false);
     const [viewMode, setViewMode] = useState<"card" | "table">("card");
     const [filterDecision, setFilterDecision] = useState<string | undefined>(undefined);
     const [error, setError] = useState("");
@@ -122,6 +123,10 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                     e.preventDefault();
                     setShowNote((v) => !v);
                     break;
+                case "p":
+                    e.preventDefault();
+                    setShowPdf((v) => !v);
+                    break;
                 case "escape":
                     setShowExcludeModal(false);
                     setShowNote(false);
@@ -141,6 +146,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
             setCurrentIndex(index);
             setShowNote(false);
             setShowExcludeModal(false);
+            setShowPdf(false);
             setNoteText(articles[index]?.reviewer_note || "");
         }
     };
@@ -428,6 +434,9 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                 <button onClick={() => setShowNote((v) => !v)} style={styles.noteToggle} title="Nota (N)">
                                     📝 Nota <span style={styles.shortcut}>N</span>
                                 </button>
+                                <button onClick={() => setShowPdf((v) => !v)} style={styles.pdfToggle} title="Ver PDF (P)">
+                                    📄 PDF <span style={styles.shortcut}>P</span>
+                                </button>
                             </div>
 
                             {/* Note input */}
@@ -440,6 +449,17 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                         style={styles.noteInput}
                                         rows={3}
                                         autoFocus
+                                    />
+                                </div>
+                            )}
+
+                            {/* PDF Viewer */}
+                            {showPdf && currentArticle && (
+                                <div style={styles.pdfSection}>
+                                    <iframe
+                                        src={`http://localhost:8000/api/v1/screening/sessions/${sessionId}/articles/${currentArticle.id}/pdf`}
+                                        style={styles.pdfIframe}
+                                        title={`PDF ${currentArticle.title}`}
                                     />
                                 </div>
                             )}
@@ -493,6 +513,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                 <div><kbd style={styles.kbd}>M</kbd> Tal Vez</div>
                                 <div><kbd style={styles.kbd}>←</kbd><kbd style={styles.kbd}>→</kbd> Navegar</div>
                                 <div><kbd style={styles.kbd}>N</kbd> Nota</div>
+                                <div><kbd style={styles.kbd}>P</kbd> Ver PDF</div>
                                 <div><kbd style={styles.kbd}>Esc</kbd> Cerrar modal</div>
                             </div>
                         </div>
@@ -859,16 +880,41 @@ const styles: Record<string, React.CSSProperties> = {
         transition: "all 0.2s",
     },
     noteToggle: {
-        padding: "0.75rem",
-        background: "rgba(96, 165, 250, 0.1)",
-        border: "1px solid rgba(96,165,250,0.2)",
-        color: "#93c5fd",
-        borderRadius: "8px",
-        fontSize: "0.85rem",
+        background: "rgba(148, 163, 184, 0.1)",
+        border: "1px solid rgba(148,163,184,0.2)",
+        color: "#cbd5e1",
+        padding: "0.25rem 0.65rem",
+        borderRadius: "6px",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
-        gap: "0.35rem",
+        gap: "0.3rem",
+        fontSize: "0.85rem",
+        marginLeft: "auto",
+    },
+    pdfToggle: {
+        background: "rgba(148, 163, 184, 0.1)",
+        border: "1px solid rgba(148,163,184,0.2)",
+        color: "#cbd5e1",
+        padding: "0.25rem 0.65rem",
+        borderRadius: "6px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.3rem",
+        fontSize: "0.85rem",
+    },
+    pdfSection: {
+        marginTop: "1.5rem",
+        borderTop: "1px solid rgba(148,163,184,0.1)",
+        paddingTop: "1.5rem",
+    },
+    pdfIframe: {
+        width: "100%",
+        height: "600px",
+        border: "none",
+        borderRadius: "8px",
+        backgroundColor: "#fff",
     },
     shortcut: {
         background: "rgba(0,0,0,0.3)",

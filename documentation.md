@@ -27,6 +27,7 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 | `/screening/sessions/{session_id}` | DELETE | Elimina sesión y todas sus decisiones (cascade) |
 | `/screening/sessions/project/{project_id}` | GET | Lista sesiones del proyecto |
 | `/screening/sessions/{session_id}/articles` | GET | Artículos en la sesión con sus decisiones |
+| `/screening/sessions/{session_id}/articles/{article_id}/pdf` | GET | Retorna el archivo PDF asociado en formato `application/pdf` |
 | `/screening/decisions/{decision_id}` | PUT | Actualizar decisión (include/exclude/maybe) |
 | `/screening/translate` | POST | Traducir abstract vía LLM |
 | `/screening/enrich/{project_id}` | POST | Enriquecimiento pre-screening desde PDFs |
@@ -41,11 +42,14 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 - Permite elegir qué consultas integrar en el proceso actual y con qué modelo traducir los resúmenes.
 - **Enriquecimiento del PDF:** Antes de crear una sesión formal de screening iterativo, el sistema escanea la carpeta `/pdfs/` usando PyMuPDF:
     1. Trata de encontrar emparejamientos por DOI o coincidencia parcial en nombre de archivo.
-    2. Modifica la DB y extrae el Abstract directamente del archivo PDF en caso de que la búsqueda original no incluyera uno.
+    2. Modifica la DB y extrae el Abstract directamente del archivo PDF (sobrescribiendo el proveniente de la API si este era muy corto, incompleto o erróneo).
     3. Extrae palabras clave (keywords).
 
 #### Proceso Interactivo (`ScreeningSession`)
-Interfaz para "Incluir", "Excluir", o marcar como "Tal vez" (Maybe). Autores largos se truncan con `formatAuthors` y resúmenes se traducen con Ollama local.
+Interfaz interactiva para screening:
+- **Botones de decisión**: "Incluir", "Excluir" (con sub-razones), "Tal vez".
+- **Visualizador Integrado**: Mediante el botón "Ver PDF" (atajo `P`), se invoca el endpoint `/pdf` para renderizar el documento PDF mediante un iframe de tamaño adaptable en la misma pantalla.
+- **Formateos automáticos**: Autores largos se truncan y abstracts se traducen con Ollama local.
 
 #### Intención Futura: Multi-persona
 > En versiones posteriores se permitirá tener múltiples sesiones para que varias personas trabajen simultáneamente en el screening de un mismo proyecto, cada una con sus artículos asignados. Por ahora, la restricción de 1 sesión simplifica el flujo.
