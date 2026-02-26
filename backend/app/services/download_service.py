@@ -50,8 +50,8 @@ async def _download_single_pdf(
     # Build filename
     first_author = (article.authors or "unknown").split(",")[0].strip().split()[-1]
     year = article.year or "nd"
-    doi_part = _sanitize_filename(article.doi or article.id[:8])
-    filename = f"{doi_part}_{first_author}_{year}.pdf"
+    title_slug = _sanitize_filename(article.title)[:50]
+    filename = f"{year}_{first_author}_{title_slug}.pdf"
     filepath = pdf_dir / filename
 
     # Skip if already downloaded
@@ -148,8 +148,8 @@ async def download_articles(
         if status == DownloadStatus.SUCCESS.value:
             first_author = (article.authors or "unknown").split(",")[0].strip().split()[-1]
             year = article.year or "nd"
-            doi_part = _sanitize_filename(article.doi or article.id[:8])
-            article.local_pdf_path = str(pdf_dir / f"{doi_part}_{first_author}_{year}.pdf")
+            title_slug = _sanitize_filename(article.title)[:50]
+            article.local_pdf_path = str(pdf_dir / f"{year}_{first_author}_{title_slug}.pdf")
             status_counts["downloaded"] += 1
         elif status == DownloadStatus.PAYWALL.value:
             status_counts["paywall"] += 1
