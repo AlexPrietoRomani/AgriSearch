@@ -97,3 +97,51 @@ RESPOND IN JSON FORMAT:
             "pico_breakdown": {},
             "explanation": f"LLM unavailable. Using raw input as query. Error: {str(e)}",
         }
+
+
+async def translate_text(
+    text: str,
+    target_language: str = "español",
+    model: str = "llama3.1:8b",
+) -> str:
+    """
+    Translate text to the target language using a local LLM.
+
+    The translation is strictly literal — sentence by sentence, preserving
+    the exact meaning and structure of the original. No summarization,
+    no paraphrasing, no additions.
+    """
+    system_prompt = f"""You are a professional scientific translator. Your task is to translate the following text to {target_language}.
+
+CRITICAL RULES:
+1. Translate LITERALLY, sentence by sentence. Do NOT summarize.
+2. Do NOT paraphrase. Preserve the exact meaning and structure of every sentence.
+3. Do NOT add explanations, context, or commentary.
+4. Do NOT omit any sentence from the original text.
+5. Preserve all technical terms, species names (in Latin/italics), chemical names, and numbers exactly.
+6. Output ONLY the translated text. No preamble, no notes, no markers.
+
+Translate the following text to {target_language}:"""
+
+    try:
+        # Use ollama/ prefix for LiteLLM to route to Ollama
+        llm_model = f"ollama/{model}" if not model.startswith("ollama/") else model
+
+        response = await litellm.acompletion(
+            model=llm_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text},
+            ],
+            api_base=settings.litellm_api_base,
+            temperature=0.1,  # Low temperature for faithful translation
+            max_tokens=4000,
+        )
+
+        translated = response.choices[0].message.content.strip()
+        logger.info("Translation completed (%d chars → %d chars)", len(text), len(translated))
+        return translated
+
+    except Exception as e:
+        logger.error("Translation failed: %s", str(e))
+        raise

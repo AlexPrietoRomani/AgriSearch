@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.db.database import init_db
-from app.api.v1 import projects, search
+from app.api.v1 import projects, search, screening
 
 settings = get_settings()
 
@@ -61,6 +61,7 @@ app.add_middleware(
 # ── Routes ──
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
+app.include_router(screening.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["System"])

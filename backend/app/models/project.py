@@ -1,5 +1,5 @@
 """
-AgriSearch Backend - SQLAlchemy models for Projects and Articles.
+AgriSearch Backend - SQLAlchemy models for Projects, Articles, and Screening.
 
 All data is scoped by project_id to ensure isolation between reviews.
 """
@@ -58,6 +58,14 @@ class DownloadStatus(str, PyEnum):
     MANUAL = "manual"
 
 
+class ScreeningDecisionStatus(str, PyEnum):
+    """Screening decision labels (PRISMA-aligned)."""
+    PENDING = "pending"      # Not yet reviewed
+    INCLUDE = "include"      # ✅ Relevant
+    EXCLUDE = "exclude"      # ❌ Not relevant (requires reason)
+    MAYBE = "maybe"          # 🟡 Uncertain, review later
+
+
 class Project(Base):
     """A systematic review project. Each project is fully isolated."""
 
@@ -74,6 +82,7 @@ class Project(Base):
     # Relationships
     articles = relationship("Article", back_populates="project", cascade="all, delete-orphan")
     search_queries = relationship("SearchQuery", back_populates="project", cascade="all, delete-orphan")
+    screening_sessions = relationship("ScreeningSession", back_populates="project", cascade="all, delete-orphan")
 
 
 class SearchQuery(Base):
@@ -130,3 +139,67 @@ class Article(Base):
 
     # Relationships
     project = relationship("Project", back_populates="articles")
+    screening_decisions = relationship("ScreeningDecision", back_populates="article", cascade="all, delete-orphan")
+
+
+class ScreeningSession(Base):
+    """A screening session grouping decisions across selected searches."""
+
+    __tablename__ = "screening_sessions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False)
+
+    # --- Configuration ---
+    search_query_ids = Column(Text, nullable=False)  # JSON array of selected search query IDs
+    reading_language = Column(String(10), default="es")  # Target language for abstract translation
+    translation_model = Column(String(100), default="llama3.1:8b")  # Ollama model for translation
+    total_articles = Column(Integer, default=0)  # Total articles in this session
+
+    # --- Progress ---
+    reviewed_count = Column(Integer, default=0)
+    included_count = Column(Integer, default=0)
+    excluded_count = Column(Integer, default=0)
+    maybe_count = Column(Integer, default=0)
+
+    # --- Timestamps ---
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    # Relationships
+    project = relationship("Project", back_populates="screening_sessions")
+    decisions = relationship("ScreeningDecision", back_populates="session", cascade="all, delete-orphan")
+
+
+class ScreeningDecision(Base):
+    """A single screening decision for an article within a session."""
+
+    __tablename__ = "screening_decisions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    session_id = Column(String, ForeignKey("screening_sessions.id"), nullable=False)
+    article_id = Column(String, ForeignKey("articles.id"), nullable=False)
+
+    # --- Decision ---
+    decision = Column(
+        Enum(ScreeningDecisionStatus),
+        default=ScreeningDecisionStatus.PENDING,
+    )
+    exclusion_reason = Column(String(255), nullable=True)  # Required when decision=exclude
+    reviewer_note = Column(Text, nullable=True)  # Optional free-text note
+
+    # --- Translated abstract cache ---
+    translated_abstract = Column(Text, nullable=True)  # Cached LLM translation
+    original_language = Column(String(10), nullable=True)  # Detected language of original abstract
+
+    # --- Ordering ---
+    display_order = Column(Integer, default=0)  # Order in which article is shown
+
+    # --- Timestamps ---
+    decided_at = Column(DateTime, nullable=True)  # When the decision was made
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    # Relationships
+    session = relationship("ScreeningSession", back_populates="decisions")
+    article = relationship("Article", back_populates="screening_decisions")

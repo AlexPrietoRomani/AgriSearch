@@ -139,3 +139,97 @@ class DownloadProgressResponse(BaseModel):
     paywall: int
     in_progress: int
     articles: list[ArticleResponse] = []
+
+
+# ──────────────────── Screening Schemas ────────────────────
+
+
+class CreateScreeningSessionRequest(BaseModel):
+    """Schema for creating a new screening session."""
+    project_id: str = Field(..., description="Project UUID")
+    search_query_ids: list[str] = Field(..., min_length=1, description="Selected search query IDs to include")
+    reading_language: str = Field("es", description="Target language for abstract reading (es/en/pt)")
+    translation_model: str = Field("llama3.1:8b", description="Ollama model for translation")
+
+
+class ScreeningSessionResponse(BaseModel):
+    """Schema for screening session API responses."""
+    id: str
+    project_id: str
+    search_query_ids: list[str]  # Parsed from JSON
+    reading_language: str
+    translation_model: str
+    total_articles: int
+    reviewed_count: int
+    included_count: int
+    excluded_count: int
+    maybe_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ScreeningDecisionResponse(BaseModel):
+    """Schema for a single screening decision."""
+    id: str
+    session_id: str
+    article_id: str
+    decision: str
+    exclusion_reason: str | None
+    reviewer_note: str | None
+    translated_abstract: str | None
+    original_language: str | None
+    display_order: int
+    decided_at: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ScreeningArticleResponse(BaseModel):
+    """Schema for an article within a screening session (article + decision)."""
+    # Article fields
+    id: str
+    doi: str | None
+    title: str
+    authors: str | None
+    year: int | None
+    abstract: str | None
+    journal: str | None
+    url: str | None
+    keywords: str | None
+    source_database: str
+    download_status: str
+    local_pdf_path: str | None
+    # Decision fields
+    decision_id: str
+    decision: str = "pending"
+    exclusion_reason: str | None = None
+    reviewer_note: str | None = None
+    translated_abstract: str | None = None
+    display_order: int = 0
+    decided_at: datetime | None = None
+
+
+class UpdateDecisionRequest(BaseModel):
+    """Schema for updating a screening decision."""
+    decision: str = Field(..., description="Decision: include, exclude, or maybe")
+    exclusion_reason: str | None = Field(None, description="Required when decision=exclude")
+    reviewer_note: str | None = Field(None, description="Optional reviewer note")
+
+
+class ScreeningStatsResponse(BaseModel):
+    """Schema for screening session progress stats."""
+    total: int
+    reviewed: int
+    pending: int
+    included: int
+    excluded: int
+    maybe: int
+    progress_percent: float
+
+
+class TranslateAbstractRequest(BaseModel):
+    """Schema for requesting abstract translation."""
+    decision_id: str = Field(..., description="ScreeningDecision UUID")
+    target_language: str = Field("es", description="Target language for translation")
+

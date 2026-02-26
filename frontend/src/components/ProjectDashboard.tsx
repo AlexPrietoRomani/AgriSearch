@@ -125,8 +125,8 @@ export default function ProjectDashboard() {
             {/* Notification Toast */}
             {notification && (
                 <div className={`fixed top-8 right-8 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-300 ${notification.type === 'success'
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                        : 'bg-red-500/10 border-red-500/20 text-red-400'
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                    : 'bg-red-500/10 border-red-500/20 text-red-400'
                     }`}>
                     {notification.type === 'success' ? (
                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -192,15 +192,28 @@ export default function ProjectDashboard() {
                             </div>
                         </div>
 
-                        <a
-                            href={`/search?id=${projectId}`}
-                            className="px-6 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-3 flex-shrink-0 ml-8 hover:-translate-y-1"
-                        >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                            BÚSQUEDA IA
-                        </a>
+                        <div className="flex flex-col gap-3 flex-shrink-0 ml-8">
+                            <a
+                                href={`/search?id=${projectId}`}
+                                className="px-6 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-3 hover:-translate-y-1"
+                            >
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                BÚSQUEDA IA
+                            </a>
+                            {searches.length > 0 && (
+                                <a
+                                    href={`/screening?id=${projectId}`}
+                                    className="px-6 py-4 bg-purple-500 hover:bg-purple-400 text-white font-black rounded-2xl shadow-lg shadow-purple-500/20 transition-all flex items-center gap-3 hover:-translate-y-1"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                    </svg>
+                                    SCREENING
+                                </a>
+                            )}
+                        </div>
                     </div>
                 ) : (
                     <div className="mb-8 bg-slate-900/60 p-8 rounded-3xl border border-emerald-500/30 shadow-2xl shadow-emerald-500/5">

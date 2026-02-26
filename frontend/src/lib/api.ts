@@ -172,3 +172,106 @@ export async function downloadArticles(data: {
 }): Promise<DownloadProgress> {
   return request("/search/download", { method: "POST", body: JSON.stringify(data) });
 }
+
+// ── Screening ──
+
+export interface ScreeningSession {
+  id: string;
+  project_id: string;
+  search_query_ids: string[];
+  reading_language: string;
+  translation_model: string;
+  total_articles: number;
+  reviewed_count: number;
+  included_count: number;
+  excluded_count: number;
+  maybe_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScreeningArticle {
+  id: string;
+  doi: string | null;
+  title: string;
+  authors: string | null;
+  year: number | null;
+  abstract: string | null;
+  journal: string | null;
+  url: string | null;
+  keywords: string | null;
+  source_database: string;
+  download_status: string;
+  local_pdf_path: string | null;
+  decision_id: string;
+  decision: "pending" | "include" | "exclude" | "maybe";
+  exclusion_reason: string | null;
+  reviewer_note: string | null;
+  translated_abstract: string | null;
+  display_order: number;
+  decided_at: string | null;
+}
+
+export interface ScreeningStats {
+  total: number;
+  reviewed: number;
+  pending: number;
+  included: number;
+  excluded: number;
+  maybe: number;
+  progress_percent: number;
+}
+
+export async function createScreeningSession(data: {
+  project_id: string;
+  search_query_ids: string[];
+  reading_language?: string;
+  translation_model?: string;
+}): Promise<ScreeningSession> {
+  return request("/screening/sessions", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getScreeningSession(sessionId: string): Promise<ScreeningSession> {
+  return request(`/screening/sessions/${sessionId}`);
+}
+
+export async function listProjectScreeningSessions(projectId: string): Promise<ScreeningSession[]> {
+  return request(`/screening/sessions/project/${projectId}`);
+}
+
+export async function listScreeningArticles(
+  sessionId: string,
+  skip = 0,
+  limit = 50,
+  filterDecision?: string,
+): Promise<ScreeningArticle[]> {
+  const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+  if (filterDecision) params.set("filter_decision", filterDecision);
+  return request(`/screening/sessions/${sessionId}/articles?${params}`);
+}
+
+export async function updateDecision(
+  decisionId: string,
+  data: {
+    decision: "include" | "exclude" | "maybe" | "pending";
+    exclusion_reason?: string;
+    reviewer_note?: string;
+  },
+): Promise<ScreeningArticle> {
+  return request(`/screening/decisions/${decisionId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getScreeningStats(sessionId: string): Promise<ScreeningStats> {
+  return request(`/screening/sessions/${sessionId}/stats`);
+}
+
+export async function translateAbstract(data: {
+  decision_id: string;
+  target_language: string;
+}): Promise<{ decision_id: string; translated_abstract: string | null; cached: boolean }> {
+  return request("/screening/translate", { method: "POST", body: JSON.stringify(data) });
+}
+

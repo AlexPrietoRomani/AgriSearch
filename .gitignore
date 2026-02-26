@@ -61,7 +61,6 @@ frontend/yarn-error.log*
 
 # Agent and Planning
 .agents/
-plan_a_seguir.md
 
 # Logs
 *.log
