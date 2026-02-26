@@ -26,6 +26,16 @@ const EXCLUSION_REASONS = [
     "Otro",
 ];
 
+/**
+ * Truncate an author string to show at most `maxAuthors` names + "et al."
+ */
+function formatAuthors(authors: string | null, maxAuthors = 3): string {
+    if (!authors) return "Autor desconocido";
+    const list = authors.split(",").map(a => a.trim()).filter(Boolean);
+    if (list.length <= maxAuthors) return list.join(", ");
+    return list.slice(0, maxAuthors).join(", ") + " et al.";
+}
+
 interface Props {
     sessionId?: string;
     projectId?: string;
@@ -251,7 +261,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                     <td style={{ ...styles.td, maxWidth: "400px" }}>
                                         {article.title.length > 100 ? article.title.slice(0, 100) + "..." : article.title}
                                     </td>
-                                    <td style={styles.td}>{article.authors?.split(",")[0] || "—"}</td>
+                                    <td style={styles.td}>{formatAuthors(article.authors, 2)}</td>
                                     <td style={styles.td}>{article.year || "—"}</td>
                                     <td style={styles.td}>
                                         <span style={styles.sourceBadge}>{article.source_database}</span>
@@ -323,7 +333,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                             <h2 style={styles.articleTitle}>{currentArticle.title}</h2>
                             <div style={styles.articleMeta}>
                                 {currentArticle.authors && (
-                                    <span>👥 {currentArticle.authors}</span>
+                                    <span>👥 {formatAuthors(currentArticle.authors)}</span>
                                 )}
                                 {currentArticle.year && <span>📅 {currentArticle.year}</span>}
                                 {currentArticle.journal && <span>📰 {currentArticle.journal}</span>}

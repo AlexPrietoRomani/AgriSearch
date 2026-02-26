@@ -58,6 +58,23 @@ def _session_to_response(session: ScreeningSession) -> ScreeningSessionResponse:
 # ── Session Endpoints ──
 
 
+@router.post("/enrich/{project_id}")
+async def enrich_project_articles(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Enrich articles with data extracted from their PDFs (abstract, keywords, paths)."""
+    from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
+
+    try:
+        stats = await enrich_articles_from_pdfs(db, project_id)
+        await db.commit()
+        return stats
+    except Exception as e:
+        logger.error("Enrichment failed for project %s: %s", project_id, e)
+        raise HTTPException(status_code=500, detail=f"Error durante el enriquecimiento: {str(e)}")
+
+
 @router.post("/sessions", response_model=ScreeningSessionResponse, status_code=201)
 async def create_screening_session(
     req: CreateScreeningSessionRequest,
@@ -66,6 +83,14 @@ async def create_screening_session(
     """Create a new screening session from selected search queries."""
     logger.info("Creating screening session for project %s with %d searches",
                 req.project_id, len(req.search_query_ids))
+
+    # 0. Enrich articles from PDFs first (fill abstract, keywords, paths)
+    from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
+    try:
+        enrich_stats = await enrich_articles_from_pdfs(db, req.project_id)
+        logger.info("Pre-screening enrichment: %s", enrich_stats)
+    except Exception as e:
+        logger.warning("Pre-screening enrichment failed (continuing anyway): %s", e)
 
     # 1. Gather unique, non-duplicate articles from selected searches
     stmt = (
@@ -107,6 +132,7 @@ async def create_screening_session(
 
     logger.info("Created screening session %s with %d articles", session.id, len(articles))
     return _session_to_response(session)
+
 
 
 @router.get("/sessions/project/{project_id}", response_model=list[ScreeningSessionResponse])

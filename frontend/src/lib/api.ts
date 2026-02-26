@@ -275,3 +275,15 @@ export async function translateAbstract(data: {
   return request("/screening/translate", { method: "POST", body: JSON.stringify(data) });
 }
 
+export interface EnrichmentStats {
+  total: number;
+  pdfs_matched: number;
+  abstracts_extracted: number;
+  keywords_extracted: number;
+  paths_updated: number;
+}
+
+export async function enrichArticles(projectId: string): Promise<EnrichmentStats> {
+  return request(`/screening/enrich/${projectId}`, { method: "POST" });
+}
+

@@ -16,9 +16,11 @@ import {
     getProjectSearches,
     createScreeningSession,
     listProjectScreeningSessions,
+    enrichArticles,
     type Project,
     type SearchQuery,
     type ScreeningSession,
+    type EnrichmentStats,
 } from "../lib/api";
 
 const LANGUAGES = [
@@ -47,6 +49,9 @@ export default function ScreeningSetup() {
     const [translationModel, setTranslationModel] = useState("llama3.1:8b");
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
+    const [enriching, setEnriching] = useState(false);
+    const [enrichStep, setEnrichStep] = useState("");
+    const [enrichStats, setEnrichStats] = useState<EnrichmentStats | null>(null);
     const [error, setError] = useState("");
 
     // Load project data
@@ -93,8 +98,19 @@ export default function ScreeningSetup() {
             return;
         }
         setCreating(true);
+        setEnriching(true);
         setError("");
         try {
+            // Step 1: Enrich articles from PDFs
+            setEnrichStep("📂 Escaneando PDFs descargados...");
+            const stats = await enrichArticles(projectId);
+            setEnrichStats(stats);
+
+            setEnrichStep("✅ Enriquecimiento completado. Creando sesión...");
+            await new Promise(r => setTimeout(r, 800)); // Brief pause for UX
+
+            // Step 2: Create the screening session
+            setEnriching(false);
             const session = await createScreeningSession({
                 project_id: projectId,
                 search_query_ids: Array.from(selectedSearchIds),
@@ -106,6 +122,7 @@ export default function ScreeningSetup() {
         } catch (e: any) {
             setError(e.message);
             setCreating(false);
+            setEnriching(false);
         }
     };
 
@@ -115,6 +132,57 @@ export default function ScreeningSetup() {
                 <div style={styles.loadingContainer}>
                     <div style={styles.spinner} />
                     <p style={styles.loadingText}>Cargando datos del proyecto...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Enrichment loading screen
+    if (creating && enriching) {
+        return (
+            <div className="screening-setup" style={styles.container}>
+                <div style={styles.enrichScreen}>
+                    <div style={styles.enrichIcon}>📄</div>
+                    <h2 style={styles.enrichTitle}>Preparando artículos para el screening</h2>
+                    <p style={styles.enrichSubtitle}>
+                        Analizando PDFs descargados para extraer información faltante...
+                    </p>
+                    <div style={styles.enrichProgress}>
+                        <div style={styles.spinner} />
+                        <p style={styles.enrichStep}>{enrichStep}</p>
+                    </div>
+                    {enrichStats && (
+                        <div style={styles.enrichResults}>
+                            <div style={styles.enrichStat}>
+                                <span style={styles.enrichStatNumber}>{enrichStats.pdfs_matched}</span>
+                                <span style={styles.enrichStatLabel}>PDFs analizados</span>
+                            </div>
+                            <div style={styles.enrichStat}>
+                                <span style={{ ...styles.enrichStatNumber, color: '#22c55e' }}>{enrichStats.abstracts_extracted}</span>
+                                <span style={styles.enrichStatLabel}>Abstracts extraídos</span>
+                            </div>
+                            <div style={styles.enrichStat}>
+                                <span style={{ ...styles.enrichStatNumber, color: '#60a5fa' }}>{enrichStats.keywords_extracted}</span>
+                                <span style={styles.enrichStatLabel}>Keywords extraídas</span>
+                            </div>
+                            <div style={styles.enrichStat}>
+                                <span style={{ ...styles.enrichStatNumber, color: '#eab308' }}>{enrichStats.paths_updated}</span>
+                                <span style={styles.enrichStatLabel}>Rutas actualizadas</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // Post-enrichment, creating session
+    if (creating && !enriching) {
+        return (
+            <div className="screening-setup" style={styles.container}>
+                <div style={styles.loadingContainer}>
+                    <div style={styles.spinner} />
+                    <p style={styles.loadingText}>Creando sesión de screening...</p>
                 </div>
             </div>
         );
@@ -605,5 +673,68 @@ const styles: Record<string, React.CSSProperties> = {
         maxWidth: "400px",
         margin: "0.5rem auto 1.5rem",
         lineHeight: 1.6,
+    },
+    // Enrichment screen styles
+    enrichScreen: {
+        display: "flex",
+        flexDirection: "column" as const,
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "400px",
+        gap: "1rem",
+        textAlign: "center" as const,
+    },
+    enrichIcon: {
+        fontSize: "3.5rem",
+        animation: "pulse 2s ease-in-out infinite",
+    },
+    enrichTitle: {
+        fontSize: "1.5rem",
+        fontWeight: 700,
+        color: "#f1f5f9",
+        margin: 0,
+    },
+    enrichSubtitle: {
+        color: "#94a3b8",
+        fontSize: "0.95rem",
+        maxWidth: "500px",
+        lineHeight: 1.6,
+    },
+    enrichProgress: {
+        display: "flex",
+        flexDirection: "column" as const,
+        alignItems: "center",
+        gap: "1rem",
+        marginTop: "1rem",
+    },
+    enrichStep: {
+        color: "#93c5fd",
+        fontSize: "0.95rem",
+        fontWeight: 500,
+    },
+    enrichResults: {
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr 1fr 1fr",
+        gap: "1rem",
+        marginTop: "1.5rem",
+        padding: "1rem 1.5rem",
+        background: "rgba(30, 41, 59, 0.6)",
+        border: "1px solid rgba(148, 163, 184, 0.1)",
+        borderRadius: "12px",
+    },
+    enrichStat: {
+        display: "flex",
+        flexDirection: "column" as const,
+        alignItems: "center",
+        gap: "0.25rem",
+    },
+    enrichStatNumber: {
+        fontSize: "1.8rem",
+        fontWeight: 700,
+        color: "#f1f5f9",
+    },
+    enrichStatLabel: {
+        fontSize: "0.78rem",
+        color: "#94a3b8",
     },
 };
