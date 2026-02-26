@@ -6,7 +6,7 @@ Endpoints for building queries, executing searches, listing articles, and downlo
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -156,3 +156,57 @@ async def download_pdfs(
         paywall=result.get("paywall", 0),
         in_progress=0,
     )
+
+
+@router.post(
+    "/upload-pdf/{article_id}",
+    response_model=ArticleResponse,
+    summary="Manually upload a PDF for an article",
+)
+async def upload_pdf(
+    article_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+) -> ArticleResponse:
+    """Manually upload a PDF and link it to the given article ID."""
+    from sqlalchemy import select
+    from app.models.project import Article, DownloadStatus
+    from app.core.config import get_settings
+    import shutil
+    from pathlib import Path
+
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un PDF.")
+
+    result = await db.execute(select(Article).where(Article.id == article_id))
+    article = result.scalar_one_or_none()
+
+    if not article:
+        raise HTTPException(status_code=404, detail="Artículo no encontrado.")
+
+    settings = get_settings()
+    pdf_dir = settings.get_project_pdfs_dir(article.project_id)
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use the provided filename but make it somewhat safe
+    safe_filename = "".join([c if c.isalnum() or c in " ._-" else "_" for c in file.filename])
+    file_path = pdf_dir / safe_filename
+
+    # If file exists, prepend id to avoid overwrite, unless it's the exact same upload intent
+    if file_path.exists():
+        file_path = pdf_dir / f"{article.id[:8]}_{safe_filename}"
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        logger.error("Error saving manual upload %s: %s", file.filename, e)
+        raise HTTPException(status_code=500, detail="No se pudo guardar el archivo.")
+
+    article.local_pdf_path = str(file_path)
+    article.download_status = DownloadStatus.SUCCESS
+    await db.commit()
+    await db.refresh(article)
+
+    return ArticleResponse.model_validate(article)
+

@@ -30,9 +30,9 @@ const LANGUAGES = [
 ];
 
 const MODELS = [
+    { id: "aya-expanse", label: "Aya Expanse 8B (Multilingüe Avanzado)", desc: "El mejor para traducciones complejas y exactas EN↔ES/PT." },
     { id: "llama3.1:8b", label: "Llama 3.1 8B (General)", desc: "Buen rendimiento general, traducción aceptable." },
-    { id: "aya-23:8b", label: "Aya 23 8B (Multilingüe)", desc: "Optimizado para tareas multilingües, incluyendo EN↔ES/PT." },
-    { id: "gemma3:4b", label: "Gemma 3 4B (Ligero)", desc: "Más rápido pero con menor calidad de traducción." },
+    { id: "qwen2.5:7b", label: "Qwen 2.5 7B (Excelente Multilingüe)", desc: "Alternativa rápida y de muy alta calidad en varios idiomas." },
 ];
 
 export default function ScreeningSetup() {
@@ -46,7 +46,7 @@ export default function ScreeningSetup() {
     const [existingSessions, setExistingSessions] = useState<ScreeningSession[]>([]);
     const [selectedSearchIds, setSelectedSearchIds] = useState<Set<string>>(new Set());
     const [readingLanguage, setReadingLanguage] = useState("es");
-    const [translationModel, setTranslationModel] = useState("llama3.1:8b");
+    const [translationModel, setTranslationModel] = useState("aya-expanse");
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [enriching, setEnriching] = useState(false);

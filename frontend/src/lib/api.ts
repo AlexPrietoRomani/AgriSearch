@@ -173,6 +173,23 @@ export async function downloadArticles(data: {
   return request("/search/download", { method: "POST", body: JSON.stringify(data) });
 }
 
+export async function uploadPdf(articleId: string, file: File): Promise<Article> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/search/upload-pdf/${articleId}`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(error.detail || `Error al subir: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 // ── Screening ──
 
 export interface ScreeningSession {

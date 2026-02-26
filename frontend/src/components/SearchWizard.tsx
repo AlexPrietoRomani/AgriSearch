@@ -300,6 +300,9 @@ export default function SearchWizard() {
                     openProjectFolder={openProjectFolder}
                     sourceColor={sourceColor}
                     statusBadge={statusBadge}
+                    onArticleUpdated={(updated) => {
+                        setArticles(prev => prev.map(a => a.id === updated.id ? updated : a));
+                    }}
                 />
             )}
         </div>

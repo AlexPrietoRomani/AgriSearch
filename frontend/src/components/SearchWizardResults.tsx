@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { Article, SearchResults, DownloadProgress } from "../lib/api";
+import { uploadPdf, type Article, type SearchResults, type DownloadProgress } from "../lib/api";
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
 
@@ -13,6 +13,7 @@ interface Props {
     openProjectFolder: (id: string) => Promise<{ status: string; path: string }>;
     sourceColor: (db: string) => string;
     statusBadge: (status: string) => string;
+    onArticleUpdated: (updatedArticle: Article) => void;
 }
 
 export default function SearchWizardResults({
@@ -24,11 +25,31 @@ export default function SearchWizardResults({
     handleDownload,
     openProjectFolder,
     sourceColor,
-    statusBadge
+    statusBadge,
+    onArticleUpdated
 }: Props) {
     const [sortField, setSortField] = useState<keyof Article>("authors");
     const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
     const [expandedAbstract, setExpandedAbstract] = useState<string | null>(null);
+    const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, articleId: string) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingId(articleId);
+        try {
+            const updated = await uploadPdf(articleId, file);
+            onArticleUpdated(updated);
+            alert("PDF subido y vinculado con éxito");
+        } catch (error: any) {
+            alert(error.message || "Error al subir el archivo");
+        } finally {
+            setUploadingId(null);
+            // reset file input
+            e.target.value = "";
+        }
+    };
 
     const sortedArticles = [...articles].sort((a, b) => {
         let valA = a[sortField];
@@ -268,8 +289,28 @@ export default function SearchWizardResults({
                                         ) : (
                                             <span className="text-slate-600 text-xs">—</span>
                                         )}
-                                        {a.download_status === "success" && (
-                                            <span className="text-[10px] text-emerald-500/60 font-medium">Local PDF ✅</span>
+                                        {a.download_status === "success" ? (
+                                            <span className="text-[10px] text-emerald-500/60 font-medium whitespace-nowrap">Local PDF ✅</span>
+                                        ) : (
+                                            <div className="relative">
+                                                <input
+                                                    type="file"
+                                                    accept=".pdf"
+                                                    id={`upload-${a.id}`}
+                                                    className="hidden"
+                                                    onChange={(e) => handleFileUpload(e, a.id)}
+                                                    disabled={uploadingId === a.id}
+                                                />
+                                                <label
+                                                    htmlFor={`upload-${a.id}`}
+                                                    className={`cursor-pointer flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white rounded-lg transition-all duration-200 text-xs font-medium border border-slate-700 ${uploadingId === a.id ? 'opacity-50 cursor-wait' : ''}`}
+                                                    title="Subir PDF manualmente"
+                                                >
+                                                    {uploadingId === a.id ? (
+                                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                    ) : "⬆️ Subir PDF"}
+                                                </label>
+                                            </div>
                                         )}
                                     </div>
                                 </td>
