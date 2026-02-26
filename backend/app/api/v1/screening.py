@@ -174,6 +174,36 @@ async def delete_screening_session(
     return {"status": "ok", "message": "Sesión eliminada correctamente."}
 
 
+@router.get("/sessions/project/{project_id}", response_model=list[ScreeningSessionResponse])
+async def list_project_sessions(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all screening sessions for a project."""
+    result = await db.execute(
+        select(ScreeningSession)
+        .where(ScreeningSession.project_id == project_id)
+        .order_by(ScreeningSession.created_at.desc())
+    )
+    sessions = result.scalars().all()
+    return [_session_to_response(s) for s in sessions]
+
+
+@router.get("/sessions/{session_id}", response_model=ScreeningSessionResponse)
+async def get_screening_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get screening session details."""
+    result = await db.execute(
+        select(ScreeningSession).where(ScreeningSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión de screening no encontrada.")
+    return _session_to_response(session)
+
+
 
 # ── Articles within a Session ──
 
