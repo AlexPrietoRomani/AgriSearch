@@ -150,10 +150,14 @@ class ScreeningSession(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
 
+    # --- Identity ---
+    name = Column(String(255), nullable=True, default="Sesión de Screening")  # Descriptive name
+    goal = Column(Text, nullable=True)  # Session objective / goal
+
     # --- Configuration ---
     search_query_ids = Column(Text, nullable=False)  # JSON array of selected search query IDs
     reading_language = Column(String(10), default="es")  # Target language for abstract translation
-    translation_model = Column(String(100), default="llama3.1:8b")  # Ollama model for translation
+    translation_model = Column(String(100), default="aya-expanse")  # Ollama model for translation
     total_articles = Column(Integer, default=0)  # Total articles in this session
 
     # --- Progress ---

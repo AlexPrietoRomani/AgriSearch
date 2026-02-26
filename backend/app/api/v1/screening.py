@@ -42,6 +42,8 @@ def _session_to_response(session: ScreeningSession) -> ScreeningSessionResponse:
     return ScreeningSessionResponse(
         id=session.id,
         project_id=session.project_id,
+        name=session.name,
+        goal=session.goal,
         search_query_ids=json.loads(session.search_query_ids),
         reading_language=session.reading_language,
         translation_model=session.translation_model,
@@ -80,11 +82,26 @@ async def create_screening_session(
     req: CreateScreeningSessionRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new screening session from selected search queries."""
+    """Create a new screening session from selected search queries.
+    
+    Rules:
+    - Only 1 active session per project (returns 409 if one already exists)
+    - Only articles with download_status=SUCCESS are included
+    """
     logger.info("Creating screening session for project %s with %d searches",
                 req.project_id, len(req.search_query_ids))
 
-    # 0. Enrich articles from PDFs first (fill abstract, keywords, paths)
+    # 0. Check no other session exists for this project
+    existing = await db.execute(
+        select(ScreeningSession).where(ScreeningSession.project_id == req.project_id)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe una sesión de screening activa para este proyecto. Elimínala primero para crear una nueva."
+        )
+
+    # 1. Enrich articles from PDFs first (fill abstract, keywords, paths)
     from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
     try:
         enrich_stats = await enrich_articles_from_pdfs(db, req.project_id)
@@ -92,24 +109,28 @@ async def create_screening_session(
     except Exception as e:
         logger.warning("Pre-screening enrichment failed (continuing anyway): %s", e)
 
-    # 1. Gather unique, non-duplicate articles from selected searches
+    # 2. Gather unique, non-duplicate articles WITH PDF DOWNLOADED from selected searches
+    from app.models.project import DownloadStatus
     stmt = (
         select(Article)
         .where(
             Article.project_id == req.project_id,
             Article.search_query_id.in_(req.search_query_ids),
             Article.is_duplicate == False,  # noqa: E712
+            Article.download_status == DownloadStatus.SUCCESS,
         )
     )
     result = await db.execute(stmt)
     articles = result.scalars().all()
 
     if not articles:
-        raise HTTPException(status_code=400, detail="No se encontraron artículos en las búsquedas seleccionadas.")
+        raise HTTPException(status_code=400, detail="No se encontraron artículos con PDF descargado en las búsquedas seleccionadas.")
 
-    # 2. Create the session
+    # 3. Create the session
     session = ScreeningSession(
         project_id=req.project_id,
+        name=req.name,
+        goal=req.goal,
         search_query_ids=json.dumps(req.search_query_ids),
         reading_language=req.reading_language,
         translation_model=req.translation_model,
@@ -118,7 +139,7 @@ async def create_screening_session(
     db.add(session)
     await db.flush()  # Get session.id
 
-    # 3. Create a ScreeningDecision for each article
+    # 4. Create a ScreeningDecision for each article
     for idx, article in enumerate(articles):
         decision = ScreeningDecision(
             session_id=session.id,
@@ -130,39 +151,27 @@ async def create_screening_session(
     await db.commit()
     await db.refresh(session)
 
-    logger.info("Created screening session %s with %d articles", session.id, len(articles))
+    logger.info("Created screening session %s with %d articles (only PDFs)", session.id, len(articles))
     return _session_to_response(session)
 
 
-
-@router.get("/sessions/project/{project_id}", response_model=list[ScreeningSessionResponse])
-async def list_project_sessions(
-    project_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """List all screening sessions for a project."""
-    result = await db.execute(
-        select(ScreeningSession)
-        .where(ScreeningSession.project_id == project_id)
-        .order_by(ScreeningSession.created_at.desc())
-    )
-    sessions = result.scalars().all()
-    return [_session_to_response(s) for s in sessions]
-
-
-@router.get("/sessions/{session_id}", response_model=ScreeningSessionResponse)
-async def get_screening_session(
+@router.delete("/sessions/{session_id}", status_code=200)
+async def delete_screening_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get screening session details."""
+    """Delete a screening session and all its decisions. IRREVERSIBLE."""
     result = await db.execute(
         select(ScreeningSession).where(ScreeningSession.id == session_id)
     )
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Sesión de screening no encontrada.")
-    return _session_to_response(session)
+
+    await db.delete(session)
+    await db.commit()
+    logger.info("Deleted screening session %s (cascade deletes decisions)", session_id)
+    return {"status": "ok", "message": "Sesión eliminada correctamente."}
 
 
 

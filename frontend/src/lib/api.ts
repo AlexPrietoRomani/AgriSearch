@@ -195,6 +195,8 @@ export async function uploadPdf(articleId: string, file: File): Promise<Article>
 export interface ScreeningSession {
   id: string;
   project_id: string;
+  name: string | null;
+  goal: string | null;
   search_query_ids: string[];
   reading_language: string;
   translation_model: string;
@@ -241,11 +243,17 @@ export interface ScreeningStats {
 
 export async function createScreeningSession(data: {
   project_id: string;
+  name?: string;
+  goal?: string;
   search_query_ids: string[];
   reading_language?: string;
   translation_model?: string;
 }): Promise<ScreeningSession> {
   return request("/screening/sessions", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteScreeningSession(sessionId: string): Promise<{ status: string; message: string }> {
+  return request(`/screening/sessions/${sessionId}`, { method: "DELETE" });
 }
 
 export async function getScreeningSession(sessionId: string): Promise<ScreeningSession> {

@@ -92,7 +92,20 @@ La plataforma estará disponible en `http://localhost:4321`.
 
 Puedes encontrar el roadmap y proceso de planeamiento completo de diseño en el archivo [`plan_a_seguir.md`](plan_a_seguir.md).
 
-Además, en la carpeta `.agents/workflows/` encontrarás reglas definidas de comportamiento de commits y creación de nuevos endpoints/pantallas para la estandarización de código.
+Para consultar el registro técnico de cada funcionalidad implementada, revisa [`documentation.md`](documentation.md).
+
+En la carpeta `.agents/workflows/` encontrarás reglas definidas de comportamiento de commits y creación de nuevos endpoints/pantallas para la estandarización de código.
+
+### 🔬 Screening (Cribado PRISMA)
+
+Una vez completada la búsqueda y descarga de PDFs, el módulo de **Screening** permite:
+
+- **Sesión con identidad:** Cada sesión tiene un nombre y objetivo definidos por el usuario.
+- **Solo artículos con PDF:** Únicamente los artículos cuyo PDF fue descargado exitosamente entran al screening.
+- **1 sesión activa por proyecto:** Si ya existe, el usuario puede continuar o eliminarla para crear una nueva.
+- **Traducción automática de abstracts:** Vía modelos Ollama locales (`aya-expanse`, `llama3.1:8b`, `qwen2.5:7b`).
+- **Decisiones PRISMA:** Incluir / Excluir (con motivo) / Tal Vez, con atajos de teclado.
+- **Vista dual:** Tarjeta individual o tabla completa con todos los artículos.
 
 ## 🧑‍💻 Autoría
 

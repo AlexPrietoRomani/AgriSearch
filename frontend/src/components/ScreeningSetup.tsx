@@ -1,13 +1,10 @@
 /**
  * ScreeningSetup — Page 1 of Screening.
  * 
- * Allows the user to:
- * - Select which searches to include in the screening session
- * - Configure the reading language for abstract translation
- * - Choose the translation model
- * - Start the screening session
- * 
- * Once "Iniciar Screening" is pressed, navigates to the Session page.
+ * Flow:
+ * - If session exists → Show summary card (Continue / Delete)
+ * - If no session → Show creation form with name, goal, search selection, config
+ * - Only articles with download_status=SUCCESS are included
  */
 
 import { useState, useEffect } from "react";
@@ -16,6 +13,7 @@ import {
     getProjectSearches,
     createScreeningSession,
     listProjectScreeningSessions,
+    deleteScreeningSession,
     enrichArticles,
     type Project,
     type SearchQuery,
@@ -36,25 +34,26 @@ const MODELS = [
 ];
 
 export default function ScreeningSetup() {
-    // Parse URL params
     const params = new URLSearchParams(window.location.search);
     const projectId = params.get("id") || "";
     const hasSession = params.has("session");
 
     const [project, setProject] = useState<Project | null>(null);
     const [searches, setSearches] = useState<SearchQuery[]>([]);
-    const [existingSessions, setExistingSessions] = useState<ScreeningSession[]>([]);
+    const [existingSession, setExistingSession] = useState<ScreeningSession | null>(null);
     const [selectedSearchIds, setSelectedSearchIds] = useState<Set<string>>(new Set());
     const [readingLanguage, setReadingLanguage] = useState("es");
     const [translationModel, setTranslationModel] = useState("aya-expanse");
+    const [sessionName, setSessionName] = useState("");
+    const [sessionGoal, setSessionGoal] = useState("");
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [enriching, setEnriching] = useState(false);
     const [enrichStep, setEnrichStep] = useState("");
     const [enrichStats, setEnrichStats] = useState<EnrichmentStats | null>(null);
+    const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState("");
 
-    // Load project data
     useEffect(() => {
         if (!projectId || hasSession) return;
         (async () => {
@@ -66,8 +65,9 @@ export default function ScreeningSetup() {
                 ]);
                 setProject(proj);
                 setSearches(srch);
-                setExistingSessions(sessions);
-                // Select all searches by default
+                if (sessions.length > 0) {
+                    setExistingSession(sessions[0]);
+                }
                 setSelectedSearchIds(new Set(srch.map((s) => s.id)));
             } catch (e: any) {
                 setError(e.message);
@@ -77,7 +77,6 @@ export default function ScreeningSetup() {
         })();
     }, [projectId, hasSession]);
 
-    // If a session is active, ScreeningSession component handles rendering
     if (hasSession) return null;
 
     const toggleSearch = (id: string) => {
@@ -92,32 +91,50 @@ export default function ScreeningSetup() {
     const selectAll = () => setSelectedSearchIds(new Set(searches.map((s) => s.id)));
     const deselectAll = () => setSelectedSearchIds(new Set());
 
+    const handleDeleteSession = async () => {
+        if (!existingSession) return;
+        if (!confirm("¿Estás seguro de eliminar esta sesión? Se perderán todas las decisiones de cribado. Esta acción es IRREVERSIBLE.")) return;
+        setDeleting(true);
+        setError("");
+        try {
+            await deleteScreeningSession(existingSession.id);
+            setExistingSession(null);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setDeleting(false);
+        }
+    };
+
     const handleStartScreening = async () => {
         if (selectedSearchIds.size === 0) {
             setError("Selecciona al menos una búsqueda.");
+            return;
+        }
+        if (!sessionName.trim()) {
+            setError("Escribe un nombre para la sesión de screening.");
             return;
         }
         setCreating(true);
         setEnriching(true);
         setError("");
         try {
-            // Step 1: Enrich articles from PDFs
             setEnrichStep("📂 Escaneando PDFs descargados...");
             const stats = await enrichArticles(projectId);
             setEnrichStats(stats);
 
             setEnrichStep("✅ Enriquecimiento completado. Creando sesión...");
-            await new Promise(r => setTimeout(r, 800)); // Brief pause for UX
+            await new Promise(r => setTimeout(r, 800));
 
-            // Step 2: Create the screening session
             setEnriching(false);
             const session = await createScreeningSession({
                 project_id: projectId,
+                name: sessionName.trim(),
+                goal: sessionGoal.trim(),
                 search_query_ids: Array.from(selectedSearchIds),
                 reading_language: readingLanguage,
                 translation_model: translationModel,
             });
-            // Navigate to the session
             window.location.href = `/screening?id=${projectId}&session=${session.id}`;
         } catch (e: any) {
             setError(e.message);
@@ -126,6 +143,7 @@ export default function ScreeningSetup() {
         }
     };
 
+    // ── Loading ──
     if (loading) {
         return (
             <div className="screening-setup" style={styles.container}>
@@ -137,7 +155,7 @@ export default function ScreeningSetup() {
         );
     }
 
-    // Enrichment loading screen
+    // ── Enrichment loading screen ──
     if (creating && enriching) {
         return (
             <div className="screening-setup" style={styles.container}>
@@ -176,18 +194,19 @@ export default function ScreeningSetup() {
         );
     }
 
-    // Post-enrichment, creating session
+    // ── Post-enrichment creating ──
     if (creating && !enriching) {
         return (
             <div className="screening-setup" style={styles.container}>
                 <div style={styles.loadingContainer}>
                     <div style={styles.spinner} />
-                    <p style={styles.loadingText}>Creando sesión de screening...</p>
+                    <p style={styles.loadingText}>Creando sesión de screening (solo artículos con PDF)...</p>
                 </div>
             </div>
         );
     }
 
+    // ── No searches ──
     if (!project || searches.length === 0) {
         return (
             <div className="screening-setup" style={styles.container}>
@@ -209,20 +228,139 @@ export default function ScreeningSetup() {
         .filter((s) => selectedSearchIds.has(s.id))
         .reduce((sum, s) => sum + s.total_results - s.duplicates_removed, 0);
 
+    // ═══════════════════════════════════════════════════════
+    // ── EXISTING SESSION → Continue / Delete ──
+    // ═══════════════════════════════════════════════════════
+    if (existingSession) {
+        const progress = existingSession.total_articles > 0
+            ? Math.round((existingSession.reviewed_count / existingSession.total_articles) * 100)
+            : 0;
+
+        return (
+            <div className="screening-setup" style={styles.container}>
+                <div style={styles.header}>
+                    <a href={`/project?id=${projectId}`} style={styles.backLink}>← Volver al proyecto</a>
+                    <h1 style={styles.title}>🗂️ Screening del Proyecto</h1>
+                    <p style={styles.subtitle}>Proyecto: <strong>{project.name}</strong></p>
+                </div>
+
+                {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
+
+                <div style={styles.existingCard}>
+                    <div style={styles.existingHeader}>
+                        <h2 style={{ ...styles.cardTitle, fontSize: "1.2rem" }}>
+                            📋 {existingSession.name || "Sesión de Screening"}
+                        </h2>
+                        <span style={styles.existingDate}>
+                            Creada el {new Date(existingSession.created_at).toLocaleDateString("es", { day: "numeric", month: "long", year: "numeric" })}
+                        </span>
+                    </div>
+
+                    {existingSession.goal && (
+                        <div style={styles.goalBox}>
+                            <strong>🎯 Objetivo:</strong> {existingSession.goal}
+                        </div>
+                    )}
+
+                    {/* Stats */}
+                    <div style={styles.statsGrid}>
+                        <div style={styles.stat}>
+                            <span style={{ ...styles.statNum, color: "#f1f5f9" }}>{existingSession.total_articles}</span>
+                            <span style={styles.statLabel}>Total</span>
+                        </div>
+                        <div style={styles.stat}>
+                            <span style={{ ...styles.statNum, color: "#60a5fa" }}>{existingSession.reviewed_count}</span>
+                            <span style={styles.statLabel}>Revisados</span>
+                        </div>
+                        <div style={styles.stat}>
+                            <span style={{ ...styles.statNum, color: "#22c55e" }}>{existingSession.included_count}</span>
+                            <span style={styles.statLabel}>✅ Incluidos</span>
+                        </div>
+                        <div style={styles.stat}>
+                            <span style={{ ...styles.statNum, color: "#ef4444" }}>{existingSession.excluded_count}</span>
+                            <span style={styles.statLabel}>❌ Excluidos</span>
+                        </div>
+                        <div style={styles.stat}>
+                            <span style={{ ...styles.statNum, color: "#eab308" }}>{existingSession.maybe_count}</span>
+                            <span style={styles.statLabel}>🟡 Tal vez</span>
+                        </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div style={styles.progressOuter}>
+                        <div style={{ ...styles.progressInner, width: `${progress}%` }} />
+                    </div>
+                    <div style={{ textAlign: "center" as const, fontSize: "0.85rem", color: "#94a3b8", marginTop: "0.5rem" }}>
+                        {progress}% completado
+                    </div>
+
+                    {/* Actions */}
+                    <div style={styles.existingActions}>
+                        <a
+                            href={`/screening?id=${projectId}&session=${existingSession.id}`}
+                            style={styles.continueButton}
+                        >
+                            ▶️ Continuar Screening
+                        </a>
+                        <button
+                            onClick={handleDeleteSession}
+                            disabled={deleting}
+                            style={styles.deleteButton}
+                        >
+                            {deleting ? "Eliminando..." : "🗑️ Eliminar sesión y crear nueva"}
+                        </button>
+                    </div>
+
+                    <p style={styles.futureNote}>
+                        💡 <strong>Nota futura:</strong> En versiones posteriores se permitirá tener múltiples sesiones para que varias personas trabajen simultáneamente en el screening de un mismo proyecto, cada una con sus artículos asignados.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // ── NEW SESSION FORM ──
+    // ═══════════════════════════════════════════════════════
     return (
         <div className="screening-setup" style={styles.container}>
-            {/* Header */}
             <div style={styles.header}>
-                <a href={`/project?id=${projectId}`} style={styles.backLink}>
-                    ← Volver al proyecto
-                </a>
-                <h1 style={styles.title}>🗂️ Configuración del Screening</h1>
-                <p style={styles.subtitle}>
-                    Proyecto: <strong>{project.name}</strong>
-                </p>
+                <a href={`/project?id=${projectId}`} style={styles.backLink}>← Volver al proyecto</a>
+                <h1 style={styles.title}>🗂️ Nueva Sesión de Screening</h1>
+                <p style={styles.subtitle}>Proyecto: <strong>{project.name}</strong></p>
             </div>
 
-            {error && <div style={styles.errorBanner}>{error}</div>}
+            {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
+
+            {/* Session Identity */}
+            <div style={{ ...styles.card, marginBottom: "1.5rem" }}>
+                <h2 style={styles.cardTitle}>📝 Identificación de la Sesión</h2>
+                <p style={styles.configDesc}>
+                    Dale un nombre descriptivo y define el objetivo de esta sesión de cribado.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column" as const, gap: "0.75rem" }}>
+                    <div>
+                        <label style={styles.inputLabel}>Nombre de la sesión *</label>
+                        <input
+                            type="text"
+                            value={sessionName}
+                            onChange={(e) => setSessionName(e.target.value)}
+                            placeholder="Ej: Cribado inicial PRISMA — Control biológico"
+                            style={styles.textInput}
+                        />
+                    </div>
+                    <div>
+                        <label style={styles.inputLabel}>Objetivo / Meta de la sesión</label>
+                        <textarea
+                            value={sessionGoal}
+                            onChange={(e) => setSessionGoal(e.target.value)}
+                            placeholder="Ej: Identificar estudios relevantes sobre biocontrol de plagas con Telenomus podisi en soja para una revisión sistemática..."
+                            rows={3}
+                            style={styles.textArea}
+                        />
+                    </div>
+                </div>
+            </div>
 
             <div style={styles.grid}>
                 {/* Left: Search Selection */}
@@ -261,13 +399,12 @@ export default function ScreeningSetup() {
                         ))}
                     </div>
 
-                    {/* Summary */}
                     <div style={styles.summary}>
                         <span style={styles.summaryIcon}>📊</span>
                         <div>
                             <strong>{selectedSearchIds.size}</strong> búsquedas seleccionadas
                             <br />
-                            <strong>~{totalArticles}</strong> artículos únicos a cribar
+                            <strong>~{totalArticles}</strong> artículos — solo los que tienen <strong style={{ color: "#22c55e" }}>PDF descargado</strong> entrarán al screening
                         </div>
                     </div>
                 </div>
@@ -325,10 +462,10 @@ export default function ScreeningSetup() {
                     {/* Start Button */}
                     <button
                         onClick={handleStartScreening}
-                        disabled={creating || selectedSearchIds.size === 0}
+                        disabled={creating || selectedSearchIds.size === 0 || !sessionName.trim()}
                         style={{
                             ...styles.startButton,
-                            ...(creating || selectedSearchIds.size === 0 ? styles.startButtonDisabled : {}),
+                            ...(creating || selectedSearchIds.size === 0 || !sessionName.trim() ? styles.startButtonDisabled : {}),
                         }}
                     >
                         {creating ? (
@@ -336,45 +473,11 @@ export default function ScreeningSetup() {
                                 <div style={styles.miniSpinner} /> Creando sesión...
                             </>
                         ) : (
-                            <>🚀 Iniciar Screening ({totalArticles} artículos)</>
+                            <>🚀 Crear Sesión de Screening</>
                         )}
                     </button>
                 </div>
             </div>
-
-            {/* Existing Sessions */}
-            {existingSessions.length > 0 && (
-                <div style={{ ...styles.card, marginTop: "1.5rem" }}>
-                    <h2 style={styles.cardTitle}>📋 Sesiones Anteriores</h2>
-                    <div style={styles.sessionList}>
-                        {existingSessions.map((s) => (
-                            <a
-                                key={s.id}
-                                href={`/screening?id=${projectId}&session=${s.id}`}
-                                style={styles.sessionItem}
-                            >
-                                <div>
-                                    <strong>Sesión del {new Date(s.created_at).toLocaleDateString("es")}</strong>
-                                    <div style={styles.sessionMeta}>
-                                        {s.total_articles} artículos · {s.reviewed_count} revisados ·{" "}
-                                        <span style={{ color: "#22c55e" }}>✅ {s.included_count}</span>{" "}
-                                        <span style={{ color: "#ef4444" }}>❌ {s.excluded_count}</span>{" "}
-                                        <span style={{ color: "#eab308" }}>🟡 {s.maybe_count}</span>
-                                    </div>
-                                </div>
-                                <div style={styles.progressMini}>
-                                    <div
-                                        style={{
-                                            ...styles.progressBar,
-                                            width: `${(s.reviewed_count / Math.max(s.total_articles, 1)) * 100}%`,
-                                        }}
-                                    />
-                                </div>
-                            </a>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
@@ -388,9 +491,7 @@ const styles: Record<string, React.CSSProperties> = {
         fontFamily: "'Inter', -apple-system, sans-serif",
         color: "#e2e8f0",
     },
-    header: {
-        marginBottom: "2rem",
-    },
+    header: { marginBottom: "2rem" },
     backLink: {
         color: "#94a3b8",
         textDecoration: "none",
@@ -404,11 +505,7 @@ const styles: Record<string, React.CSSProperties> = {
         color: "#f1f5f9",
         margin: "0 0 0.25rem",
     },
-    subtitle: {
-        color: "#94a3b8",
-        margin: 0,
-        fontSize: "0.95rem",
-    },
+    subtitle: { color: "#94a3b8", margin: 0, fontSize: "0.95rem" },
     errorBanner: {
         background: "rgba(239, 68, 68, 0.15)",
         border: "1px solid rgba(239, 68, 68, 0.3)",
@@ -442,11 +539,7 @@ const styles: Record<string, React.CSSProperties> = {
         color: "#f1f5f9",
         margin: 0,
     },
-    selectActions: {
-        display: "flex",
-        gap: "0.5rem",
-        alignItems: "center",
-    },
+    selectActions: { display: "flex", gap: "0.5rem", alignItems: "center" },
     linkButton: {
         background: "none",
         border: "none",
@@ -480,9 +573,7 @@ const styles: Record<string, React.CSSProperties> = {
         height: "18px",
         cursor: "pointer",
     },
-    searchInfo: {
-        flex: 1,
-    },
+    searchInfo: { flex: 1 },
     searchQuery: {
         fontSize: "0.9rem",
         color: "#e2e8f0",
@@ -527,10 +618,7 @@ const styles: Record<string, React.CSSProperties> = {
         marginBottom: "0.75rem",
         lineHeight: 1.5,
     },
-    languageGrid: {
-        display: "flex",
-        gap: "0.5rem",
-    },
+    languageGrid: { display: "flex", gap: "0.5rem" },
     languageOption: {
         flex: 1,
         padding: "0.65rem 0.5rem",
@@ -565,15 +653,8 @@ const styles: Record<string, React.CSSProperties> = {
         fontSize: "0.88rem",
         color: "#e2e8f0",
     },
-    radio: {
-        marginTop: "0.2rem",
-        accentColor: "#60a5fa",
-    },
-    modelDesc: {
-        fontSize: "0.78rem",
-        color: "#94a3b8",
-        marginTop: "0.15rem",
-    },
+    radio: { marginTop: "0.2rem", accentColor: "#60a5fa" },
+    modelDesc: { fontSize: "0.78rem", color: "#94a3b8", marginTop: "0.15rem" },
     startButton: {
         width: "100%",
         padding: "1rem",
@@ -596,41 +677,146 @@ const styles: Record<string, React.CSSProperties> = {
         cursor: "not-allowed",
         boxShadow: "none",
     },
-    sessionList: {
-        display: "flex",
-        flexDirection: "column" as const,
-        gap: "0.5rem",
-        marginTop: "0.75rem",
+    // ── Input styles ──
+    inputLabel: {
+        display: "block",
+        fontSize: "0.85rem",
+        color: "#94a3b8",
+        marginBottom: "0.35rem",
+        fontWeight: 500,
     },
-    sessionItem: {
+    textInput: {
+        width: "100%",
+        padding: "0.7rem 0.9rem",
+        background: "rgba(15, 23, 42, 0.7)",
+        border: "1px solid rgba(148, 163, 184, 0.2)",
+        borderRadius: "8px",
+        color: "#e2e8f0",
+        fontSize: "0.95rem",
+        outline: "none",
+        transition: "border 0.2s",
+        boxSizing: "border-box" as const,
+    },
+    textArea: {
+        width: "100%",
+        padding: "0.7rem 0.9rem",
+        background: "rgba(15, 23, 42, 0.7)",
+        border: "1px solid rgba(148, 163, 184, 0.2)",
+        borderRadius: "8px",
+        color: "#e2e8f0",
+        fontSize: "0.9rem",
+        outline: "none",
+        resize: "vertical" as const,
+        lineHeight: 1.5,
+        fontFamily: "'Inter', -apple-system, sans-serif",
+        boxSizing: "border-box" as const,
+    },
+    // ── Existing session card ──
+    existingCard: {
+        background: "rgba(30, 41, 59, 0.6)",
+        border: "1px solid rgba(96, 165, 250, 0.2)",
+        borderRadius: "16px",
+        padding: "2rem",
+        backdropFilter: "blur(10px)",
+    },
+    existingHeader: {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: "0.75rem 1rem",
-        background: "rgba(15, 23, 42, 0.5)",
-        borderRadius: "8px",
-        textDecoration: "none",
-        color: "#e2e8f0",
-        transition: "background 0.2s",
+        marginBottom: "1rem",
+        flexWrap: "wrap" as const,
+        gap: "0.5rem",
     },
-    sessionMeta: {
-        fontSize: "0.8rem",
+    existingDate: {
+        fontSize: "0.85rem",
         color: "#94a3b8",
-        marginTop: "0.25rem",
     },
-    progressMini: {
-        width: "80px",
-        height: "6px",
-        background: "rgba(148, 163, 184, 0.2)",
-        borderRadius: "3px",
+    goalBox: {
+        background: "rgba(96, 165, 250, 0.08)",
+        border: "1px solid rgba(96, 165, 250, 0.15)",
+        borderRadius: "8px",
+        padding: "0.75rem 1rem",
+        fontSize: "0.9rem",
+        color: "#93c5fd",
+        marginBottom: "1.5rem",
+        lineHeight: 1.5,
+    },
+    statsGrid: {
+        display: "grid",
+        gridTemplateColumns: "repeat(5, 1fr)",
+        gap: "1rem",
+        marginBottom: "1.5rem",
+    },
+    stat: {
+        display: "flex",
+        flexDirection: "column" as const,
+        alignItems: "center",
+        gap: "0.25rem",
+    },
+    statNum: {
+        fontSize: "1.8rem",
+        fontWeight: 700,
+    },
+    statLabel: {
+        fontSize: "0.78rem",
+        color: "#94a3b8",
+    },
+    progressOuter: {
+        width: "100%",
+        height: "10px",
+        background: "rgba(148, 163, 184, 0.15)",
+        borderRadius: "5px",
         overflow: "hidden",
     },
-    progressBar: {
+    progressInner: {
         height: "100%",
         background: "linear-gradient(90deg, #60a5fa, #22c55e)",
-        borderRadius: "3px",
+        borderRadius: "5px",
         transition: "width 0.3s",
     },
+    existingActions: {
+        display: "flex",
+        gap: "1rem",
+        marginTop: "1.5rem",
+    },
+    continueButton: {
+        flex: 2,
+        padding: "0.85rem 1.5rem",
+        background: "linear-gradient(135deg, #22c55e, #16a34a)",
+        color: "#fff",
+        border: "none",
+        borderRadius: "12px",
+        fontSize: "1rem",
+        fontWeight: 700,
+        textDecoration: "none",
+        textAlign: "center" as const,
+        cursor: "pointer",
+        boxShadow: "0 4px 12px rgba(34, 197, 94, 0.3)",
+        display: "block",
+    },
+    deleteButton: {
+        flex: 1,
+        padding: "0.85rem 1rem",
+        background: "rgba(239, 68, 68, 0.1)",
+        color: "#fca5a5",
+        border: "1px solid rgba(239, 68, 68, 0.3)",
+        borderRadius: "12px",
+        fontSize: "0.9rem",
+        fontWeight: 600,
+        cursor: "pointer",
+        transition: "all 0.2s",
+    },
+    futureNote: {
+        marginTop: "1.5rem",
+        padding: "0.75rem 1rem",
+        background: "rgba(234, 179, 8, 0.08)",
+        border: "1px solid rgba(234, 179, 8, 0.2)",
+        borderRadius: "8px",
+        fontSize: "0.82rem",
+        color: "#fde68a",
+        lineHeight: 1.5,
+    },
+    // ── Loading / Enrichment ──
     loadingContainer: {
         display: "flex",
         flexDirection: "column" as const,
@@ -647,10 +833,7 @@ const styles: Record<string, React.CSSProperties> = {
         borderRadius: "50%",
         animation: "spin 0.8s linear infinite",
     },
-    loadingText: {
-        color: "#94a3b8",
-        fontSize: "0.95rem",
-    },
+    loadingText: { color: "#94a3b8", fontSize: "0.95rem" },
     miniSpinner: {
         width: "18px",
         height: "18px",
@@ -659,22 +842,14 @@ const styles: Record<string, React.CSSProperties> = {
         borderRadius: "50%",
         animation: "spin 0.8s linear infinite",
     },
-    emptyState: {
-        textAlign: "center" as const,
-        padding: "3rem 1rem",
-    },
-    emptyTitle: {
-        fontSize: "1.3rem",
-        color: "#f1f5f9",
-        marginTop: "1rem",
-    },
+    emptyState: { textAlign: "center" as const, padding: "3rem 1rem" },
+    emptyTitle: { fontSize: "1.3rem", color: "#f1f5f9", marginTop: "1rem" },
     emptyDesc: {
         color: "#94a3b8",
         maxWidth: "400px",
         margin: "0.5rem auto 1.5rem",
         lineHeight: 1.6,
     },
-    // Enrichment screen styles
     enrichScreen: {
         display: "flex",
         flexDirection: "column" as const,
@@ -684,22 +859,9 @@ const styles: Record<string, React.CSSProperties> = {
         gap: "1rem",
         textAlign: "center" as const,
     },
-    enrichIcon: {
-        fontSize: "3.5rem",
-        animation: "pulse 2s ease-in-out infinite",
-    },
-    enrichTitle: {
-        fontSize: "1.5rem",
-        fontWeight: 700,
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    enrichSubtitle: {
-        color: "#94a3b8",
-        fontSize: "0.95rem",
-        maxWidth: "500px",
-        lineHeight: 1.6,
-    },
+    enrichIcon: { fontSize: "3.5rem", animation: "pulse 2s ease-in-out infinite" },
+    enrichTitle: { fontSize: "1.5rem", fontWeight: 700, color: "#f1f5f9", margin: 0 },
+    enrichSubtitle: { color: "#94a3b8", fontSize: "0.95rem", maxWidth: "500px", lineHeight: 1.6 },
     enrichProgress: {
         display: "flex",
         flexDirection: "column" as const,
@@ -707,11 +869,7 @@ const styles: Record<string, React.CSSProperties> = {
         gap: "1rem",
         marginTop: "1rem",
     },
-    enrichStep: {
-        color: "#93c5fd",
-        fontSize: "0.95rem",
-        fontWeight: 500,
-    },
+    enrichStep: { color: "#93c5fd", fontSize: "0.95rem", fontWeight: 500 },
     enrichResults: {
         display: "grid",
         gridTemplateColumns: "1fr 1fr 1fr 1fr",
@@ -728,13 +886,6 @@ const styles: Record<string, React.CSSProperties> = {
         alignItems: "center",
         gap: "0.25rem",
     },
-    enrichStatNumber: {
-        fontSize: "1.8rem",
-        fontWeight: 700,
-        color: "#f1f5f9",
-    },
-    enrichStatLabel: {
-        fontSize: "0.78rem",
-        color: "#94a3b8",
-    },
+    enrichStatNumber: { fontSize: "1.8rem", fontWeight: 700, color: "#f1f5f9" },
+    enrichStatLabel: { fontSize: "0.78rem", color: "#94a3b8" },
 };

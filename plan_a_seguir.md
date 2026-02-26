@@ -177,15 +177,27 @@ Wizard multi-paso modularizado en 4 sub-componentes React independientes:
 
 Interfaz de cribado inspirada en **Rayyan.ai**, organizada en una única vista unificada (island renderizado con client:only="react") que intercala entre **2 sub-fases** lógicas, con traducción de abstracts vía LLM local.
 
+**Reglas de negocio:**
+- **Solo artículos con PDF descargado** (`download_status = SUCCESS`) entran al screening. Los artículos sin PDF (paywall, failed, pending) quedan excluidos.
+- **1 sesión activa por proyecto.** Si ya existe una sesión, el usuario puede continuar la sesión existente o eliminarla para crear una nueva.
+- **Intención futura (multi-persona):** En versiones posteriores se planea permitir que N personas trabajen simultáneamente, cada una con su sesión y artículos asignados. Por ahora, la restricción de 1 sesión simplifica el flujo.
+
 ##### Página 1: Configuración del Screening (`/screening?id=X` → `ScreeningSetup.tsx`)
 
-Pantalla previa a la sesión de cribado donde el usuario configura qué artículos revisar:
+**Si ya existe una sesión activa:**
+- Muestra tarjeta con nombre, fecha, objetivo, estadísticas (total, revisados, incluidos, excluidos, tal vez), barra de progreso.
+- Botón **"▶️ Continuar Screening"** → navega a la sesión activa.
+- Botón **"🗑️ Eliminar sesión y crear nueva"** → elimina la sesión y todas sus decisiones (requiere confirmación), regresa al formulario de creación.
 
-- **Selección de búsquedas:** Checklist con todas las `SearchQuery` del proyecto. Cada item muestra: fecha, query original, N artículos, BDs usadas. El usuario puede seleccionar todas o solo algunas búsquedas específicas.
-- **Resumen consolidado:** Muestra el total de artículos únicos resultantes de las búsquedas seleccionadas (ya desduplicados).
-- **Idioma de lectura:** Selector del idioma en que el usuario desea leer los abstracts (español/inglés/portugués). Si difiere del original, se activará la traducción automática.
-- **Modelo de traducción:** Por defecto `llama3.1:8b` vía Ollama. Se recomienda al usuario un modelo especializado en traducción si está disponible (ej. `aya-23`, `madlad400` u otro modelo Ollama optimizado para EN↔ES/PT).
-- **Botón "Iniciar Screening":** Crea la sesión y navega a la interfaz de cribado.
+**Si no hay sesión existente (formulario de creación):**
+- **Nombre de la sesión** (requerido): texto descriptivo (ej. "Cribado inicial PRISMA — Control biológico").
+- **Objetivo / Meta** (opcional): textarea con el propósito del cribado.
+- **Selección de búsquedas:** Checklist con todas las `SearchQuery` del proyecto. Cada item muestra: fecha, query original, N artículos, BDs usadas.
+- **Resumen consolidado:** Muestra el total de artículos únicos, con advertencia de que solo entran los que tienen PDF descargado.
+- **Idioma de lectura:** Selector (español/inglés/portugués).
+- **Modelo de traducción:** Por defecto `aya-expanse` (Cohere, multilingüe avanzado 8B). Opciones: Llama 3.1 8B, Qwen 2.5 7B.
+- **Enriquecimiento previo:** Al crear la sesión, se ejecuta automáticamente la extracción de abstracts y keywords desde los PDFs descargados (vía PyMuPDF), con pantalla de progreso visual.
+- **Botón "🚀 Crear Sesión de Screening":** Crea la sesión (solo con artículos que tengan PDF) y navega a la interfaz de cribado.
 
 ##### Página 2: Sesión de Screening (`/screening?id=X&session=Y` → `ScreeningSession.tsx`)
 
@@ -193,7 +205,7 @@ Interfaz principal de cribado artículo-por-artículo, estilo Rayyan:
 
 **Área central — Tarjeta del artículo:**
 - **Título** (con renderizado LaTeX si contiene fórmulas).
-- **Autores**, **Año**, **Journal**, **DOI** (enlace clicable al artículo original).
+- **Autores** (truncados a 3 + "et al." si son más de 3), **Año**, **Journal**, **DOI** (enlace clicable al artículo original).
 - **Abstract original** completo.
 - **Abstract traducido** (si el idioma de lectura ≠ idioma original): traducción estrictamente literal ejecutada por el LLM local. **No se resume ni se parafrasea**: se traduce oración por oración manteniendo exactamente el contenido original.
 - **Keywords** del artículo (si disponibles).
@@ -226,7 +238,7 @@ Interfaz principal de cribado artículo-por-artículo, estilo Rayyan:
 
 | Componente | Responsabilidad |
 |-----------|----------------|
-| `ScreeningSetup.tsx` | Selección de búsquedas, configuración idioma, inicio sesión |
+| `ScreeningSetup.tsx` | Gestión sesión existente (continuar/eliminar), formulario de nueva sesión (nombre, objetivo, búsquedas, idioma, modelo) |
 | `ScreeningSession.tsx` | Orquestador de la sesión (carga artículos, gestión estado, teclado) |
 | `ScreeningArticleCard.tsx` | Tarjeta individual del artículo con abstract + traducción |
 | `ScreeningStats.tsx` | Panel lateral con progreso y contadores |

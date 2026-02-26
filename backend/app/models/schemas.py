@@ -106,6 +106,7 @@ class ArticleResponse(BaseModel):
     keywords: str | None
     source_database: str
     download_status: str
+    local_pdf_path: str | None = None
     is_duplicate: bool
     created_at: datetime
 
@@ -147,15 +148,19 @@ class DownloadProgressResponse(BaseModel):
 class CreateScreeningSessionRequest(BaseModel):
     """Schema for creating a new screening session."""
     project_id: str = Field(..., description="Project UUID")
+    name: str = Field("Sesión de Screening", description="Descriptive session name")
+    goal: str = Field("", description="Session objective / goal")
     search_query_ids: list[str] = Field(..., min_length=1, description="Selected search query IDs to include")
     reading_language: str = Field("es", description="Target language for abstract reading (es/en/pt)")
-    translation_model: str = Field("llama3.1:8b", description="Ollama model for translation")
+    translation_model: str = Field("aya-expanse", description="Ollama model for translation")
 
 
 class ScreeningSessionResponse(BaseModel):
     """Schema for screening session API responses."""
     id: str
     project_id: str
+    name: str | None = None
+    goal: str | None = None
     search_query_ids: list[str]  # Parsed from JSON
     reading_language: str
     translation_model: str
