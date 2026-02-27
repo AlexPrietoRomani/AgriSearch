@@ -6,6 +6,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import 'katex/dist/katex.min.css';
+import Latex from 'react-latex-next';
 import {
     getScreeningSession,
     listScreeningArticles,
@@ -369,7 +371,9 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                     {/* Article content */}
                     {currentArticle && (
                         <>
-                            <h2 style={styles.articleTitle}>{currentArticle.title}</h2>
+                            <h2 style={styles.articleTitle}>
+                                <Latex>{currentArticle.title}</Latex>
+                            </h2>
                             <div style={styles.articleMeta}>
                                 {currentArticle.authors && (
                                     <span>👥 {formatAuthors(currentArticle.authors)}</span>
@@ -436,9 +440,9 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                         </button>
                                     )}
                                 </h3>
-                                <p style={styles.abstractText}>
-                                    {currentArticle.abstract || "Sin abstract disponible."}
-                                </p>
+                                <div style={styles.abstractText}>
+                                    {currentArticle.abstract ? <Latex>{currentArticle.abstract}</Latex> : "Sin abstract disponible."}
+                                </div>
                             </div>
 
                             {/* Translated Abstract */}
@@ -447,7 +451,9 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                     <h3 style={styles.sectionTitle}>
                                         🌐 Abstract traducido ({session.reading_language.toUpperCase()})
                                     </h3>
-                                    <p style={styles.abstractText}>{currentArticle.translated_abstract}</p>
+                                    <div style={styles.abstractText}>
+                                        <Latex>{currentArticle.translated_abstract}</Latex>
+                                    </div>
                                 </div>
                             )}
 
