@@ -212,13 +212,6 @@ Interfaz principal de cribado artículo-por-artículo, estilo Rayyan:
 - **Keywords** del artículo (si disponibles).
 - **Fuente de la búsqueda** (badge: OpenAlex / Semantic Scholar / ArXiv).
 
-### 2.4 Asistencia Inteligente (AI Suggestions) - *NUEVO*
-- **Motor de Recomendación Proactiva:**
-  - Después de las primeras **10 decisiones manuales**, el sistema activa un asistente de IA.
-  - El backend envía al LLM el contexto de los artículos previos (Incluidos vs Excluidos) junto al artículo actual mediante *Few-shot learning*.
-  - **Recomendación Visual:** Se muestra una tarjeta sutil sutil (Ej: "🤖 Sugerencia AI: INCLUIR") con una breve justificación y nivel de confianza.
-  - Ayuda a mantener la consistencia en los criterios de inclusión/exclusión durante el proceso.
-
 **Botones de decisión:**
 - ✅ **Incluir** (verde) — El artículo es relevante para la revisión.
 - ❌ **Excluir** (rojo) — El artículo no cumple los criterios. Se solicita un **motivo de exclusión** (dropdown configurable: "Fuera de alcance", "No es artículo original", "Idioma no aceptado", "Duplicado no detectado", "Sin acceso al texto completo", "Otro").
@@ -766,6 +759,23 @@ graph TD
     H --> I[Test de sanidad con query de prueba]
     I --> J[Pipeline RAG listo para Chat]
 ```
+
+---
+
+#### Sub-fase 2.4: Asistencia Inteligente (AI Suggestions) durante el Screening - *NUEVO*
+
+**Propósito:**
+Ayudar al investigador a mantener la consistencia en los criterios de inclusión y exclusión durante sesiones muy largas de screening. Mediante el análisis del historial reciente, el LLM detecta patrones y recomienda activamente el destino del próximo artículo.
+
+**Argumentación Científica:**
+Reducir la fatiga cognitiva es crítico en la fase de screening (O’Mara-Eves et al., 2015). Usar un motor de sugerencias tipo "Active Learning / Few-Shot" no reemplaza la decisión humana pero acelera enormemente el triaje al priorizar el texto clave, reduciendo la discrepancia en lecturas repetitivas y aportando un "segundo revisor automatizado".
+
+**Acciones a Realizar:**
+1. Contar las decisiones manuales (`reviewed_count`); el asistente se activa para el artículo 11 en adelante.
+2. Recuperar en BD las últimas 10 decisiones (Incluido/Excluido) más significativas con su Abstract.
+3. El frontend consulta al endpoint `GET /sessions/{id}/articles/{id}/suggestion` que compila el historial en formato *Few-Shot*.
+4. El LLM (Ej. `aya:8b`) recibe la query evaluativa y emite el json: `{"suggested_status": "include", "justification": "...", "confidence": 0.90}`.
+5. El Frontend renderiza un banner visual ("Sugerencia: Incluir") sobre el Abstract, indicando el motivo y % de confianza.
 
 ---
 
