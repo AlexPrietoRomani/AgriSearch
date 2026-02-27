@@ -271,7 +271,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
     // For table view
     if (viewMode === "table") {
         return (
-            <div style={styles.container} ref={containerRef}>
+            <div style={{ ...styles.container, maxWidth: "95%" }} ref={containerRef}>
                 <Header
                     session={session}
                     stats={stats}
