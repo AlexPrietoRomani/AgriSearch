@@ -28,9 +28,9 @@ const LANGUAGES = [
 ];
 
 const MODELS = [
-    { id: "aya-expanse", label: "Aya Expanse 8B (Multilingüe Avanzado)", desc: "El mejor para traducciones complejas y exactas EN↔ES/PT." },
+    { id: "aya:8b", label: "Aya 8B (Multilingüe Avanzado)", desc: "El mejor para traducciones exactas EN↔ES/PT." },
     { id: "llama3.1:8b", label: "Llama 3.1 8B (General)", desc: "Buen rendimiento general, traducción aceptable." },
-    { id: "qwen2.5:7b", label: "Qwen 2.5 7B (Excelente Multilingüe)", desc: "Alternativa rápida y de muy alta calidad en varios idiomas." },
+    { id: "qwen2.5:7b", label: "Qwen 2.5 7B (Excelente Multilingüe)", desc: "Alternativa rápida y precisa en varios idiomas." },
 ];
 
 export default function ScreeningSetup() {
@@ -43,7 +43,8 @@ export default function ScreeningSetup() {
     const [existingSession, setExistingSession] = useState<ScreeningSession | null>(null);
     const [selectedSearchIds, setSelectedSearchIds] = useState<Set<string>>(new Set());
     const [readingLanguage, setReadingLanguage] = useState("es");
-    const [translationModel, setTranslationModel] = useState("aya-expanse");
+    const [translationModel, setTranslationModel] = useState("aya:8b");
+    const [existingSessionModel, setExistingSessionModel] = useState<string>("");
     const [sessionName, setSessionName] = useState("");
     const [sessionGoal, setSessionGoal] = useState("");
     const [loading, setLoading] = useState(true);
@@ -67,6 +68,9 @@ export default function ScreeningSetup() {
                 setSearches(srch);
                 if (sessions.length > 0) {
                     setExistingSession(sessions[0]);
+                    let savedModel = sessions[0].translation_model || "aya:8b";
+                    if (savedModel === "aya-expanse") savedModel = "aya:8b";
+                    setExistingSessionModel(savedModel);
                 }
                 setSelectedSearchIds(new Set(srch.map((s) => s.id)));
             } catch (e: any) {
@@ -140,6 +144,24 @@ export default function ScreeningSetup() {
             setError(e.message);
             setCreating(false);
             setEnriching(false);
+        }
+    };
+
+    const handleContinueScreening = async () => {
+        if (!existingSession) return;
+        setCreating(true);
+        setError("");
+        try {
+            if (existingSessionModel !== existingSession.translation_model) {
+                const { updateScreeningSession } = await import('../lib/api');
+                await updateScreeningSession(existingSession.id, {
+                    translation_model: existingSessionModel,
+                });
+            }
+            window.location.href = `/screening?id=${projectId}&session=${existingSession.id}`;
+        } catch (e: any) {
+            setError(e.message);
+            setCreating(false);
         }
     };
 
@@ -295,20 +317,40 @@ export default function ScreeningSetup() {
                     </div>
 
                     {/* Actions */}
-                    <div style={styles.existingActions}>
-                        <a
-                            href={`/screening?id=${projectId}&session=${existingSession.id}`}
-                            style={styles.continueButton}
-                        >
-                            ▶️ Continuar Screening
-                        </a>
-                        <button
-                            onClick={handleDeleteSession}
-                            disabled={deleting}
-                            style={styles.deleteButton}
-                        >
-                            {deleting ? "Eliminando..." : "🗑️ Eliminar sesión y crear nueva"}
-                        </button>
+                    <div style={{ ...styles.existingActions, flexDirection: "column", gap: "1.5rem" }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(15,23,42,0.4)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(148,163,184,0.1)' }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: '#cbd5e1' }}>
+                                    🤖 Modelo para continuar traducciones:
+                                </label>
+                                <select
+                                    value={existingSessionModel}
+                                    onChange={(e) => setExistingSessionModel(e.target.value)}
+                                    style={styles.modelSelect}
+                                >
+                                    {MODELS.map(m => (
+                                        <option key={m.id} value={m.id}>{m.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <button
+                                onClick={handleContinueScreening}
+                                disabled={creating}
+                                style={{ ...styles.continueButton, flexShrink: 0 }}
+                            >
+                                {creating ? "Actualizando..." : "▶️ Continuar Screening"}
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '1rem', borderTop: '1px outset rgba(148,163,184,0.1)' }}>
+                            <button
+                                onClick={handleDeleteSession}
+                                disabled={deleting}
+                                style={styles.deleteButton}
+                            >
+                                {deleting ? "Eliminando..." : "🗑️ Eliminar sesión y crear nueva"}
+                            </button>
+                        </div>
                     </div>
 
                     <p style={styles.futureNote}>
@@ -805,6 +847,17 @@ const styles: Record<string, React.CSSProperties> = {
         fontWeight: 600,
         cursor: "pointer",
         transition: "all 0.2s",
+    },
+    modelSelect: {
+        width: "100%",
+        padding: "0.65rem",
+        background: "rgba(15, 23, 42, 0.6)",
+        border: "1px solid rgba(148, 163, 184, 0.2)",
+        color: "#e2e8f0",
+        borderRadius: "8px",
+        outline: "none",
+        fontSize: "0.95rem",
+        fontFamily: "'Inter', -apple-system, sans-serif",
     },
     futureNote: {
         marginTop: "1.5rem",

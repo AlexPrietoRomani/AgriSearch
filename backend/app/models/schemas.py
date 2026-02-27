@@ -152,7 +152,12 @@ class CreateScreeningSessionRequest(BaseModel):
     goal: str = Field("", description="Session objective / goal")
     search_query_ids: list[str] = Field(..., min_length=1, description="Selected search query IDs to include")
     reading_language: str = Field("es", description="Target language for abstract reading (es/en/pt)")
-    translation_model: str = Field("aya-expanse", description="Ollama model for translation")
+    translation_model: str = Field("aya:8b", description="Ollama model for translation")
+
+
+class UpdateScreeningSessionRequest(BaseModel):
+    """Schema for updating an existing session."""
+    translation_model: str | None = Field(None, description="Ollama model for translation")
 
 
 class ScreeningSessionResponse(BaseModel):

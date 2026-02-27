@@ -256,6 +256,12 @@ export async function deleteScreeningSession(sessionId: string): Promise<{ statu
   return request(`/screening/sessions/${sessionId}`, { method: "DELETE" });
 }
 
+export async function updateScreeningSession(sessionId: string, data: {
+  translation_model?: string;
+}): Promise<ScreeningSession> {
+  return request(`/screening/sessions/${sessionId}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
 export async function getScreeningSession(sessionId: string): Promise<ScreeningSession> {
   return request(`/screening/sessions/${sessionId}`);
 }

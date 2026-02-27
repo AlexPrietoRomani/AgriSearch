@@ -28,6 +28,7 @@ from app.models.schemas import (
     ScreeningStatsResponse,
     UpdateDecisionRequest,
     TranslateAbstractRequest,
+    UpdateScreeningSessionRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -204,6 +205,29 @@ async def get_screening_session(
     return _session_to_response(session)
 
 
+@router.patch("/sessions/{session_id}", response_model=ScreeningSessionResponse)
+async def update_screening_session(
+    session_id: str,
+    req: UpdateScreeningSessionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update screening session (e.g., changing the translation model)."""
+    result = await db.execute(
+        select(ScreeningSession).where(ScreeningSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión de screening no encontrada.")
+
+    if req.translation_model is not None:
+        session.translation_model = req.translation_model
+
+    await db.commit()
+    await db.refresh(session)
+    logger.info("Updated screening session %s with model %s", session_id, req.translation_model)
+    return _session_to_response(session)
+
+
 
 # ── Articles within a Session ──
 
@@ -283,7 +307,8 @@ async def get_article_pdf(
 
     return FileResponse(
         path=article.local_pdf_path,
-        media_type="application/pdf"
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="document.pdf"'}
     )
 
 @router.put("/decisions/{decision_id}", response_model=ScreeningArticleResponse)

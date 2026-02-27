@@ -104,8 +104,8 @@ Una vez completada la búsqueda y descarga de PDFs, el módulo de **Screening** 
 - **Solo artículos con PDF:** Únicamente los artículos cuyo PDF fue descargado exitosamente entran al screening.
 - **1 sesión activa por proyecto:** Si ya existe, el usuario puede continuar o eliminarla para crear una nueva.
 - **Extracción de Abstract desde PDF:** Extrae y corrige el abstract leyendo directamente el documento PDF descargado si el proporcionado por la API es insuficiente o erróneo.
-- **Visualizador PDF integrado:** Permite ver el documento completo sin salir de la interfaz, mediante un iframe in-app.
-- **Traducción automática de abstracts:** Vía modelos Ollama locales (`aya-expanse`, `llama3.1:8b`, `qwen2.5:7b`).
+- **Visualizador PDF integrado:** Permite ver el documento completo sin salir de la interfaz, mediante un iframe in-app, sin problemas de extensiones que forzaban descarga gracias a inline disposition headers.
+- **Traducción automática de abstracts:** Vía modelos Ollama locales configurables (`aya:8b`, `llama3.1:8b`, `qwen2.5:7b`), actualizables durante la fase iterativa de cribado o al continuar sesiones antiguas.
 - **Decisiones PRISMA:** Incluir / Excluir (con motivo) / Tal Vez, con atajos de teclado completos (incluye "P" para abrir/cerrar PDF).
 - **Vista dual:** Tarjeta individual o tabla completa con todos los artículos.
 

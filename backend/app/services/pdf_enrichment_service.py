@@ -51,6 +51,20 @@ def extract_abstract_from_pdf(pdf_path: str | Path) -> str | None:
                     # Maximum length cap (3000 chars, very long abstracts are likely mis-parsed)
                     return abstract[:3000]
 
+        # Ultimate fallback: the first long continuous paragraph (at least 300 chars) that doesn't look like an author list
+        paragraphs = re.split(r'\n\s*\n', pages_text)
+        for p in paragraphs:
+            cleaned = re.sub(r'\s+', ' ', p).strip()
+            # If the paragraph has decent length and not too many commas/numbers (which indicate author list/affiliations)
+            if len(cleaned) > 250 and len(cleaned) < 3000:
+                if cleaned.count(',') < len(cleaned) / 20 and not re.match(r'^[\d\s\,\.\w]+$', p):
+                    return cleaned
+
+        # Better than nothing: just return the first 1500 characters of clean text
+        clean_text = re.sub(r'\s+', ' ', pages_text).strip()
+        if len(clean_text) > 100:
+            return clean_text[:1500] + "..."
+
         return None
 
     except Exception as e:

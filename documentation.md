@@ -40,11 +40,8 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 
 #### Pantalla Previa `ScreeningSetup`
 - Permite elegir qué consultas integrar en el proceso actual y con qué modelo traducir los resúmenes.
-- **Enriquecimiento del PDF:** Antes de crear una sesión formal de screening iterativo, el sistema escanea la carpeta `/pdfs/` usando PyMuPDF:
-    1. Trata de encontrar emparejamientos por DOI o coincidencia parcial en nombre de archivo.
-    2. Modifica la DB y extrae el Abstract directamente del archivo PDF (sobrescribiendo el proveniente de la API si este era muy corto, incompleto o erróneo).
-    3. Extrae palabras clave (keywords).
-
+-    *   **Enriquecimiento Automático:** Se mejoró sustancialmente la extracción de abstracts desde PDFs en `pdf_enrichment_service.py`. En caso de no hallar formalmente el *Abstract* con regex debido a PDFs sin un formato estándar (proceedings, revistas antiguas), se extrae inteligentemente el primer bloque extenso o un pasaje limpio inicial, reemplazando con éxito textos previos demasiado breves, resolviendo fallas con algunos archivos MCP.
+    *   **Traducción de Abstracts**: Se llama a LLMs en tiempo real para traducir la versión enriquecida del abstract del PDF, sin depender de datos faltantes iniciales. Es posible elegir el modelo de LLM al crear **o continuar** una sesión de screening.
 #### Proceso Interactivo (`ScreeningSession`)
 Interfaz interactiva para screening:
 - **Botones de decisión**: "Incluir", "Excluir" (con sub-razones), "Tal vez".
