@@ -283,8 +283,7 @@ async def get_article_pdf(
 
     return FileResponse(
         path=article.local_pdf_path,
-        media_type="application/pdf",
-        filename=os.path.basename(article.local_pdf_path)
+        media_type="application/pdf"
     )
 
 @router.put("/decisions/{decision_id}", response_model=ScreeningArticleResponse)
