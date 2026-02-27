@@ -12,9 +12,11 @@ import {
     updateDecision,
     getScreeningStats,
     translateAbstract,
+    getArticleSuggestion,
     type ScreeningSession as ScreeningSessionType,
     type ScreeningArticle,
     type ScreeningStats,
+    type ScreeningSuggestion,
 } from "../lib/api";
 
 const EXCLUSION_REASONS = [
@@ -61,6 +63,8 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
     const [showPdf, setShowPdf] = useState(false);
     const [viewMode, setViewMode] = useState<"card" | "table">("card");
     const [filterDecision, setFilterDecision] = useState<string | undefined>(undefined);
+    const [suggestion, setSuggestion] = useState<ScreeningSuggestion | null>(null);
+    const [loadingSuggestion, setLoadingSuggestion] = useState(false);
     const [error, setError] = useState("");
 
     const containerRef = useRef<HTMLDivElement>(null);
@@ -90,6 +94,35 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
     }, [sessionId]);
 
     const currentArticle = articles[currentIndex] || null;
+
+    // Fetch AI Suggestion
+    useEffect(() => {
+        if (!sessionId || !currentArticle || viewMode !== "card" || currentArticle.decision !== "pending") {
+            setSuggestion(null);
+            return;
+        }
+
+        // Only suggest if at least 10 have been reviewed
+        if (!stats || stats.reviewed < 10) {
+            setSuggestion(null);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            setLoadingSuggestion(true);
+            try {
+                const sugg = await getArticleSuggestion(sessionId, currentArticle.id);
+                setSuggestion(sugg);
+            } catch (e) {
+                console.error("Failed to get suggestion", e);
+                setSuggestion(null);
+            } finally {
+                setLoadingSuggestion(false);
+            }
+        }, 600); // 600ms delay to avoid flickering while navigating
+
+        return () => clearTimeout(timer);
+    }, [sessionId, currentArticle?.id, stats?.reviewed, viewMode]);
 
     // Keyboard shortcuts
     const handleKeyDown = useCallback(
@@ -362,6 +395,34 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                     {currentArticle.keywords.split(",").map((kw, i) => (
                                         <span key={i} style={styles.keywordBadge}>{kw.trim()}</span>
                                     ))}
+                                </div>
+                            )}
+
+                            {/* AI Suggestion */}
+                            {loadingSuggestion && (
+                                <div style={styles.suggestionLoading}>
+                                    <div style={styles.miniSpinner} /> Generando sugerencia inteligente...
+                                </div>
+                            )}
+                            {suggestion && currentArticle.decision === "pending" && (
+                                <div style={{
+                                    ...styles.suggestionBox,
+                                    borderLeft: `5px solid ${suggestion.suggested_status === 'include' ? '#22c55e' : '#ef4444'}`
+                                }}>
+                                    <div style={styles.suggestionHeader}>
+                                        <span style={{
+                                            color: suggestion.suggested_status === 'include' ? '#4ade80' : '#f87171',
+                                            fontWeight: 700
+                                        }}>
+                                            🤖 Sugerencia AI: {suggestion.suggested_status === 'include' ? 'INCLUIR' : 'EXCLUIR'}
+                                        </span>
+                                        {suggestion.confidence && (
+                                            <span style={styles.confidenceBadge}>
+                                                Confianza: {Math.round(suggestion.confidence * 100)}%
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p style={styles.suggestionReason}>"{suggestion.justification}"</p>
                                 </div>
                             )}
 
@@ -1111,5 +1172,51 @@ const styles: Record<string, React.CSSProperties> = {
         borderRadius: "4px",
         fontSize: "0.78rem",
         cursor: "pointer",
+    },
+    // AI Suggestions
+    suggestionBox: {
+        background: "rgba(15, 23, 42, 0.4)",
+        borderRadius: "8px",
+        padding: "0.8rem 1rem",
+        marginBottom: "1rem",
+        fontSize: "0.9rem",
+    },
+    suggestionHeader: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: "0.4rem",
+    },
+    suggestionReason: {
+        color: "#cbd5e1",
+        fontSize: "0.85rem",
+        fontStyle: "italic",
+        lineHeight: 1.4,
+        margin: 0,
+    },
+    confidenceBadge: {
+        background: "rgba(148, 163, 184, 0.15)",
+        color: "#94a3b8",
+        padding: "0.15rem 0.45rem",
+        borderRadius: "4px",
+        fontSize: "0.7rem",
+        fontWeight: 600,
+    },
+    suggestionLoading: {
+        display: "flex",
+        alignItems: "center",
+        gap: "0.6rem",
+        color: "#94a3b8",
+        fontSize: "0.85rem",
+        marginBottom: "1rem",
+        paddingLeft: "0.5rem",
+    },
+    miniSpinner: {
+        width: "14px",
+        height: "14px",
+        border: "2px solid rgba(148, 163, 184, 0.2)",
+        borderTopColor: "#94a3b8",
+        borderRadius: "50%",
+        animation: "spin 1s linear infinite",
     },
 };

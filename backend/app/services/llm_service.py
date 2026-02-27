@@ -145,3 +145,70 @@ Translate the following text to {target_language}:"""
     except Exception as e:
         logger.error("Translation failed: %s", str(e))
         raise
+
+
+async def generate_relevance_suggestion(
+    title: str,
+    abstract: str,
+    history: list[dict],
+    goal: str = "",
+    model: str = "aya:8b"
+) -> dict:
+    """
+    Generate an inclusion/exclusion suggestion based on previous decisions (Few-shot learning).
+    """
+    import json
+    
+    # Format few-shot examples from history
+    examples_str = ""
+    for i, h in enumerate(history):
+        # Clean abstract for prompt
+        h_abs = (h['abstract'] or "")[:400].replace("\n", " ")
+        examples_str += f"EXAMPLE {i+1}:\nTitle: {h['title']}\nAbstract: {h_abs}...\nDecision: {h['decision'].upper()}\n\n"
+
+    system_prompt = f"""You are a systematic review assistant. Your task is to suggest if a new research article should be INCLUDED or EXCLUDED based on the user's previous decisions and the session goal.
+
+SESSION GOAL: {goal}
+
+PREVIOUS DECISIONS (Context/Style):
+{examples_str}
+
+INSTRUCTIONS:
+1. Analyze the target article's title and abstract.
+2. Based on the patterns in the previous examples and the session goal, decide if it should be included or excluded.
+3. Provide a brief justification (1-2 sentences) in Spanish.
+4. Output JSON with fields: 'suggested_status' (include/exclude), 'justification' (string), and 'confidence' (float 0.0 to 1.0).
+
+RESPOND IN JSON FORMAT:
+{{
+  "suggested_status": "include",
+  "justification": "Explicación breve en español...",
+  "confidence": 0.8
+}}"""
+
+    try:
+        llm_model = f"ollama/{model}" if not model.startswith("ollama/") else model
+        
+        response = await litellm.acompletion(
+            model=llm_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"TARGET ARTICLE:\nTitle: {title}\nAbstract: {abstract[:1000]}"},
+            ],
+            api_base=settings.litellm_api_base,
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=1000,
+        )
+
+        content = response.choices[0].message.content
+        result = json.loads(content)
+        return result
+
+    except Exception as e:
+        logger.error("Relevance suggestion failed: %s", str(e))
+        return {
+            "suggested_status": "include",
+            "justification": "No se pudo generar la sugerencia inteligente.",
+            "confidence": 0.0
+        }

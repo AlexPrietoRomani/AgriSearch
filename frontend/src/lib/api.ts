@@ -241,6 +241,13 @@ export interface ScreeningStats {
   progress_percent: number;
 }
 
+export interface ScreeningSuggestion {
+  decision_id: string;
+  suggested_status: "include" | "exclude";
+  justification: string;
+  confidence: number | null;
+}
+
 export async function createScreeningSession(data: {
   project_id: string;
   name?: string;
@@ -316,5 +323,9 @@ export interface EnrichmentStats {
 
 export async function enrichArticles(projectId: string): Promise<EnrichmentStats> {
   return request(`/screening/enrich/${projectId}`, { method: "POST" });
+}
+
+export async function getArticleSuggestion(sessionId: string, articleId: string): Promise<ScreeningSuggestion> {
+  return request(`/screening/sessions/${sessionId}/articles/${articleId}/suggestion`);
 }
 

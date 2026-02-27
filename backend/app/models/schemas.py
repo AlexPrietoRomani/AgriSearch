@@ -243,3 +243,10 @@ class TranslateAbstractRequest(BaseModel):
     decision_id: str = Field(..., description="ScreeningDecision UUID")
     target_language: str = Field("es", description="Target language for translation")
 
+
+class ScreeningSuggestionResponse(BaseModel):
+    """Schema for AI relevance suggestion."""
+    decision_id: str
+    suggested_status: str  # include | exclude
+    justification: str
+    confidence: float | None = None

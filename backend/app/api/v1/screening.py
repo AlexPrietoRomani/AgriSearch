@@ -29,6 +29,7 @@ from app.models.schemas import (
     UpdateDecisionRequest,
     TranslateAbstractRequest,
     UpdateScreeningSessionRequest,
+    ScreeningSuggestionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -503,3 +504,65 @@ async def translate_abstract(
     except Exception as e:
         logger.error("Translation failed for decision %s: %s", decision.id, e)
         raise HTTPException(status_code=500, detail=f"Error de traducción: {str(e)}")
+
+
+@router.get("/sessions/{session_id}/articles/{article_id}/suggestion", response_model=ScreeningSuggestionResponse)
+async def get_relevance_suggestion(
+    session_id: str,
+    article_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get an AI suggestion for an article's relevance based on session context (Few-shot).
+    """
+    # 1. Fetch Session and target Article
+    sess_res = await db.execute(select(ScreeningSession).where(ScreeningSession.id == session_id))
+    session = sess_res.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
+    art_res = await db.execute(select(Article).where(Article.id == article_id))
+    target_article = art_res.scalar_one_or_none()
+    if not target_article:
+        raise HTTPException(status_code=404, detail="Artículo no encontrado")
+
+    # 2. Fetch history (last 10 non-pending decisions)
+    history_stmt = (
+        select(ScreeningDecision, Article)
+        .join(Article, ScreeningDecision.article_id == Article.id)
+        .where(
+            ScreeningDecision.session_id == session_id,
+            ScreeningDecision.decision != ScreeningDecisionStatus.PENDING
+        )
+        .order_by(ScreeningDecision.decided_at.desc())
+        .limit(10)
+    )
+    history_res = await db.execute(history_stmt)
+    rows = history_res.all()
+    
+    # Format history for LLM
+    history_data = []
+    for dec, art in rows:
+        history_data.append({
+            "title": art.title,
+            "abstract": art.abstract or "",
+            "decision": dec.decision.value
+        })
+
+    # 3. Call LLM service
+    from app.services.llm_service import generate_relevance_suggestion
+    
+    suggestion = await generate_relevance_suggestion(
+        title=target_article.title,
+        abstract=target_article.abstract or "",
+        history=history_data,
+        goal=session.goal or "",
+        model=session.translation_model
+    )
+
+    return ScreeningSuggestionResponse(
+        decision_id=article_id,  # Using article_id as identifier in the suggestion
+        suggested_status=suggestion.get("suggested_status", "include"),
+        justification=suggestion.get("justification", "Sin justificación."),
+        confidence=suggestion.get("confidence")
+    )
