@@ -163,8 +163,8 @@ Wizard multi-paso modularizado en 4 sub-componentes React independientes:
 | Paso | Componente | Descripción |
 |------|-----------|-------------|
 | 1. Describir | `SearchWizardDescribe.tsx` | El usuario escribe en lenguaje natural qué investiga. Selecciona área agrícola, rango de años e idioma. |
-| 2. Revisar | `SearchWizardReview.tsx` | El LLM genera una query booleana optimizada, términos AGROVOC/MeSH sugeridos y desglose PICO/PEO. El usuario puede editar manualmente la query y seleccionar las BDs a consultar (OpenAlex, Semantic Scholar, ArXiv, Web). |
-| 3. Buscando | `SearchWizardSearching.tsx` | Ejecución de la búsqueda con animación de progreso. El backend consulta en paralelo las APIs MCP seleccionadas. |
+| 2. Revisar | `SearchWizardReview.tsx` | El LLM genera una query booleana optimizada, términos AGROVOC/MeSH sugeridos y desglose PICO/PEO. El usuario puede editar la query. |
+| 3. Buscando | `SearchWizardSearching.tsx` | Ejecución concurrente. El backend usa primero otro llamado al LLM para **adaptar la sintaxis de la query** estrictamente según los requerimientos nativos de cada API elegida (OpenAlex, Semantic Scholar, ArXiv) mejorando drásticamente la relevancia de resultados sin fallar en sintaxis complejas. |
 | 4. Resultados | `SearchWizardResults.tsx` | Tabla interactiva con todos los artículos encontrados. Soporte para **renderizado LaTeX** (KaTeX + `react-latex-next`) en títulos y abstracts. Columnas: título, autores (truncados a "et al." si son muy largos), año, journal, DOI (enlace), fuente (badge coloreado), estado de descarga, nombre de archivo PDF local. Botones de descarga masiva de PDFs (con nomenclatura automática `[año]_[primer_autor]_[título].pdf`) y **botón para subir PDF manualmente** si la descarga automática falla o está bloqueada por paywall. |
 
 **Bases de datos soportadas:**

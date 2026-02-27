@@ -8,6 +8,7 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 
 ### Búsqueda y Obtención de PDFs (Fase 1)
 - **Extracción Inteligente:** Ejecuta queries a OpenAlex, Semantic Scholar y Arxiv, deduplica e inserta en SQLite.
+- **Adaptación LLM por Base de Datos:** Para evitar fallos de sintaxis en búsquedas complejas (ej. consultas booleanas con paréntesis que rompen la API de ArXiv y retornaban artículos por defecto no relacionados), el backend realiza peticiones asíncronas al LLM para "traducir" la query a la sintaxis esperada por cada API (ej. `all:X AND all:Y` para ArXiv) justo antes de enviar la petición.
 - **Descarga Múltiple Open Access:** El servicio `download_service.py` obtiene automáticamente los PDFs vía requests asíncronas de las URLs enlazadas, los guarda en `data/projects/{id}/pdfs` y los nombra automáticamente usando la convención `[Año]_[PrimerAutor]_[Slug_Titulo].pdf`.
 - **Subida Manual (Upload):** Endpoint `POST /search/upload-pdf/{article_id}`. Para los artículos que están bloqueados por un paywall, el usuario puede subir localmente su archivo PDF desde el dashboard de resultados. El archivo se enlaza directamente a su base de datos.
 - **API Response:** `ArticleResponse` incluye `local_pdf_path` para que el frontend pueda mostrar el nombre del archivo local en la tabla de resultados.
