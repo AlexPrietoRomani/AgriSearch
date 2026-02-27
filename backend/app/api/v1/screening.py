@@ -244,8 +244,9 @@ async def list_screening_articles(
     """List articles in a screening session with their decisions."""
     # Build the query joining decisions with articles
     stmt = (
-        select(ScreeningDecision, Article)
+        select(ScreeningDecision, Article, SearchQuery.raw_input)
         .join(Article, ScreeningDecision.article_id == Article.id)
+        .outerjoin(SearchQuery, Article.search_query_id == SearchQuery.id)
         .where(ScreeningDecision.session_id == session_id)
     )
 
@@ -258,7 +259,7 @@ async def list_screening_articles(
     rows = result.all()
 
     response = []
-    for decision, article in rows:
+    for decision, article, sq_name in rows:
         response.append(ScreeningArticleResponse(
             id=article.id,
             doi=article.doi,
@@ -270,6 +271,7 @@ async def list_screening_articles(
             url=article.url,
             keywords=article.keywords,
             source_database=article.source_database,
+            search_query_name=sq_name,
             download_status=article.download_status.value if article.download_status else "pending",
             local_pdf_path=article.local_pdf_path,
             decision_id=decision.id,
@@ -335,15 +337,16 @@ async def update_decision(
 
     # Fetch decision + article
     result = await db.execute(
-        select(ScreeningDecision, Article)
+        select(ScreeningDecision, Article, SearchQuery.raw_input)
         .join(Article, ScreeningDecision.article_id == Article.id)
+        .outerjoin(SearchQuery, Article.search_query_id == SearchQuery.id)
         .where(ScreeningDecision.id == decision_id)
     )
     row = result.one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="Decisión de screening no encontrada.")
 
-    decision, article = row
+    decision, article, sq_name = row
 
     # Track if this is a new decision (was pending before)
     was_pending = decision.decision == ScreeningDecisionStatus.PENDING
@@ -398,6 +401,7 @@ async def update_decision(
         url=article.url,
         keywords=article.keywords,
         source_database=article.source_database,
+        search_query_name=sq_name,
         download_status=article.download_status.value if article.download_status else "pending",
         local_pdf_path=article.local_pdf_path,
         decision_id=decision.id,

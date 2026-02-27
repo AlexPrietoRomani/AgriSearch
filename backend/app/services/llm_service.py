@@ -142,9 +142,48 @@ Translate the following text to {target_language}:"""
         logger.info("Translation completed (%d chars → %d chars)", len(text), len(translated))
         return translated
 
+
     except Exception as e:
         logger.error("Translation failed: %s", str(e))
         raise
+
+
+async def adapt_query_for_database(
+    boolean_query: str,
+    database: str,
+) -> str:
+    """
+    Adapt a general boolean query to the specific syntax constraints of a given scientific database.
+    """
+    system_prompt = f"""You are an expert scientific database researcher. Your task is to adapt a generic boolean search query into the EXACT specific syntax required by the '{database}' database API.
+
+RULES FOR SPECIFIC DATABASES:
+- For 'arxiv': arXiv's API requires field prefixes for every term (e.g., all:term). Replace boolean generalities with proper arXiv API syntax like `all:"term1" AND (all:"term2" OR all:"term3")`.
+- For 'openalex': OpenAlex handles standard boolean queries well across its full-text search, but you should ensure quotes are properly escaped or formatted for a URL search parameter. It primarily accepts standard `term1 AND (term2 OR term3)`.
+- For 'semantic_scholar': Semantic Scholar's standard query doesn't accept complex nested boolean logic well. Flatten the query or keep only the primary high-value keywords, separating them with spaces or simple ANDs. Skip complex nested ORs if possible.
+
+Given this generic boolean query:
+{boolean_query}
+
+Respond ONLY with the transformed query string suitable for '{database}'. Output no other text, no code blocks, no quotes around the output unless it's part of the query."""
+
+    try:
+        response = await litellm.acompletion(
+            model=settings.litellm_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": boolean_query},
+            ],
+            api_base=settings.litellm_api_base,
+            temperature=0.0,
+            max_tokens=200,
+        )
+        adapted = response.choices[0].message.content.strip()
+        logger.info("Query adapted for %s: %s -> %s", database, boolean_query, adapted)
+        return adapted
+    except Exception as e:
+        logger.error("Failed to adapt query for %s: %s", database, str(e))
+        return boolean_query
 
 
 async def generate_relevance_suggestion(

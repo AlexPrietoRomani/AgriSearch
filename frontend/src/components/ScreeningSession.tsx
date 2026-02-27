@@ -60,6 +60,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
     const [noteText, setNoteText] = useState("");
     const [showExcludeModal, setShowExcludeModal] = useState(false);
     const [excludeReason, setExcludeReason] = useState(EXCLUSION_REASONS[0]);
+    const [aiAssistEnabled, setAiAssistEnabled] = useState(true);
     const [translating, setTranslating] = useState(false);
     const [deciding, setDeciding] = useState(false);
     const [showPdf, setShowPdf] = useState(false);
@@ -99,7 +100,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
 
     // Fetch AI Suggestion
     useEffect(() => {
-        if (!sessionId || !currentArticle || viewMode !== "card" || currentArticle.decision !== "pending") {
+        if (!sessionId || !currentArticle || viewMode !== "card" || currentArticle.decision !== "pending" || !aiAssistEnabled) {
             setSuggestion(null);
             return;
         }
@@ -124,7 +125,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
         }, 600); // 600ms delay to avoid flickering while navigating
 
         return () => clearTimeout(timer);
-    }, [sessionId, currentArticle?.id, stats?.reviewed, viewMode]);
+    }, [sessionId, currentArticle?.id, stats?.reviewed, viewMode, aiAssistEnabled]);
 
     // Keyboard shortcuts
     const handleKeyDown = useCallback(
@@ -279,6 +280,8 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                     setViewMode={setViewMode}
                     filterDecision={filterDecision}
                     setFilterDecision={setFilterDecision}
+                    aiAssistEnabled={aiAssistEnabled}
+                    setAiAssistEnabled={setAiAssistEnabled}
                 />
                 {error && <div style={styles.errorBanner}>{error}</div>}
                 <table style={styles.table}>
@@ -287,6 +290,7 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                             <th style={styles.th}>#</th>
                             <th style={styles.th}>Título</th>
                             <th style={styles.th}>Autores</th>
+                            <th style={styles.th}>Búsqueda</th>
                             <th style={styles.th}>Año</th>
                             <th style={styles.th}>Fuente</th>
                             <th style={styles.th}>Estado</th>
@@ -300,9 +304,10 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                 <tr key={article.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                                     <td style={styles.td}>{article.display_order + 1}</td>
                                     <td style={{ ...styles.td, maxWidth: "400px" }}>
-                                        {article.title.length > 100 ? article.title.slice(0, 100) + "..." : article.title}
+                                        {article.title.length > 100 ? <Latex>{article.title.slice(0, 100) + "..."}</Latex> : <Latex>{article.title}</Latex>}
                                     </td>
                                     <td style={styles.td}>{formatAuthors(article.authors, 2)}</td>
+                                    <td style={{ ...styles.td, color: "#60a5fa" }}>{article.search_query_name || "—"}</td>
                                     <td style={styles.td}>{article.year || "—"}</td>
                                     <td style={styles.td}>
                                         <span style={styles.sourceBadge}>{article.source_database}</span>
@@ -337,6 +342,8 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                 setViewMode={setViewMode}
                 filterDecision={filterDecision}
                 setFilterDecision={setFilterDecision}
+                aiAssistEnabled={aiAssistEnabled}
+                setAiAssistEnabled={setAiAssistEnabled}
             />
 
             {error && <div style={styles.errorBanner}>{error}</div>}
@@ -648,6 +655,8 @@ function Header({
     setViewMode,
     filterDecision,
     setFilterDecision,
+    aiAssistEnabled,
+    setAiAssistEnabled,
 }: {
     session: ScreeningSessionType;
     stats: ScreeningStats | null;
@@ -656,6 +665,8 @@ function Header({
     setViewMode: (v: "card" | "table") => void;
     filterDecision: string | undefined;
     setFilterDecision: (v: string | undefined) => void;
+    aiAssistEnabled: boolean;
+    setAiAssistEnabled: (v: boolean) => void;
 }) {
     return (
         <div style={styles.headerBar}>
@@ -677,6 +688,13 @@ function Header({
                     <option value="exclude">❌ Excluidos</option>
                     <option value="maybe">🟡 Tal Vez</option>
                 </select>
+                <button
+                    onClick={() => setAiAssistEnabled(!aiAssistEnabled)}
+                    style={aiAssistEnabled ? styles.viewActive : styles.viewInactive}
+                    title="Activar/Desactivar Sugerencias de IA"
+                >
+                    {aiAssistEnabled ? "🤖 AI: On" : "🤖 AI: Off"}
+                </button>
                 <div style={styles.viewToggle}>
                     <button
                         onClick={() => setViewMode("card")}

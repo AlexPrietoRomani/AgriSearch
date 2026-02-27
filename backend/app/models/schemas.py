@@ -208,6 +208,7 @@ class ScreeningArticleResponse(BaseModel):
     url: str | None
     keywords: str | None
     source_database: str
+    search_query_name: str | None = None
     download_status: str
     local_pdf_path: str | None
     # Decision fields

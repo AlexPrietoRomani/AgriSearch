@@ -19,6 +19,7 @@ from app.models.project import Article, SearchQuery, Project
 from app.services.mcp_clients.openalex_client import search_openalex
 from app.services.mcp_clients.semantic_scholar_client import search_semantic_scholar
 from app.services.mcp_clients.arxiv_client import search_arxiv
+from app.services.llm_service import adapt_query_for_database
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -75,14 +76,29 @@ async def execute_search(
     db.add(search_query)
     await db.flush()
 
-    # Execute searches in parallel
+    # Adapt queries for each target DB concurrently
+    adapt_tasks = []
+    if "openalex" in databases: adapt_tasks.append(("openalex", adapt_query_for_database(query, "openalex")))
+    if "semantic_scholar" in databases: adapt_tasks.append(("semantic_scholar", adapt_query_for_database(query, "semantic_scholar")))
+    if "arxiv" in databases: adapt_tasks.append(("arxiv", adapt_query_for_database(query, "arxiv")))
+
+    adapted_results = await asyncio.gather(*[t[1] for t in adapt_tasks], return_exceptions=True)
+    adapted_queries = {}
+    for (source_name, _), result in zip(adapt_tasks, adapted_results):
+        if isinstance(result, Exception):
+            logger.warning("Failed to adapt query for %s, using original. Error: %s", source_name, str(result))
+            adapted_queries[source_name] = query
+        else:
+            adapted_queries[source_name] = result
+
+    # Execute searches in parallel using adapted queries
     tasks = []
     if "openalex" in databases:
-        tasks.append(("openalex", search_openalex(query, max_results_per_source, year_from, year_to)))
+        tasks.append(("openalex", search_openalex(adapted_queries["openalex"], max_results_per_source, year_from, year_to)))
     if "semantic_scholar" in databases:
-        tasks.append(("semantic_scholar", search_semantic_scholar(query, max_results_per_source, year_from, year_to)))
+        tasks.append(("semantic_scholar", search_semantic_scholar(adapted_queries["semantic_scholar"], max_results_per_source, year_from, year_to)))
     if "arxiv" in databases:
-        tasks.append(("arxiv", search_arxiv(query, max_results_per_source, year_from, year_to)))
+        tasks.append(("arxiv", search_arxiv(adapted_queries["arxiv"], max_results_per_source, year_from, year_to)))
 
     all_articles: list[dict] = []
     counts_by_source: dict[str, int] = {}

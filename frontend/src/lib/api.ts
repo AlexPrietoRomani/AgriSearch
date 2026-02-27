@@ -220,6 +220,7 @@ export interface ScreeningArticle {
   url: string | null;
   keywords: string | null;
   source_database: string;
+  search_query_name?: string;
   download_status: string;
   local_pdf_path: string | null;
   decision_id: string;
