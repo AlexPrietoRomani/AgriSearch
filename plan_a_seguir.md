@@ -195,7 +195,7 @@ Interfaz de cribado inspirada en **Rayyan.ai**, organizada en una única vista u
 - **Selección de búsquedas:** Checklist con todas las `SearchQuery` del proyecto. Cada item muestra: fecha, query original, N artículos, BDs usadas.
 - **Resumen consolidado:** Muestra el total de artículos únicos, con advertencia de que solo entran los que tienen PDF descargado.
 - **Idioma de lectura:** Selector (español/inglés/portugués).
-- **Modelo de traducción:** Por defecto `aya-expanse` (Cohere, multilingüe avanzado 8B). Opciones: Llama 3.1 8B, Qwen 2.5 7B.
+- **Modelo de traducción:** Por defecto `aya:8b` (Cohere, multilingüe avanzado). Opciones: Llama 3.1 8B, Qwen 2.5 7B.
 - **Enriquecimiento previo:** Al crear la sesión, se ejecuta automáticamente la extracción de abstracts y keywords desde los PDFs descargados (vía PyMuPDF), con pantalla de progreso visual.
 - **Botón "🚀 Crear Sesión de Screening":** Crea la sesión (solo con artículos que tengan PDF) y navega a la interfaz de cribado.
 
@@ -211,6 +211,13 @@ Interfaz principal de cribado artículo-por-artículo, estilo Rayyan:
 - **Visor de PDF integrado:** Un botón permite desplegar un visor de PDF (iframe) directamente debajo del abstract para consultar el artículo original sin salir de la sesión.
 - **Keywords** del artículo (si disponibles).
 - **Fuente de la búsqueda** (badge: OpenAlex / Semantic Scholar / ArXiv).
+
+### 2.4 Asistencia Inteligente (AI Suggestions) - *NUEVO*
+- **Motor de Recomendación Proactiva:**
+  - Después de las primeras **10 decisiones manuales**, el sistema activa un asistente de IA.
+  - El backend envía al LLM el contexto de los artículos previos (Incluidos vs Excluidos) junto al artículo actual mediante *Few-shot learning*.
+  - **Recomendación Visual:** Se muestra una tarjeta sutil sutil (Ej: "🤖 Sugerencia AI: INCLUIR") con una breve justificación y nivel de confianza.
+  - Ayuda a mantener la consistencia en los criterios de inclusión/exclusión durante el proceso.
 
 **Botones de decisión:**
 - ✅ **Incluir** (verde) — El artículo es relevante para la revisión.

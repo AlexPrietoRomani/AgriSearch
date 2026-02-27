@@ -31,6 +31,7 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 | `/screening/decisions/{decision_id}` | PUT | Actualizar decisión (include/exclude/maybe) |
 | `/screening/translate` | POST | Traducir abstract vía LLM |
 | `/screening/enrich/{project_id}` | POST | Enriquecimiento pre-screening desde PDFs |
+| `/screening/sessions/{session_id}/articles/{article_id}/suggestion` | GET | Obtener sugerencia IA de relevancia (AI Assist) |
 
 #### Flujo del Frontend (`ScreeningSetup.tsx`)
 1. Al entrar a `/screening?id=X`, se verifica si hay sesión existente.
@@ -46,6 +47,7 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 Interfaz interactiva para screening:
 - **Botones de decisión**: "Incluir", "Excluir" (con sub-razones), "Tal vez".
 - **Visualizador Integrado**: Mediante el botón "Ver PDF" (atajo `P`), se invoca el endpoint `/pdf` para renderizar el documento PDF mediante un iframe de tamaño adaptable en la misma pantalla.
+- **Asistencia Inteligente (AI Assist)**: Después de 10 decisiones manuales, el sistema genera sugerencias de inclusión/exclusión usando *Few-shot learning*. El LLM analiza el progreso y ayuda a mantener consistencia en los criterios.
 - **Formateos automáticos**: Autores largos se truncan y abstracts se traducen con Ollama local.
 
 #### Intención Futura: Multi-persona
@@ -58,11 +60,11 @@ Interfaz interactiva para screening:
 - **Ollama**: Requiere tener en ejecución instancias de modelos LLM. Por ejemplo, `aya-expanse` como opción multilingüe óptima de 8B.
 
 ## Modelos LLM Sugeridos (Ollama)
-1. **Aya Expanse (`aya-expanse`)** — Recomendado. Modelo 8B de Cohere optimizado para 23 idiomas. Excelente para traducciones EN↔ES/PT.
+1. **Aya 8B (`aya:8b`)** — Recomendado. Modelo multilingüe optimizado de Cohere. Excelente para traducciones EN↔ES/PT.
 2. **Llama 3.1 8B (`llama3.1:8b`)** — Rendimiento general sólido.
 3. **Qwen 2.5 7B (`qwen2.5:7b`)** — Alternativa rápida y eficiente.
 
-> **Nota:** El modelo `aya-23:8b` fue reemplazado por `aya-expanse` al verificar que ofrece mejor calidad de traducción multilingüe.
+> **Nota:** Se utiliza `aya:8b` como tag preferente por su disponibilidad y rendimiento estable en entornos locales.
 
 ## UI/UX Global
 - **Modo claro/oscuro:** Toggle global persistente (localStorage) en la barra de navegación, disponible en todas las páginas.
