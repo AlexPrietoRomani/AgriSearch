@@ -47,6 +47,8 @@ async def build_query(payload: SearchBuildQueryRequest) -> GeneratedQuery:
 
     return GeneratedQuery(
         boolean_query=result.get("boolean_query", payload.user_input),
+        concepts=result.get("concepts", []),
+        synonyms=result.get("synonyms", {}),
         suggested_terms=result.get("suggested_terms", []),
         pico_breakdown=result.get("pico_breakdown", {}),
         explanation=result.get("explanation", ""),
@@ -93,6 +95,7 @@ async def execute_search_endpoint(
         duplicates_removed=result["duplicates_removed"],
         articles=articles,
         counts_by_source=result["counts_by_source"],
+        adapted_queries=result.get("adapted_queries", {}),
     )
 
 

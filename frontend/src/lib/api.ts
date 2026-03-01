@@ -91,6 +91,8 @@ export async function getProjectSearches(id: string): Promise<SearchQuery[]> {
 
 export interface GeneratedQuery {
   boolean_query: string;
+  concepts: string[];
+  synonyms: Record<string, string[]>;
   suggested_terms: string[];
   pico_breakdown: Record<string, string>;
   explanation: string;
@@ -130,6 +132,7 @@ export interface SearchResults {
   duplicates_removed: number;
   articles: Article[];
   counts_by_source: Record<string, number>;
+  adapted_queries: Record<string, string>;
 }
 
 export async function executeSearch(data: {

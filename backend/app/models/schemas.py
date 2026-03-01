@@ -61,7 +61,9 @@ class SearchBuildQueryRequest(BaseModel):
 
 class GeneratedQuery(BaseModel):
     """Schema for a generated search query."""
-    boolean_query: str = Field(..., description="Generated boolean/semantic query")
+    boolean_query: str = Field(..., description="Generated boolean/semantic query for display")
+    concepts: list[str] = Field(default_factory=list, description="Extracted search concepts")
+    synonyms: dict[str, list[str]] = Field(default_factory=dict, description="Synonyms per concept")
     suggested_terms: list[str] = Field(default_factory=list, description="Suggested AGROVOC/MeSH terms")
     pico_breakdown: dict[str, str] = Field(default_factory=dict, description="PICO/PEO breakdown")
     explanation: str = Field("", description="Explanation of the generated query")
@@ -121,6 +123,7 @@ class SearchResultsResponse(BaseModel):
     duplicates_removed: int
     articles: list[ArticleResponse]
     counts_by_source: dict[str, int]
+    adapted_queries: dict[str, str] = Field(default_factory=dict, description="Query sent to each API")
 
 
 # ──────────────────── Download Schemas ────────────────────
