@@ -98,6 +98,14 @@ export default function SearchWizardDescribe({
                         </button>
                     ))}
                 </div>
+                {(selectedDBs.includes("core") || selectedDBs.includes("redalyc")) && (
+                    <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 text-sm flex items-start gap-3">
+                        <span className="text-lg">⚠️</span>
+                        <div>
+                            <strong>Aviso importante:</strong> Para buscar en <strong>CORE</strong> o <strong>Redalyc</strong>, debes configurar sus credenciales (gratuitas) en el archivo <code>backend/.env</code> (puedes crear uno copiando <code>.env.example</code>). Si no configuras la API Key o Token, esa base devolverá 0 resultados.
+                        </div>
+                    </div>
+                )}
             </div>
 
             <button
