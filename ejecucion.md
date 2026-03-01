@@ -33,7 +33,40 @@ Varias bases de datos científicas integradas (como **CORE** y **Redalyc**) exig
 3. Ábrelo con cualquier editor de texto. Adentro verás enlaces para registrarte gratuitamente en CORE, Redalyc y otras bases. Rellena los tokens generados tras los signos de igual (`=`). 
 > **Nota:** Si omites este paso, al buscar con CORE o Redalyc activados obtendrás siempre 0 resultados.
 
-### 4. Lanzar AgriSearch
+### 4. Crear entorno virtual y instalar dependencias
+
+#### 4.1 Con uv
+
+Primero instalamos uv si no lo tienes:
+```bash
+pip install uv
+```
+
+Luego creamos el proyecto virtual y activamoslo:
+```bash
+uv venv
+venv\Scripts\activate
+```
+
+Finalmente instalamos las dependencias:
+```bash
+uv pip install -r requirements.txt
+```
+
+#### 4.2 Con pip
+
+Primero creamos el proyecto virtual y activamoslo:
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+Finalmente instalamos las dependencias:
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Lanzar AgriSearch
 Desde la raíz principal del proyecto, debes instalar las dependencias de ambas carpetas (`backend` y `frontend`). Puedes hacerlo automáticamente haciendo **doble clic** en:
 
 📄 `start_agrisearch.cmd`
@@ -88,9 +121,7 @@ El CMD levantará el servidor backend y el visor frontend automáticamente, y en
 > ```bash
 > cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
 > cd backend
-> python -m venv venv
 > venv\Scripts\activate
-> pip install -r requirements.txt
 > uvicorn app.main:app --port 8000
 > ```
 > 
@@ -98,7 +129,6 @@ El CMD levantará el servidor backend y el visor frontend automáticamente, y en
 > ```bash
 > cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
 > cd frontend
-> npm install
 > npm run dev
 > ```
 > Finalmente, abre en tu navegador web la dirección `http://localhost:4321`.

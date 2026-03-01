@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { getProject, getProjectSearches, updateProject, deleteSearch, listProjectScreeningSessions } from "../lib/api";
-import type { SearchQuery, Project, ScreeningSession } from "../lib/api";
+import {
+    getProject, getProjectSearches, updateProject, deleteSearch, listProjectScreeningSessions,
+    type SearchQuery, type Project, type ScreeningSession, checkScreeningEligibility
+} from "../lib/api";
 
 const AGRI_AREAS = [
     { value: "general", label: "General" },
@@ -27,6 +29,7 @@ export default function ProjectDashboard() {
     const [saving, setSaving] = useState(false);
     const [searchToDelete, setSearchToDelete] = useState<SearchQuery | null>(null);
     const [isDeletingSearch, setIsDeletingSearch] = useState(false);
+    const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
     const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
     useEffect(() => {
@@ -138,6 +141,30 @@ export default function ProjectDashboard() {
         setSelectedAreas(others.length > 0 ? [...mapped, "other"] : mapped);
         setCustomArea(others.join(", "));
         setIsEditing(true);
+    };
+
+    const handleNewScreening = async () => {
+        setIsCheckingEligibility(true);
+        try {
+            const eligibility = await checkScreeningEligibility(projectId);
+            if (eligibility.total_downloaded === 0) {
+                alert(`Debes realizar al menos una búsqueda y tener artículos descargados con éxito antes de iniciar una revisión.`);
+                setIsCheckingEligibility(false);
+                return;
+            }
+            if (eligibility.eligible_articles === 0) {
+                alert(`Todos tus ${eligibility.total_downloaded} artículos descargados ya fueron asignados en las revisiones: ${eligibility.screening_names.join(', ')}.\n\nHaz nuevas búsquedas para extraer más artículos antes de crear otra revisión.`);
+                setIsCheckingEligibility(false);
+                return;
+            }
+
+            // Allow creating new screening
+            window.location.href = `/screening?id=${projectId}&new=true`;
+        } catch (e: any) {
+            showNotification(e.message || "Error al verificar artículos disponibles", 'error');
+        } finally {
+            setIsCheckingEligibility(false);
+        }
     };
 
     if (!project) return (
@@ -267,15 +294,22 @@ export default function ProjectDashboard() {
                                 BÚSQUEDA IA
                             </a>
                             {searches.length > 0 && (
-                                <a
-                                    href={`/screening?id=${projectId}`}
-                                    className="px-6 py-4 bg-purple-500 hover:bg-purple-400 text-white font-black rounded-2xl shadow-lg shadow-purple-500/20 transition-all flex items-center gap-3 hover:-translate-y-1"
+                                <button
+                                    onClick={handleNewScreening}
+                                    disabled={isCheckingEligibility}
+                                    className="px-6 py-4 bg-purple-500 hover:bg-purple-400 text-white font-black rounded-2xl shadow-lg shadow-purple-500/20 transition-all flex items-center justify-center gap-3 hover:-translate-y-1 disabled:opacity-50"
                                 >
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                                    </svg>
-                                    SCREENING
-                                </a>
+                                    {isCheckingEligibility ? (
+                                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                        <>
+                                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                            </svg>
+                                            REVISIONES
+                                        </>
+                                    )}
+                                </button>
                             )}
                         </div>
                     </div>

@@ -149,6 +149,13 @@ class DownloadProgressResponse(BaseModel):
 
 # ──────────────────── Screening Schemas ────────────────────
 
+class ScreeningEligibilityResponse(BaseModel):
+    """Schema for checking if new screenings can be created."""
+    total_downloaded: int = 0
+    assigned_articles: int = 0
+    eligible_articles: int = 0
+    screening_names: list[str] = []
+
 
 class CreateScreeningSessionRequest(BaseModel):
     """Schema for creating a new screening session."""

@@ -38,6 +38,7 @@ export default function ScreeningSetup() {
     const projectId = params.get("id") || "";
     const hasSession = params.has("session");
     const setupSessionId = params.get("setup_session");
+    const isNew = params.has("new");
 
     const [project, setProject] = useState<Project | null>(null);
     const [searches, setSearches] = useState<SearchQuery[]>([]);
@@ -67,7 +68,7 @@ export default function ScreeningSetup() {
                 ]);
                 setProject(proj);
                 setSearches(srch);
-                if (sessions.length > 0) {
+                if (sessions.length > 0 && !isNew) {
                     const targetSession = setupSessionId
                         ? sessions.find(s => s.id === setupSessionId) || sessions[0]
                         : sessions[0];

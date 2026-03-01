@@ -241,6 +241,17 @@ export interface ScreeningArticle {
   decided_at: string | null;
 }
 
+export interface ScreeningEligibility {
+  total_downloaded: number;
+  assigned_articles: number;
+  eligible_articles: number;
+  screening_names: string[];
+}
+
+export async function checkScreeningEligibility(projectId: string): Promise<ScreeningEligibility> {
+  return request(`/screening/eligibility/${projectId}`);
+}
+
 export interface ScreeningStats {
   total: number;
   reviewed: number;

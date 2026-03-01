@@ -30,6 +30,7 @@ from app.models.schemas import (
     TranslateAbstractRequest,
     UpdateScreeningSessionRequest,
     ScreeningSuggestionResponse,
+    ScreeningEligibilityResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,49 @@ def _session_to_response(session: ScreeningSession) -> ScreeningSessionResponse:
 
 # ── Session Endpoints ──
 
+@router.get("/eligibility/{project_id}", response_model=ScreeningEligibilityResponse)
+async def check_screening_eligibility(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Check how many articles are downloaded and if they are all assigned already."""
+    from app.models.project import DownloadStatus
+    
+    # 1. Get total downloaded articles for project
+    stmt_downloaded = select(func.count(Article.id)).where(
+        Article.project_id == project_id,
+        Article.download_status == DownloadStatus.SUCCESS,
+        Article.is_duplicate == False
+    )
+    total_downloaded_res = await db.execute(stmt_downloaded)
+    total_downloaded = total_downloaded_res.scalar_one_or_none() or 0
+    
+    # 2. Get assigned downloaded articles
+    stmt_assigned = (
+        select(func.count(func.distinct(ScreeningDecision.article_id)))
+        .join(Article, ScreeningDecision.article_id == Article.id)
+        .where(
+            Article.project_id == project_id,
+            Article.download_status == DownloadStatus.SUCCESS,
+            Article.is_duplicate == False
+        )
+    )
+    assigned_articles_res = await db.execute(stmt_assigned)
+    assigned_articles = assigned_articles_res.scalar_one_or_none() or 0
+    
+    # 3. Get existing sessions
+    stmt_sessions = select(ScreeningSession.name).where(ScreeningSession.project_id == project_id)
+    session_names_res = await db.execute(stmt_sessions)
+    screening_names = [name for name in session_names_res.scalars().all() if name]
+    
+    return ScreeningEligibilityResponse(
+        total_downloaded=total_downloaded,
+        assigned_articles=assigned_articles,
+        eligible_articles=max(0, total_downloaded - assigned_articles),
+        screening_names=screening_names
+    )
+
+
 
 @router.post("/enrich/{project_id}")
 async def enrich_project_articles(
@@ -87,21 +131,10 @@ async def create_screening_session(
     """Create a new screening session from selected search queries.
     
     Rules:
-    - Only 1 active session per project (returns 409 if one already exists)
     - Only articles with download_status=SUCCESS are included
     """
     logger.info("Creating screening session for project %s with %d searches",
                 req.project_id, len(req.search_query_ids))
-
-    # 0. Check no other session exists for this project
-    existing = await db.execute(
-        select(ScreeningSession).where(ScreeningSession.project_id == req.project_id)
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail="Ya existe una sesión de screening activa para este proyecto. Elimínala primero para crear una nueva."
-        )
 
     # 1. Enrich articles from PDFs first (fill abstract, keywords, paths)
     from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
