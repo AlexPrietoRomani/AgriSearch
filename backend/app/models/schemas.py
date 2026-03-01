@@ -87,7 +87,8 @@ class SearchExecuteRequest(BaseModel):
     project_id: str = Field(..., description="Project UUID")
     query: str = Field(..., description="Search query to execute")
     databases: list[str] = Field(
-        default=["openalex", "semantic_scholar", "arxiv"],
+        default=["openalex", "semantic_scholar", "arxiv", "crossref",
+                 "core", "scielo", "redalyc", "agecon", "organic_eprints"],
         description="Databases to search",
     )
     max_results_per_source: int = Field(50, ge=10, le=500, description="Max results per DB")

@@ -88,6 +88,105 @@ def build_arxiv_query(concepts: list[str], synonyms: dict[str, list[str]] | None
     return query
 
 
+def build_crossref_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
+    """
+    Build a query for the Crossref API (via habanero).
+
+    Crossref accepts simple keyword queries. Boolean operators are limited.
+    Strategy: join concepts with spaces, include top synonyms.
+    """
+    terms: list[str] = []
+    for concept in concepts:
+        terms.append(concept)
+        if synonyms and concept in synonyms:
+            for syn in synonyms[concept][:1]:
+                if syn.lower() != concept.lower():
+                    terms.append(syn)
+
+    query = " ".join(terms)
+    logger.info("Crossref query built: %s", query)
+    return query
+
+
+def build_core_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
+    """
+    Build a query for the CORE API v3.
+
+    CORE supports basic keyword search. Strategy: join concepts with spaces.
+    """
+    terms: list[str] = []
+    for concept in concepts:
+        terms.append(concept)
+        if synonyms and concept in synonyms:
+            for syn in synonyms[concept][:1]:
+                if syn.lower() != concept.lower():
+                    terms.append(syn)
+
+    query = " ".join(terms)
+    logger.info("CORE query built: %s", query)
+    return query
+
+
+def build_scielo_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
+    """
+    Build a query for SciELO search.
+
+    SciELO supports keyword search. Strategy: concepts with synonyms,
+    separated by spaces. Include both English and Spanish terms when available.
+    """
+    terms: list[str] = []
+    for concept in concepts:
+        terms.append(concept)
+        if synonyms and concept in synonyms:
+            for syn in synonyms[concept][:2]:
+                if syn.lower() != concept.lower():
+                    terms.append(syn)
+
+    query = " ".join(terms)
+    logger.info("SciELO query built: %s", query)
+    return query
+
+
+def build_redalyc_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
+    """
+    Build a query for Redalyc API.
+
+    Redalyc accepts keyword search. Strategy: clean concepts with synonyms.
+    """
+    terms: list[str] = []
+    for concept in concepts:
+        terms.append(concept)
+        if synonyms and concept in synonyms:
+            for syn in synonyms[concept][:1]:
+                if syn.lower() != concept.lower():
+                    terms.append(syn)
+
+    query = " ".join(terms)
+    logger.info("Redalyc query built: %s", query)
+    return query
+
+
+def build_oaipmh_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
+    """
+    Build a query for OAI-PMH harvesting (AgEcon Search, Organic Eprints).
+
+    OAI-PMH doesn't support search queries natively.
+    We use the terms for local post-filtering of harvested records.
+    Strategy: simple space-separated concepts for matching.
+    """
+    terms: list[str] = []
+    for concept in concepts:
+        terms.append(concept)
+        if synonyms and concept in synonyms:
+            for syn in synonyms[concept][:1]:
+                if syn.lower() != concept.lower():
+                    terms.append(syn)
+
+    query = " ".join(terms)
+    logger.info("OAI-PMH query built: %s", query)
+    return query
+
+
 def build_all_queries(
     concepts: list[str],
     synonyms: dict[str, list[str]] | None = None,
@@ -100,7 +199,8 @@ def build_all_queries(
     Only builds queries for the databases in the `databases` list.
     """
     if not databases:
-        databases = ["openalex", "semantic_scholar", "arxiv"]
+        databases = ["openalex", "semantic_scholar", "arxiv", "crossref",
+                     "core", "scielo", "redalyc", "agecon", "organic_eprints"]
 
     if not concepts:
         logger.warning("No concepts provided for query building")
@@ -110,6 +210,12 @@ def build_all_queries(
         "openalex": build_openalex_query,
         "semantic_scholar": build_semantic_scholar_query,
         "arxiv": build_arxiv_query,
+        "crossref": build_crossref_query,
+        "core": build_core_query,
+        "scielo": build_scielo_query,
+        "redalyc": build_redalyc_query,
+        "agecon": build_oaipmh_query,
+        "organic_eprints": build_oaipmh_query,
     }
 
     queries: dict[str, str] = {}

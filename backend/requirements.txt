@@ -20,5 +20,11 @@ litellm>=1.50.0
 # --- Text Processing ---
 rapidfuzz>=3.0.0
 
+# --- Scientific Database Clients ---
+habanero>=1.0.0       # Crossref API client
+sickle>=0.7.0         # OAI-PMH harvester (AgEcon, Organic Eprints)
+lxml>=5.0.0           # XML parsing for OAI-PMH
+beautifulsoup4>=4.12  # HTML parsing for abstracts
+
 # --- Security & Quality ---
 python-multipart>=0.0.12

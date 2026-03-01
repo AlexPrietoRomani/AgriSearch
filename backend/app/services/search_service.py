@@ -1,7 +1,8 @@
 """
 AgriSearch Backend - Search Service.
 
-Orchestrates searching across multiple scientific databases (OpenAlex, Semantic Scholar, ArXiv),
+Orchestrates searching across multiple scientific databases (OpenAlex, Semantic Scholar,
+ArXiv, Crossref, CORE, SciELO, Redalyc, AgEcon Search, Organic Eprints),
 consolidates results, and removes duplicates. All results are scoped by project_id.
 """
 
@@ -19,6 +20,11 @@ from app.models.project import Article, SearchQuery, Project
 from app.services.mcp_clients.openalex_client import search_openalex
 from app.services.mcp_clients.semantic_scholar_client import search_semantic_scholar
 from app.services.mcp_clients.arxiv_client import search_arxiv
+from app.services.mcp_clients.crossref_client import search_crossref
+from app.services.mcp_clients.core_client import search_core
+from app.services.mcp_clients.scielo_client import search_scielo
+from app.services.mcp_clients.redalyc_client import search_redalyc
+from app.services.mcp_clients.oaipmh_client import search_oaipmh
 from app.services.query_builder import build_all_queries
 
 logger = logging.getLogger(__name__)
@@ -152,6 +158,18 @@ async def execute_search(
         tasks.append(("semantic_scholar", search_semantic_scholar(adapted_queries["semantic_scholar"], max_results_per_source, year_from, year_to)))
     if "arxiv" in databases:
         tasks.append(("arxiv", search_arxiv(adapted_queries["arxiv"], max_results_per_source, year_from, year_to)))
+    if "crossref" in databases:
+        tasks.append(("crossref", search_crossref(adapted_queries["crossref"], max_results_per_source, year_from, year_to)))
+    if "core" in databases:
+        tasks.append(("core", search_core(adapted_queries["core"], max_results_per_source, year_from, year_to)))
+    if "scielo" in databases:
+        tasks.append(("scielo", search_scielo(adapted_queries["scielo"], max_results_per_source, year_from, year_to)))
+    if "redalyc" in databases:
+        tasks.append(("redalyc", search_redalyc(adapted_queries["redalyc"], max_results_per_source, year_from, year_to)))
+    if "agecon" in databases:
+        tasks.append(("agecon", search_oaipmh(adapted_queries["agecon"], source="agecon", max_results=max_results_per_source, year_from=year_from, year_to=year_to)))
+    if "organic_eprints" in databases:
+        tasks.append(("organic_eprints", search_oaipmh(adapted_queries["organic_eprints"], source="organic_eprints", max_results=max_results_per_source, year_from=year_from, year_to=year_to)))
 
     all_articles: list[dict] = []
     counts_by_source: dict[str, int] = {}

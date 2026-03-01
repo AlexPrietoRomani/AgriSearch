@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:4321", "http://localhost:3000"]
 
     # --- LiteLLM / Ollama ---
-    litellm_model: str = "ollama/llama3.1:8b"
+    litellm_model: str = "ollama/aya:8b"
     litellm_api_base: str = "http://localhost:11434"
     embedding_model: str = "ollama/nomic-embed-text"
 
@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     # --- Search defaults ---
     search_max_results_per_source: int = 200
     search_dedup_threshold: float = 0.85
+
+    # --- API Keys for scientific databases ---
+    crossref_mailto: str = "agrisearch@example.com"
+    core_api_key: str = ""
+    redalyc_token: str = ""
+    openalex_key: str = ""
+    semantic_scholar_key: str = ""
 
     # --- Download ---
     download_rate_limit: int = 10  # requests per second
