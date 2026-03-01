@@ -4,7 +4,14 @@
 
 El sistema integra Motores de Búsqueda Académicos (OpenAlex, Semantic Scholar, ArXiv) y Modelos de Lenguaje Grandes (LLMs) (vía Ollama/LiteLLM) en Arquitecturas de Generación Aumentada por Recuperación (RAG).
 
-> ⚠️ **Estado del Proyecto:** En fase de desarrollo y creación (fase Alpha). Se está implementando el Search Wizard y la conectividad base. El código puede contener errores y cambiar en cualquier momento.
+### Flujo de Búsqueda
+
+1. **Describir** — El usuario describe su tema en lenguaje natural.
+2. **Extraer conceptos** — Un LLM local (Ollama) extrae conceptos clave, sinónimos y desglose PICO/PEO.
+3. **Construir queries** — Un módulo determinista (`query_builder.py`) genera la query óptima para cada API (OpenAlex, Semantic Scholar, ArXiv), sin depender de un LLM para la adaptación.
+4. **Buscar en paralelo** — Las queries se ejecutan concurrentemente contra las 3+ bases de datos.
+5. **Deduplicar** — Se eliminan duplicados por DOI y título (fuzzy matching ≥85%).
+6. **Presentar** — El usuario ve los resultados en una tabla interactiva con la query enviada a cada API para transparencia.
 
 ---
 

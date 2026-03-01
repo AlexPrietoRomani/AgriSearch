@@ -8,10 +8,61 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 
 ### Búsqueda y Obtención de PDFs (Fase 1)
 - **Extracción Inteligente:** Ejecuta queries a OpenAlex, Semantic Scholar y Arxiv, deduplica e inserta en SQLite.
-- **Adaptación LLM por Base de Datos:** Para evitar fallos de sintaxis en búsquedas complejas (ej. consultas booleanas con paréntesis que rompen la API de ArXiv y retornaban artículos por defecto no relacionados), el backend realiza peticiones asíncronas al LLM para "traducir" la query a la sintaxis esperada por cada API (ej. `all:X AND all:Y` para ArXiv) justo antes de enviar la petición.
+- **Adaptación Determinista por Base de Datos:** Para evitar fallos de sintaxis en búsquedas complejas (ej. consultas booleanas con paréntesis que rompen las APIs), el backend usa un módulo determinista (`query_builder.py`) que construye la query óptima para cada API. No depende de un LLM para la adaptación, eliminando la impredecibilidad.
+  - **OpenAlex**: Texto plano con keywords separados por espacios (su API `search` no soporta booleanos complejos).
+  - **Semantic Scholar**: Keywords concisas (no acepta nested boolean logic).
+  - **ArXiv**: Formato `all:"concepto1" AND all:"concepto2"` con sinónimos agrupados por OR.
+- **Extracción de Conceptos por LLM:** El LLM (Ollama) se usa **solo una vez** para extraer conceptos, sinónimos y desglose PICO del input del usuario. Retorna un JSON estructurado (no una query booleana libre).
 - **Descarga Múltiple Open Access:** El servicio `download_service.py` obtiene automáticamente los PDFs vía requests asíncronas de las URLs enlazadas, los guarda en `data/projects/{id}/pdfs` y los nombra automáticamente usando la convención `[Año]_[PrimerAutor]_[Slug_Titulo].pdf`.
 - **Subida Manual (Upload):** Endpoint `POST /search/upload-pdf/{article_id}`. Para los artículos que están bloqueados por un paywall, el usuario puede subir localmente su archivo PDF desde el dashboard de resultados. El archivo se enlaza directamente a su base de datos.
-- **API Response:** `ArticleResponse` incluye `local_pdf_path` para que el frontend pueda mostrar el nombre del archivo local en la tabla de resultados.
+- **API Response:** `ArticleResponse` incluye `local_pdf_path` para que el frontend pueda mostrar el nombre del archivo local en la tabla de resultados. `SearchResultsResponse` incluye `adapted_queries` que muestra la query enviada a cada API para transparencia.
+
+#### Flujo de Búsqueda (Diagrama de Secuencia)
+
+```mermaid
+sequenceDiagram
+    actor User as Usuario
+    participant FE as Frontend
+    participant API as FastAPI
+    participant LLM as LLM (Ollama)
+    participant QB as query_builder.py
+    participant OA as OpenAlex
+    participant SS as Semantic Scholar
+    participant AX as ArXiv
+    participant DB as SQLite
+
+    User->>FE: Describe tema en lenguaje natural
+    FE->>API: POST /build-query
+    API->>LLM: Extrae conceptos + sinónimos + PICO
+    LLM-->>API: {concepts, synonyms, pico}
+    API-->>FE: Conceptos para revisión del usuario
+    User->>FE: Aprueba/edita query
+    FE->>API: POST /execute {query, databases}
+    API->>QB: build_all_queries(concepts, databases)
+    QB-->>API: {openalex: "...", ss: "...", arxiv: "..."}
+    par Consulta paralela
+        API->>OA: GET /works?search=...
+        API->>SS: GET /paper/search?query=...
+        API->>AX: GET /api/query?search_query=...
+    end
+    OA-->>API: resultados
+    SS-->>API: resultados
+    AX-->>API: resultados
+    API->>API: Merge + Dedup (DOI + fuzzy title)
+    API->>DB: INSERT artículos nuevos
+    API-->>FE: Resultados + adapted_queries
+    FE->>User: Tabla de artículos filtrados
+```
+
+#### Archivos clave del flujo
+| Archivo | Responsabilidad |
+|---------|----------------|
+| `services/query_builder.py` | Genera queries deterministas por API |
+| `services/llm_service.py` | Extrae conceptos del input (solo 1 llamada LLM) |
+| `services/search_service.py` | Orquesta búsqueda, dedup y almacenamiento |
+| `services/mcp_clients/openalex_client.py` | Cliente OpenAlex REST API |
+| `services/mcp_clients/semantic_scholar_client.py` | Cliente Semantic Scholar API |
+| `services/mcp_clients/arxiv_client.py` | Cliente ArXiv Atom API |
 
 ### Screening (Cribado PRISMA) (Fase 2)
 
