@@ -106,7 +106,7 @@ async def execute_search_endpoint(
 async def list_articles(
     project_id: str,
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=2000),
     download_status: str | None = Query(None),
     search_query_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),

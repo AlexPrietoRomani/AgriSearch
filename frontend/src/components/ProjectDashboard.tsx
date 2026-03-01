@@ -438,7 +438,7 @@ export default function ProjectDashboard() {
                     {screenings.map((s, idx) => (
                         <a
                             key={s.id}
-                            href={`/screening?id=${s.id}`}
+                            href={`/screening?id=${projectId}&session=${s.id}`}
                             className="block p-6 bg-slate-800/80 border border-slate-700/50 hover:border-violet-500/50 rounded-2xl transition-all hover:-translate-y-1 group relative"
                         >
                             <div className="flex justify-between items-start mb-4">
