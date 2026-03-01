@@ -81,9 +81,26 @@ Con el Ollama encendido, simplemente ve a la carpeta de tu proyecto y haz **dobl
 
 El CMD levantará el servidor backend y el visor frontend automáticamente, y en un par de segundos se abrirá tu navegador predeterminado en `http://localhost:4321`.
 
-> **Si tienes problemas ejecutando el acceso rápido `.cmd`:**
-> Simplemente abre dos ventanas de terminal en tu carpeta del proyecto:
-> 1. En la primera, enciende el backend: `cd backend && venv\Scripts\activate && uvicorn app.main:app --port 8000`
-> 2. En la segunda, el frontend: `cd frontend && npm run dev`
+> **¿El doble clic no funciona o la ventana se cierra instantáneamente?**
+> Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **dos ventanas separadas**:
+> 
+> **Ventana 1 (Backend):** 
+> ```bash
+> cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
+> cd backend
+> python -m venv venv
+> venv\Scripts\activate
+> pip install -r requirements.txt
+> uvicorn app.main:app --port 8000
+> ```
+> 
+> **Ventana 2 (Frontend):**
+> ```bash
+> cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
+> cd frontend
+> npm install
+> npm run dev
+> ```
+> Finalmente, abre en tu navegador web la dirección `http://localhost:4321`.
 
 ¡Y listo! Ya puedes continuar con tu Revisión Sistemática PRISMA de forma estructurada.
