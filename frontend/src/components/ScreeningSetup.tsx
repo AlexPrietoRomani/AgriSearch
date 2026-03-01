@@ -37,6 +37,7 @@ export default function ScreeningSetup() {
     const params = new URLSearchParams(window.location.search);
     const projectId = params.get("id") || "";
     const hasSession = params.has("session");
+    const setupSessionId = params.get("setup_session");
 
     const [project, setProject] = useState<Project | null>(null);
     const [searches, setSearches] = useState<SearchQuery[]>([]);
@@ -67,8 +68,11 @@ export default function ScreeningSetup() {
                 setProject(proj);
                 setSearches(srch);
                 if (sessions.length > 0) {
-                    setExistingSession(sessions[0]);
-                    let savedModel = sessions[0].translation_model || "aya:8b";
+                    const targetSession = setupSessionId
+                        ? sessions.find(s => s.id === setupSessionId) || sessions[0]
+                        : sessions[0];
+                    setExistingSession(targetSession);
+                    let savedModel = targetSession.translation_model || "aya:8b";
                     if (savedModel === "aya-expanse") savedModel = "aya:8b";
                     setExistingSessionModel(savedModel);
                 }
