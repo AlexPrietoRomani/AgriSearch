@@ -9,9 +9,15 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 ### Búsqueda y Obtención de PDFs (Fase 1)
 - **Extracción Inteligente:** Ejecuta queries a OpenAlex, Semantic Scholar y Arxiv, deduplica e inserta en SQLite.
 - **Adaptación Determinista por Base de Datos:** Para evitar fallos de sintaxis en búsquedas complejas (ej. consultas booleanas con paréntesis que rompen las APIs), el backend usa un módulo determinista (`query_builder.py`) que construye la query óptima para cada API. No depende de un LLM para la adaptación, eliminando la impredecibilidad.
-  - **OpenAlex**: Texto plano con keywords separados por espacios (su API `search` no soporta booleanos complejos).
+  - **OpenAlex**: Texto plano con keywords separados por espacios.
   - **Semantic Scholar**: Keywords concisas (no acepta nested boolean logic).
   - **ArXiv**: Formato `all:"concepto1" AND all:"concepto2"` con sinónimos agrupados por OR.
+  - **Crossref**: Keywords separados por espacio, API via `habanero` (no requiere key).
+  - **CORE**: Keywords con filtros de año, requiere API key gratuita.
+  - **SciELO**: Keywords multilingüe (es/en/pt), API libre.
+  - **Redalyc**: Keywords con token, ideal para Iberoamérica.
+  - **AgEcon Search**: OAI-PMH libre, filtrado local por keywords.
+  - **Organic Eprints**: OAI-PMH libre, filtrado local por keywords.
 - **Extracción de Conceptos por LLM:** El LLM (Ollama) se usa **solo una vez** para extraer conceptos, sinónimos y desglose PICO del input del usuario. Retorna un JSON estructurado (no una query booleana libre).
 - **Descarga Múltiple Open Access:** El servicio `download_service.py` obtiene automáticamente los PDFs vía requests asíncronas de las URLs enlazadas, los guarda en `data/projects/{id}/pdfs` y los nombra automáticamente usando la convención `[Año]_[PrimerAutor]_[Slug_Titulo].pdf`.
 - **Subida Manual (Upload):** Endpoint `POST /search/upload-pdf/{article_id}`. Para los artículos que están bloqueados por un paywall, el usuario puede subir localmente su archivo PDF desde el dashboard de resultados. El archivo se enlaza directamente a su base de datos.
@@ -59,12 +65,30 @@ sequenceDiagram
 #### Archivos clave del flujo
 | Archivo | Responsabilidad |
 |---------|----------------|
-| `services/query_builder.py` | Genera queries deterministas por API |
+| `services/query_builder.py` | Genera queries deterministas para las 9 APIs |
 | `services/llm_service.py` | Extrae conceptos del input (solo 1 llamada LLM) |
-| `services/search_service.py` | Orquesta búsqueda, dedup y almacenamiento |
+| `services/search_service.py` | Orquesta búsqueda paralela, dedup y almacenamiento |
 | `services/mcp_clients/openalex_client.py` | Cliente OpenAlex REST API |
 | `services/mcp_clients/semantic_scholar_client.py` | Cliente Semantic Scholar API |
 | `services/mcp_clients/arxiv_client.py` | Cliente ArXiv Atom API |
+| `services/mcp_clients/crossref_client.py` | Cliente Crossref via `habanero` |
+| `services/mcp_clients/core_client.py` | Cliente CORE API v3 |
+| `services/mcp_clients/scielo_client.py` | Cliente SciELO Search API |
+| `services/mcp_clients/redalyc_client.py` | Cliente Redalyc REST API |
+| `services/mcp_clients/oaipmh_client.py` | Cliente OAI-PMH (AgEcon + Organic Eprints) |
+
+#### Bases de datos — Resumen de acceso
+| Base | Tipo | API Key | Link de registro |
+|------|------|---------|------------------|
+| OpenAlex | REST | Opcional (gratis) | [openalex.org](https://openalex.org/settings/api) |
+| Semantic Scholar | REST | Opcional (gratis) | [semanticscholar.org](https://www.semanticscholar.org/product/api) |
+| ArXiv | Atom/REST | No | — |
+| Crossref | REST (`habanero`) | No (email recomendado) | — |
+| CORE | REST v3 | Sí (gratis) | [core.ac.uk](https://core.ac.uk/api-keys/register) |
+| SciELO | REST | No | — |
+| Redalyc | REST | Sí (gratis) | [redalyc.org](https://redalyc.org) |
+| AgEcon Search | OAI-PMH | No | — |
+| Organic Eprints | OAI-PMH | No | — |
 
 ### Screening (Cribado PRISMA) (Fase 2)
 

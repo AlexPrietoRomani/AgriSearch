@@ -2,14 +2,30 @@
 
 **AgriSearch** es una plataforma de **Búsqueda Sistemática y Asistente de Investigación Agrícola** diseñada para automatizar, agilizar y optimizar las fases de revisión bibliográfica y extracción de datos en investigaciones académicas, basándose estrictamente en las directrices de reporte **PRISMA 2020**.
 
-El sistema integra Motores de Búsqueda Académicos (OpenAlex, Semantic Scholar, ArXiv) y Modelos de Lenguaje Grandes (LLMs) (vía Ollama/LiteLLM) en Arquitecturas de Generación Aumentada por Recuperación (RAG).
+El sistema integra **9 Bases de Datos Científicas** y Modelos de Lenguaje Grandes (LLMs) (vía Ollama/LiteLLM) en Arquitecturas de Generación Aumentada por Recuperación (RAG).
+
+### Bases de Datos Integradas
+
+| Base | Tipo | API Key |
+|------|------|---------|
+| OpenAlex | REST | Opcional (gratis) |
+| Semantic Scholar | REST | Opcional (gratis) |
+| ArXiv | Atom/REST | No |
+| Crossref | REST (`habanero`) | No |
+| CORE | REST v3 | Sí (gratis) |
+| SciELO | REST | No |
+| Redalyc | REST | Sí (gratis) |
+| AgEcon Search | OAI-PMH | No |
+| Organic Eprints | OAI-PMH | No |
+
+> 📌 Ver `backend/.env.example` para instrucciones de registro y links.
 
 ### Flujo de Búsqueda
 
 1. **Describir** — El usuario describe su tema en lenguaje natural.
 2. **Extraer conceptos** — Un LLM local (Ollama) extrae conceptos clave, sinónimos y desglose PICO/PEO.
-3. **Construir queries** — Un módulo determinista (`query_builder.py`) genera la query óptima para cada API (OpenAlex, Semantic Scholar, ArXiv), sin depender de un LLM para la adaptación.
-4. **Buscar en paralelo** — Las queries se ejecutan concurrentemente contra las 3+ bases de datos.
+3. **Construir queries** — Un módulo determinista (`query_builder.py`) genera la query óptima para cada API, sin depender de un LLM para la adaptación.
+4. **Buscar en paralelo** — Las queries se ejecutan concurrentemente contra las 9 bases de datos.
 5. **Deduplicar** — Se eliminan duplicados por DOI y título (fuzzy matching ≥85%).
 6. **Presentar** — El usuario ve los resultados en una tabla interactiva con la query enviada a cada API para transparencia.
 
