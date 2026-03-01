@@ -77,6 +77,7 @@ class SearchQueryResponse(BaseModel):
     databases_used: str
     total_results: int
     duplicates_removed: int
+    adapted_queries_json: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

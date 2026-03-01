@@ -32,6 +32,7 @@ export default function SearchWizardResults({
     const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
     const [expandedAbstract, setExpandedAbstract] = useState<string | null>(null);
     const [uploadingId, setUploadingId] = useState<string | null>(null);
+    const [showQueries, setShowQueries] = useState(false);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, articleId: string) => {
         const file = e.target.files?.[0];
@@ -109,6 +110,53 @@ export default function SearchWizardResults({
                     </div>
                 ))}
             </div>
+
+            {/* Queries Debug Section */}
+            {(searchResults.prompt_used || (searchResults.adapted_queries && Object.keys(searchResults.adapted_queries).length > 0)) && (
+                <div className="mb-6 bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-hidden">
+                    <button
+                        onClick={() => setShowQueries(!showQueries)}
+                        className="w-full px-5 py-3 flex items-center justify-between text-slate-300 hover:text-emerald-400 hover:bg-slate-800/50 transition-colors"
+                    >
+                        <div className="flex items-center gap-2 font-semibold">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                            </svg>
+                            Ver Detalles de la Consulta (Prompt y Queries API)
+                        </div>
+                        <svg className={`w-5 h-5 transition-transform duration-300 ${showQueries ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+
+                    {showQueries && (
+                        <div className="px-5 pb-5 pt-2 border-t border-slate-700/50">
+                            {searchResults.prompt_used && (
+                                <div className="mb-4">
+                                    <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-2">Prompt de Usuario</h4>
+                                    <div className="p-3 bg-slate-950 rounded-lg text-sm text-slate-300 border border-slate-800 font-mono">
+                                        {searchResults.prompt_used}
+                                    </div>
+                                </div>
+                            )}
+
+                            {searchResults.adapted_queries && Object.keys(searchResults.adapted_queries).length > 0 && (
+                                <div>
+                                    <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-2">Queries Adaptadas Transmitidas (Por Base de Datos)</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {Object.entries(searchResults.adapted_queries).map(([db, query]) => (
+                                            <div key={db} className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                                                <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">{db}</div>
+                                                <div className="text-xs text-slate-300 font-mono break-all">{query}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Download Progress */}
             {downloadProgress && (

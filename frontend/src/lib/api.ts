@@ -80,6 +80,7 @@ export interface SearchQuery {
   databases_used: string;
   total_results: number;
   duplicates_removed: number;
+  adapted_queries_json?: string;
   created_at: string;
 }
 
@@ -133,6 +134,7 @@ export interface SearchResults {
   articles: Article[];
   counts_by_source: Record<string, number>;
   adapted_queries?: Record<string, string>;
+  prompt_used?: string;
 }
 
 export async function executeSearch(data: {

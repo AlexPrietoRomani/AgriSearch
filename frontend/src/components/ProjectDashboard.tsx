@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { getProject, getProjectSearches, updateProject, deleteSearch } from "../lib/api";
-import type { SearchQuery, Project } from "../lib/api";
+import { getProject, getProjectSearches, updateProject, deleteSearch, listProjectScreeningSessions } from "../lib/api";
+import type { SearchQuery, Project, ScreeningSession } from "../lib/api";
 
 const AGRI_AREAS = [
     { value: "general", label: "General" },
@@ -19,6 +19,7 @@ export default function ProjectDashboard() {
     const [projectId, setProjectId] = useState("");
     const [project, setProject] = useState<Project | null>(null);
     const [searches, setSearches] = useState<SearchQuery[]>([]);
+    const [screenings, setScreenings] = useState<ScreeningSession[]>([]);
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState({ name: "", description: "", agri_area: "", language: "es" });
     const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
@@ -57,6 +58,13 @@ export default function ProjectDashboard() {
 
             const projectSearches = await getProjectSearches(id);
             setSearches(projectSearches);
+
+            try {
+                const projectScreenings = await listProjectScreeningSessions(id);
+                setScreenings(projectScreenings);
+            } catch (e) {
+                console.error("Failed to load screenings", e);
+            }
         } catch (e) {
             console.error("Failed to load project", e);
             window.location.href = "/";
@@ -379,7 +387,7 @@ export default function ProjectDashboard() {
                                     </span>
                                     <button
                                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchToDelete(s); }}
-                                        className="p-1.5 text-slate-500 hover:text-white hover:bg-rose-500 rounded-md transition-colors"
+                                        className="p-1.5 text-slate-500 hover:text-white hover:bg-rose-500 rounded-md transition-colors relative z-20 cursor-pointer"
                                         title="Eliminar esta búsqueda"
                                     >
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -418,6 +426,49 @@ export default function ProjectDashboard() {
                             >
                                 Iniciar Búsqueda
                             </a>
+                        </div>
+                    )}
+                </div>
+
+                <div className="mt-12 mb-6 border-b border-slate-700/50 pb-4">
+                    <h2 className="text-xl font-bold text-slate-200">Historial de Revisiones (Screening)</h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {screenings.map((s, idx) => (
+                        <a
+                            key={s.id}
+                            href={`/screening?id=${s.id}`}
+                            className="block p-6 bg-slate-800/80 border border-slate-700/50 hover:border-violet-500/50 rounded-2xl transition-all hover:-translate-y-1 group relative"
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <h3 className="text-lg font-bold text-white group-hover:text-violet-400 transition-colors">
+                                    {s.name || `Sesión de Screening ${idx + 1}`}
+                                </h3>
+                                <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-800 rounded-md">
+                                    {new Date(s.created_at).toLocaleDateString()}
+                                </span>
+                            </div>
+
+                            <p className="text-sm text-slate-400 mb-6 line-clamp-3">
+                                {s.goal || "Sesión de filtrado de resultados."}
+                            </p>
+
+                            <div className="flex items-center justify-between mt-auto">
+                                <span className="text-xs font-semibold px-2.5 py-1 bg-violet-500/10 text-violet-400 rounded-lg">
+                                    {s.reviewed_count} / {s.total_articles} Revisados
+                                </span>
+                                <div className="flex gap-2">
+                                    {s.included_count > 0 && <span className="text-xs text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">{s.included_count} In</span>}
+                                    {s.excluded_count > 0 && <span className="text-xs text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">{s.excluded_count} Ex</span>}
+                                </div>
+                            </div>
+                        </a>
+                    ))}
+
+                    {screenings.length === 0 && (
+                        <div className="col-span-full text-center py-10 border border-dashed border-slate-700 rounded-2xl">
+                            <p className="text-slate-500">Aún no se ha iniciado el proceso de Screening (Revisión) para estas búsquedas.</p>
                         </div>
                     )}
                 </div>

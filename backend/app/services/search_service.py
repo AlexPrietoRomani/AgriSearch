@@ -9,6 +9,7 @@ consolidates results, and removes duplicates. All results are scoped by project_
 import asyncio
 import logging
 import re
+import json
 from datetime import datetime, timezone
 
 from rapidfuzz import fuzz
@@ -146,6 +147,8 @@ async def execute_search(
     # No synonyms at this stage — the LLM already provided them in step 1.
     # The concepts themselves are enough for a good search.
     adapted_queries = build_all_queries(concepts=concepts, databases=databases)
+    search_query.adapted_queries_json = json.dumps(adapted_queries, ensure_ascii=False)
+    await db.flush()
 
     logger.info("Concepts extracted: %s", concepts)
     logger.info("Adapted queries: %s", adapted_queries)

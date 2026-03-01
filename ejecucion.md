@@ -43,6 +43,7 @@ Desde la raíz principal del proyecto, debes instalar las dependencias de ambas 
 > 
 > **Ventana 1 (Backend):** 
 > ```bash
+> cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
 > cd backend
 > python -m venv venv
 > venv\Scripts\activate
@@ -52,6 +53,7 @@ Desde la raíz principal del proyecto, debes instalar las dependencias de ambas 
 > 
 > **Ventana 2 (Frontend):**
 > ```bash
+> cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
 > cd frontend
 > npm install
 > npm run dev

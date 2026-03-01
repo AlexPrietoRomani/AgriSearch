@@ -97,6 +97,7 @@ class SearchQuery(Base):
     databases_used = Column(String(500), nullable=False)  # Comma-separated
     total_results = Column(Integer, default=0)
     duplicates_removed = Column(Integer, default=0)
+    adapted_queries_json = Column(Text, nullable=True)  # JSON representation of adapted queries
     created_at = Column(DateTime, default=utcnow)
 
     # Relationships

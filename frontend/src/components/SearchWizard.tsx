@@ -39,7 +39,9 @@ export default function SearchWizard() {
     const [projectId, setProjectId] = useState("");
     const [projectName, setProjectName] = useState("Cargando...");
 
-    const [step, setStep] = useState<Step>("describe");
+    // Check initial search params
+    const initialQueryId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get("query_id") : null;
+    const [step, setStep] = useState<Step>(initialQueryId ? "results" : "describe");
     const [userInput, setUserInput] = useState("");
 
     useEffect(() => {
@@ -54,7 +56,7 @@ export default function SearchWizard() {
 
         const queryId = params.get("query_id");
         if (queryId) {
-            handleSelectSearch(queryId, id);
+            handleSelectHistoricalSearch(queryId, id);
         }
     }, []);
 
@@ -70,23 +72,36 @@ export default function SearchWizard() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    async function handleSelectSearch(queryId: string, projId: string) {
+    async function handleSelectHistoricalSearch(queryId: string, projId: string) {
         setLoading(true);
         setError(null);
         try {
-            const { articles, total } = await listArticles(projId, 0, 200, undefined, queryId);
+            // First load the actual search query to get the adapted_queries info
+            let searchQueryInfo = null;
+            try {
+                const searches = await getProjectSearches(projId);
+                searchQueryInfo = searches.find(s => s.id === queryId);
+            } catch (e) {
+                console.warn("Could not load search query details", e);
+            }
+
+            const { articles, total } = await listArticles(projId, 0, 1000, undefined, queryId);
             setArticles(articles);
             const counts: Record<string, number> = {};
             articles.forEach(a => {
                 counts[a.source_database] = (counts[a.source_database] || 0) + 1;
             });
+
+            // Reconstruct the search results context
             setSearchResults({
                 project_id: projId,
                 query_id: queryId,
                 total_found: total,
-                duplicates_removed: 0, // Mock, actual is not easily recovered from db here
+                duplicates_removed: searchQueryInfo?.duplicates_removed || 0,
                 articles: articles,
-                counts_by_source: counts
+                counts_by_source: counts,
+                adapted_queries: searchQueryInfo?.adapted_queries_json ? JSON.parse(searchQueryInfo.adapted_queries_json) : undefined,
+                prompt_used: searchQueryInfo?.raw_input
             });
             setStep("results");
         } catch (e: any) {
