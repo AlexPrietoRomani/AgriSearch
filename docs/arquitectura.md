@@ -87,6 +87,8 @@ Para ejemplificar, se describe detalladamente qué pasa tras bambalinas cuando u
   - Presenta un panel de tarjetas. Al hacer click en una, viaja a la URL `/search?query_id=ABC`.
   - El `<SearchWizard />` captura ese ID en el `useEffect()`, cambia directamente a `results` e infla el estado recuperando todo desde SQLite.
 - **Historial de Revisiones (`ProjectDashboard.tsx` -> Screening):**
-  - Igual metodología. Presentación dinámica que redarguye hacia `<ScreeningApp />` en otra URL.
-- **Eliminaciones (`DELETE /projects/{id}` o `DELETE /search/{p}/{q}`):**
+  - Solicita `GET /screening/eligibility/{project_id}` antes de permitir crear una revisión. El servidor valida artículos disponibles cruzando datos con sesiones activas.
+  - Al hacer click en "Revisiones", el usuario puede crear una nueva (`new=true`) si cumple elegibilidad.
+  - Igual metodología en acceso histórico (`setup_session=...`). La presentación dinámica redirige hacia `<ScreeningApp />` en otra URL aislada por ID de sesión.
+- **Eliminaciones (`DELETE /projects/{id}`, `DELETE /search/{p}/{q}`, o DELETE sesiones):**
   - Se orquestan en Cascada (Cascading Delete). Un `SearchQuery` eliminado erradica consigo no solo su metadata DB, si no mediante hooks y servicios se destruyen todos los archivos PDF locales asociados y registros de Screening generados encima de ellos garantizando congruencia del Disco Duro.

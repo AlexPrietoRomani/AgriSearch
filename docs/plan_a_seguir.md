@@ -179,8 +179,8 @@ Interfaz de cribado inspirada en **Rayyan.ai**, organizada en una única vista u
 
 **Reglas de negocio:**
 - **Solo artículos con PDF descargado** (`download_status = SUCCESS`) entran al screening. Los artículos sin PDF (paywall, failed, pending) quedan excluidos.
-- **1 sesión activa por proyecto.** Si ya existe una sesión, el usuario puede continuar la sesión existente o eliminarla para crear una nueva.
-- **Intención futura (multi-persona):** En versiones posteriores se planea permitir que N personas trabajen simultáneamente, cada una con su sesión y artículos asignados. Por ahora, la restricción de 1 sesión simplifica el flujo.
+- **Soporte Multi-Screening:** Se permite tener crear sesiones concurrentes por proyecto, ideal para que diversas personas trabajen simultáneamente (multi-persona).
+- **Control de Artículos Libres (*Eligibility*):** Al crear una nueva revisión, el sistema contabiliza estrictamente si todos los artículos descargados ya están aglomerados por sesiones anteriores. En tal caso, bloquea la creación de revisiones vacías hasta recopilar más literatura.
 
 ##### Página 1: Configuración del Screening (`/screening?id=X` → `ScreeningSetup.tsx`)
 

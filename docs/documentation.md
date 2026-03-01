@@ -130,8 +130,11 @@ Interfaz interactiva para screening:
 - **Asistencia Inteligente (AI Assist)**: Después de 10 decisiones manuales, el sistema genera sugerencias de inclusión/exclusión usando *Few-shot learning*. El LLM analiza el progreso y ayuda a mantener consistencia en los criterios.
 - **Formateos automáticos**: Autores largos se truncan y abstracts se traducen con Ollama local.
 
-#### Intención Futura: Multi-persona
-> En versiones posteriores se permitirá tener múltiples sesiones para que varias personas trabajen simultáneamente en el screening de un mismo proyecto, cada una con sus artículos asignados. Por ahora, la restricción de 1 sesión simplifica el flujo.
+#### Soporte Multi-Screening (Revisiones)
+El sistema ahora soporta formalmente la creación de **múltiples sesiones de screening concurrentes** en un mismo proyecto. 
+Esto permite que varias personas trabajen simultáneamente dividiéndose los artículos.
+- Al hacer clic en "Revisiones" dentro del Dashboard, un endpoint de validación (`GET /eligibility/{project_id}`) verifica cuántos artículos que fueron descargados con éxito (`SUCCESS`) aún están libres de asignación.
+- **Regla de Bloqueo**: Si todos los artículos exitosos ya están aglomerados en las sesiones existentes, el sistema levanta una alerta impidiendo la creación de una revisión vacía y exigiendo realizar más búsquedas previamente.
 
 ---
 
