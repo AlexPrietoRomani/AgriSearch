@@ -20,7 +20,7 @@ from app.models.schemas import (
     SearchResultsResponse,
 )
 from app.services.llm_service import generate_search_query
-from app.services.search_service import execute_search, get_project_articles
+from app.services.search_service import execute_search, get_project_articles, delete_search_query
 from app.services.download_service import download_articles
 
 logger = logging.getLogger(__name__)
@@ -213,3 +213,22 @@ async def upload_pdf(
 
     return ArticleResponse.model_validate(article)
 
+
+@router.delete(
+    "/{project_id}/{query_id}",
+    summary="Delete a search query with its articles and PDFs",
+)
+async def delete_search_endpoint(
+    project_id: str,
+    query_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Delete a search query and its associated articles and files."""
+    try:
+        await delete_search_query(db=db, project_id=project_id, query_id=query_id)
+        return {"status": "success", "message": "Search query deleted"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to delete search query: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to delete search query")

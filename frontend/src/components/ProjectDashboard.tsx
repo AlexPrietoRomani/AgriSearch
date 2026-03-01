@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getProject, getProjectSearches, updateProject } from "../lib/api";
+import { getProject, getProjectSearches, updateProject, deleteSearch } from "../lib/api";
 import type { SearchQuery, Project } from "../lib/api";
 
 const AGRI_AREAS = [
@@ -24,6 +24,8 @@ export default function ProjectDashboard() {
     const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
     const [customArea, setCustomArea] = useState("");
     const [saving, setSaving] = useState(false);
+    const [searchToDelete, setSearchToDelete] = useState<SearchQuery | null>(null);
+    const [isDeletingSearch, setIsDeletingSearch] = useState(false);
     const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
     useEffect(() => {
@@ -87,6 +89,22 @@ export default function ProjectDashboard() {
         }
     };
 
+    const confirmDeleteSearch = async () => {
+        if (!searchToDelete) return;
+        setIsDeletingSearch(true);
+        try {
+            await deleteSearch(projectId, searchToDelete.id);
+            setSearches(searches.filter(s => s.id !== searchToDelete.id));
+            showNotification("Búsqueda eliminada correctamente");
+        } catch (e: any) {
+            console.error("Failed to delete search", e);
+            showNotification(e.message || "Error al eliminar la búsqueda", 'error');
+        } finally {
+            setIsDeletingSearch(false);
+            setSearchToDelete(null);
+        }
+    };
+
     const toggleArea = (val: string) => {
         if (selectedAreas.includes(val)) {
             setSelectedAreas(selectedAreas.filter(a => a !== val));
@@ -138,6 +156,44 @@ export default function ProjectDashboard() {
                         </svg>
                     )}
                     <span className="font-bold">{notification.message}</span>
+                </div>
+            )}
+
+            {/* Delete Search Modal */}
+            {searchToDelete && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+                    <div className="bg-slate-900 border border-slate-700 p-8 rounded-3xl max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-4 text-rose-500 mb-4">
+                            <div className="p-3 bg-rose-500/10 rounded-full">
+                                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </div>
+                            <h3 className="text-2xl font-black">Eliminar Búsqueda</h3>
+                        </div>
+                        <p className="text-slate-300 mb-6 leading-relaxed">
+                            ¿Estás seguro que deseas eliminar esta búsqueda de <strong>{searchToDelete.total_results}</strong> artículos?
+                            Esta acción <strong>borrará todos los PDFs locales</strong> descargados asociados a  esta búsqueda y no podrá restablecerse.
+                        </p>
+                        <div className="flex gap-4">
+                            <button
+                                onClick={confirmDeleteSearch}
+                                disabled={isDeletingSearch}
+                                className="flex-1 px-6 py-3 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center"
+                            >
+                                {isDeletingSearch ? (
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : "Sí, Eliminar Definirivamente"}
+                            </button>
+                            <button
+                                onClick={() => setSearchToDelete(null)}
+                                disabled={isDeletingSearch}
+                                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl transition-colors disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -309,18 +365,28 @@ export default function ProjectDashboard() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {searches.map((s, idx) => (
-                        <a
+                        <div
                             key={s.id}
-                            href={`/search?id=${projectId}&query_id=${s.id}`}
-                            className="block p-6 bg-slate-800/80 border border-slate-700/50 hover:border-emerald-500/50 rounded-2xl cursor-pointer transition-all hover:-translate-y-1 group"
+                            className="block p-6 bg-slate-800/80 border border-slate-700/50 hover:border-emerald-500/50 rounded-2xl transition-all hover:-translate-y-1 group relative"
                         >
                             <div className="flex justify-between items-start mb-4">
                                 <h3 className="text-lg font-bold text-white group-hover:text-emerald-400 transition-colors">
                                     Búsqueda {idx + 1}
                                 </h3>
-                                <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-800 rounded-md">
-                                    {new Date(s.created_at).toLocaleDateString()}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium text-slate-500 px-2 py-1 bg-slate-800 rounded-md">
+                                        {new Date(s.created_at).toLocaleDateString()}
+                                    </span>
+                                    <button
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchToDelete(s); }}
+                                        className="p-1.5 text-slate-500 hover:text-white hover:bg-rose-500 rounded-md transition-colors"
+                                        title="Eliminar esta búsqueda"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
 
                             <p className="text-sm text-slate-400 mb-6 line-clamp-3">
@@ -335,7 +401,11 @@ export default function ProjectDashboard() {
                                     {s.databases_used ? s.databases_used.split(',').length : 0} Fuentes
                                 </span>
                             </div>
-                        </a>
+
+                            {/* Make entire card clickable except for the delete button */}
+                            <a href={`/search?id=${projectId}&query_id=${s.id}`} className="absolute inset-0 z-0"></a>
+                            <div className="relative z-10 flex items-center justify-between mt-auto pointer-events-none pb-0"></div>
+                        </div>
                     ))}
 
                     {searches.length === 0 && (

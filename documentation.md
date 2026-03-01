@@ -21,6 +21,7 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 - **Extracción de Conceptos por LLM:** El LLM (Ollama) se usa **solo una vez** para extraer conceptos, sinónimos y desglose PICO del input del usuario. Retorna un JSON estructurado (no una query booleana libre).
 - **Descarga Múltiple Open Access:** El servicio `download_service.py` obtiene automáticamente los PDFs vía requests asíncronas de las URLs enlazadas, los guarda en `data/projects/{id}/pdfs` y los nombra automáticamente usando la convención `[Año]_[PrimerAutor]_[Slug_Titulo].pdf`.
 - **Subida Manual (Upload):** Endpoint `POST /search/upload-pdf/{article_id}`. Para los artículos que están bloqueados por un paywall, el usuario puede subir localmente su archivo PDF desde el dashboard de resultados. El archivo se enlaza directamente a su base de datos.
+- **Eliminación de Búsquedas:** Los usuarios pueden eliminar consultas del historial preventivamente. Esta acción ejecuta un Cascade Delete en la base de datos (eliminando `SearchQuery` y sus `Article`s) e intercepta el almacenamiento local, eliminando automáticamente los archivos PDF asociados a tales IDs para liberar espacio en disco.
 - **API Response:** `ArticleResponse` incluye `local_pdf_path` para que el frontend pueda mostrar el nombre del archivo local en la tabla de resultados. `SearchResultsResponse` incluye `adapted_queries` que muestra la query enviada a cada API para transparencia.
 
 #### Flujo de Búsqueda (Diagrama de Secuencia)

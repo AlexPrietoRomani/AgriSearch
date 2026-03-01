@@ -326,3 +326,49 @@ async def get_project_articles(
     articles = list(result.scalars().all())
 
     return articles, total
+
+
+async def delete_search_query(
+    db: AsyncSession,
+    project_id: str,
+    query_id: str,
+):
+    """
+    Deletes a search query and all its associated articles from the database.
+    Also deletes any locally downloaded PDF files for those articles.
+    """
+    import os
+    import shutil
+    
+    # Verify the search query exists
+    result = await db.execute(
+        select(SearchQuery).where(
+            SearchQuery.id == query_id, SearchQuery.project_id == project_id
+        )
+    )
+    search_query = result.scalar_one_or_none()
+    
+    if not search_query:
+        raise ValueError("Search Query not found.")
+        
+    # Get associated articles to locate PDF files
+    articles_result = await db.execute(
+        select(Article.local_pdf_path).where(
+            Article.search_query_id == query_id,
+            Article.project_id == project_id,
+            Article.local_pdf_path.is_not(None)
+        )
+    )
+    pdf_paths = [row[0] for row in articles_result.fetchall()]
+    
+    # Delete PDF files
+    for pdf_path in pdf_paths:
+        try:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+        except Exception as e:
+            logger.warning(f"Failed to delete PDF {pdf_path}: {e}")
+            
+    # Delete the search query (SQLAlchemy cascade deletes Articles)
+    await db.delete(search_query)
+    await db.commit()

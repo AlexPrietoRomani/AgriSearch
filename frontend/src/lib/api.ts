@@ -146,6 +146,10 @@ export async function executeSearch(data: {
   return request("/search/execute", { method: "POST", body: JSON.stringify(data) });
 }
 
+export async function deleteSearch(projectId: string, queryId: string): Promise<void> {
+  return request(`/search/${projectId}/${queryId}`, { method: "DELETE" });
+}
+
 export async function listArticles(
   projectId: string,
   skip = 0,
