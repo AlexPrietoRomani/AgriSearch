@@ -19,12 +19,68 @@ from app.models.project import Article, SearchQuery, Project
 from app.services.mcp_clients.openalex_client import search_openalex
 from app.services.mcp_clients.semantic_scholar_client import search_semantic_scholar
 from app.services.mcp_clients.arxiv_client import search_arxiv
-from app.services.llm_service import adapt_query_for_database
+from app.services.query_builder import build_all_queries
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 DOI_REGEX = re.compile(r"^10\.\d{4,}/\S+$")
+
+# Common boolean/separator tokens to strip from queries
+_QUERY_SEPARATORS = re.compile(r'\b(?:AND|OR|NOT)\b', re.IGNORECASE)
+_CLEAN_RE = re.compile(r'[()"\[\]]')
+
+
+def _extract_concepts_from_query(query: str) -> list[str]:
+    """
+    Extract meaningful concepts from a query string.
+
+    Handles both readable boolean-style queries ("biological control AND thrips AND strawberry")
+    and plain text descriptions. Returns a list of clean concept phrases.
+    """
+    if not query or not query.strip():
+        return []
+
+    # Remove boolean operators and parentheses
+    cleaned = _QUERY_SEPARATORS.sub(' ', query)
+    cleaned = _CLEAN_RE.sub(' ', cleaned)
+
+    # Split by whitespace runs and rejoin meaningful phrases
+    # A concept is a group of words between boolean operators
+    raw_parts = [part.strip() for part in cleaned.split('  ') if part.strip()]
+
+    # If splitting by double-spaces didn't work well, try single-space chunks
+    if len(raw_parts) <= 1:
+        raw_parts = [p.strip() for p in re.split(r'\s{2,}', cleaned) if p.strip()]
+
+    # If still just one big blob, split by single spaces into reasonable chunks
+    if len(raw_parts) <= 1:
+        words = cleaned.split()
+        # Group into phrases of 1-3 words
+        raw_parts = []
+        i = 0
+        while i < len(words):
+            # Try to identify multi-word concepts (2-3 words)
+            if i + 2 < len(words):
+                raw_parts.append(f"{words[i]} {words[i+1]} {words[i+2]}")
+                i += 3
+            elif i + 1 < len(words):
+                raw_parts.append(f"{words[i]} {words[i+1]}")
+                i += 2
+            else:
+                raw_parts.append(words[i])
+                i += 1
+
+    # Clean up and deduplicate
+    concepts = []
+    seen = set()
+    for part in raw_parts:
+        concept = part.strip().lower()
+        if concept and concept not in seen and len(concept) > 1:
+            concepts.append(part.strip())
+            seen.add(concept)
+
+    return concepts[:10]  # Cap at 10 concepts max
 
 
 def _normalize_doi(doi: str | None) -> str | None:
@@ -76,20 +132,17 @@ async def execute_search(
     db.add(search_query)
     await db.flush()
 
-    # Adapt queries for each target DB concurrently
-    adapt_tasks = []
-    if "openalex" in databases: adapt_tasks.append(("openalex", adapt_query_for_database(query, "openalex")))
-    if "semantic_scholar" in databases: adapt_tasks.append(("semantic_scholar", adapt_query_for_database(query, "semantic_scholar")))
-    if "arxiv" in databases: adapt_tasks.append(("arxiv", adapt_query_for_database(query, "arxiv")))
+    # ── Build deterministic queries for each DB ──
+    # Extract search concepts from the query string
+    # The query may be a readable string like "biological control AND thrips AND strawberry"
+    # or a plain text description. We split by common separators to extract concepts.
+    concepts = _extract_concepts_from_query(query)
+    # No synonyms at this stage — the LLM already provided them in step 1.
+    # The concepts themselves are enough for a good search.
+    adapted_queries = build_all_queries(concepts=concepts, databases=databases)
 
-    adapted_results = await asyncio.gather(*[t[1] for t in adapt_tasks], return_exceptions=True)
-    adapted_queries = {}
-    for (source_name, _), result in zip(adapt_tasks, adapted_results):
-        if isinstance(result, Exception):
-            logger.warning("Failed to adapt query for %s, using original. Error: %s", source_name, str(result))
-            adapted_queries[source_name] = query
-        else:
-            adapted_queries[source_name] = result
+    logger.info("Concepts extracted: %s", concepts)
+    logger.info("Adapted queries: %s", adapted_queries)
 
     # Execute searches in parallel using adapted queries
     tasks = []
@@ -221,6 +274,7 @@ async def execute_search(
         "duplicates_removed": duplicates_removed,
         "articles": stored_articles,
         "counts_by_source": counts_by_source,
+        "adapted_queries": adapted_queries,
     }
 
 

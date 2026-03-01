@@ -86,8 +86,12 @@ async def search_arxiv(
 
     try:
         async with aiohttp.ClientSession() as session:
+            # The query arrives pre-formatted from query_builder with proper
+            # field prefixes like: all:"concept1" AND all:"concept2"
+            # Do NOT add another "all:" prefix here — it would break the query.
+            search_query = query if ("all:" in query or "ti:" in query or "au:" in query) else f"all:{query}"
             params = {
-                "search_query": f"all:{query}",
+                "search_query": search_query,
                 "start": 0,
                 "max_results": min(fetch_limit, 300),
                 "sortBy": "relevance",
