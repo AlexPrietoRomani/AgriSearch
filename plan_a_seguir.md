@@ -375,7 +375,7 @@ graph TD
 
 ---
 
-#### Sub-fase 1.2: Ejecución de la Búsqueda Masiva en Bases de Datos (✅ Completado)
+#### Sub-fase 1.2: Ejecución de la Búsqueda Masiva en Bases de Datos (✅ Completado — Refactorizado)
 
 **Propósito:**
 Ejecutar las queries aprobadas contra múltiples bases de datos científicas y consolidar los resultados en un dataset único, desduplicado y trazable por proyecto.
@@ -384,26 +384,28 @@ Ejecutar las queries aprobadas contra múltiples bases de datos científicas y c
 PRISMA 2020 requiere reportar el número de registros identificados en cada base de datos y el número de duplicados removidos (Page et al., 2021). La combinación de múltiples fuentes reduce el sesgo de publicación y aumenta la exhaustividad de la revisión (Cochrane Handbook, Higgins et al., 2019).
 
 **Inputs:**
-1. Query(s) aprobada(s) de la Sub-fase 1.1.
+1. Conceptos y sinónimos extraídos por el LLM en la Sub-fase 1.1 (JSON estructurado).
 2. Bases de datos seleccionadas (OpenAlex, Semantic Scholar, ArXiv).
 3. Parámetros de paginación y límites máximos.
 
 **Acciones a Realizar:**
-1. Invocar en paralelo (asyncio) los clientes MCP: `openalex_client.py`, `semantic_scholar_client.py`, `arxiv_client.py`.
-2. Implementar paginación automática para cada API hasta el límite configurado o el agotamiento de resultados.
-3. Normalizar los resultados al schema interno `Article` (DOI, título, autores, año, abstract, fuente, URL).
-4. Ejecutar deduplicación multi-nivel: primero por DOI exacto, luego por similitud de título (fuzzy matching con Levenshtein ≥ 0.85).
-5. Registrar la procedencia de cada artículo (de qué base provino, incluyendo duplicados detectados).
-6. Almacenar todos los artículos en la tabla `articles` asociados al `project_id`.
-7. Generar el conteo por base de datos para el diagrama PRISMA (N identificados por base, N duplicados).
-8. Enviar progreso en tiempo real al frontend vía WebSockets o SSE.
-9. Manejar errores y reintentos con backoff exponencial para APIs con rate-limit.
-10. Exportar automáticamente el CSV crudo a `data/projects/{project_uuid}/raw/`.
-11. Si el usuario desea, ejecutar `browser_client.py` (browsermcp) para búsquedas adicionales en Google Scholar u otras fuentes web.
-12. Validar que los DOIs retornados sean válidos (formato correcto con regex `10.\d{4,}/.*`).
+1. **Construcción determinista de queries** (`query_builder.py`): para cada base de datos, el código (NO un LLM) genera la query óptima según la sintaxis de cada API:
+   - **OpenAlex**: texto plano con keywords separados por espacio (`search=keyword1 keyword2 synonym1`).
+   - **Semantic Scholar**: keywords concisas sin operadores booleanos complejos.
+   - **ArXiv**: formato `all:"concept1" AND (all:"concept1" OR all:"synonym1")`.
+2. Invocar en paralelo (asyncio) los clientes: `openalex_client.py`, `semantic_scholar_client.py`, `arxiv_client.py`.
+3. Implementar paginación automática para cada API hasta el límite configurado.
+4. Normalizar los resultados al schema interno `Article` (DOI, título, autores, año, abstract, fuente, URL).
+5. Ejecutar deduplicación multi-nivel: primero por DOI exacto, luego por similitud de título (fuzzy matching con Levenshtein ≥ 0.85).
+6. Registrar la procedencia de cada artículo (de qué base provino, incluyendo duplicados detectados).
+7. Almacenar todos los artículos en la tabla `articles` asociados al `project_id`.
+8. Generar el conteo por base de datos para el diagrama PRISMA (N identificados por base, N duplicados).
+9. Retornar `adapted_queries` en la respuesta API para que el usuario vea exactamente qué query se envió a cada base de datos.
+10. Validar que los DOIs retornados sean válidos (formato correcto con regex `10.\d{4,}/.*`).
 
 **Outputs:**
-- DataFrame consolidado y desduplicado almacenado en BD y como CSV en `data/projects/{id}/raw/busqueda_cruda_YYYY-MM-DD.csv`.
+- Dataset consolidado y desduplicado almacenado en BD.
+- `adapted_queries`: queries exactas enviadas a cada API (para transparencia y reproducibilidad).
 - Reporte de conteos por base (Para diagrama PRISMA: N de cada fuente, N duplicados).
 
 **QA y Métricas:**
@@ -412,23 +414,27 @@ PRISMA 2020 requiere reportar el número de registros identificados en cada base
 | Duplicados removidos correctamente (precision) | ≥ 98% |
 | Artículos únicos verificados contra DOI | 100% |
 | Tasa de error de conexión a APIs < 2% | ≥ 98% disponibilidad |
-| CSV exportado coincide con N en BD | 100% |
-| Formato de CSV compatible con el template del usuario | Sí |
+| Query builder genera queries válidas por API | 100% (18 tests unitarios) |
 
 **Flujograma:**
 ```mermaid
 graph TD
-    A[Queries aprobadas] --> B{Consultar bases en paralelo}
-    B -->|OpenAlex MCP| C[Resultados OpenAlex]
-    B -->|Semantic Scholar MCP| D[Resultados Semantic Scholar]
-    B -->|ArXiv MCP| E[Resultados ArXiv]
-    B -->|BrowserMCP| F[Resultados Web]
-    C & D & E & F --> G[Normalización al schema Article]
-    G --> H[Deduplicación por DOI + fuzzy title]
-    H --> I[Almacenar en BD con project_id]
-    I --> J[Exportar CSV crudo]
-    J --> K[Actualizar conteos PRISMA]
-    K --> L[Notificar al frontend vía WebSocket]
+    A["Conceptos + sinónimos (Sub-fase 1.1)"] --> B["query_builder.py: genera query por API"]
+    B --> C["build_openalex_query()"]
+    B --> D["build_semantic_scholar_query()"]
+    B --> E["build_arxiv_query()"]
+    C --> F{"Consultar en paralelo asyncio"}
+    D --> F
+    E --> F
+    F -->|OpenAlex| G["Resultados OpenAlex"]
+    F -->|Semantic Scholar| H["Resultados Semantic Scholar"]
+    F -->|ArXiv| I["Resultados ArXiv"]
+    G --> J["Normalización al schema Article"]
+    H --> J
+    I --> J
+    J --> K["Deduplicación por DOI + fuzzy title"]
+    K --> L["Almacenar en BD con project_id"]
+    L --> M["Retornar resultados + adapted_queries"]
 ```
 
 ---

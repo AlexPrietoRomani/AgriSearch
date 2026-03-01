@@ -40,9 +40,11 @@ sequenceDiagram
     FE->>API: POST /execute {query, databases}
     API->>QB: build_all_queries(concepts, databases)
     QB-->>API: {openalex: "...", ss: "...", arxiv: "..."}
-    par Consulta paralela
+    par OpenAlex
         API->>OA: GET /works?search=...
+    and Semantic Scholar
         API->>SS: GET /paper/search?query=...
+    and ArXiv
         API->>AX: GET /api/query?search_query=...
     end
     OA-->>API: resultados
