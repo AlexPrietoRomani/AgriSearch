@@ -32,6 +32,9 @@ const { title, description = "Plataforma de Búsqueda Sistemática Agrícola bas
             <span class="text-xl font-bold bg-gradient-to-r from-emerald-300 to-green-400 bg-clip-text text-transparent">AgriSearch</span>
           </a>
           <div class="flex items-center gap-4 text-sm text-slate-400">
+            <button id="themeToggle" class="p-2 rounded-full hover:bg-slate-800 transition-colors" title="Cambiar tema" aria-label="Toggle theme">
+              <span id="themeIcon" class="text-xl">☀️</span>
+            </button>
             <span class="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">PRISMA 2020</span>
           </div>
         </div>
@@ -42,5 +45,39 @@ const { title, description = "Plataforma de Búsqueda Sistemática Agrícola bas
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <slot />
     </main>
+    
+    <script is:inline>
+      const themeToggle = document.getElementById('themeToggle');
+      const themeIcon = document.getElementById('themeIcon');
+      
+      const isLight = localStorage.getItem('theme') === 'light';
+      if (isLight) {
+        document.documentElement.classList.add('light-mode');
+        themeIcon.textContent = '🌙';
+      }
+
+      themeToggle.addEventListener('click', () => {
+        document.documentElement.classList.toggle('light-mode');
+        const currentlyLight = document.documentElement.classList.contains('light-mode');
+        localStorage.setItem('theme', currentlyLight ? 'light' : 'dark');
+        themeIcon.textContent = currentlyLight ? '🌙' : '☀️';
+      });
+    </script>
+
+    <style is:global>
+      html.light-mode {
+        filter: invert(1) hue-rotate(180deg);
+        background-color: white; /* Base color hack to prevent off-whites */
+      }
+      
+      html.light-mode img,
+      html.light-mode video,
+      html.light-mode iframe,
+      /* Also preserve emojis and known colored elements from being inverted */
+      html.light-mode .emoji,
+      html.light-mode button[id="themeToggle"] span {
+        filter: invert(1) hue-rotate(-180deg);
+      }
+    </style>
   </body>
 </html>
