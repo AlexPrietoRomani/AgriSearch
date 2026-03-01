@@ -21,6 +21,12 @@ export const DB_OPTIONS: DbOption[] = [
     { id: "openalex", label: "OpenAlex", icon: "📚", desc: ">200M works" },
     { id: "semantic_scholar", label: "Semantic Scholar", icon: "🔬", desc: "AI-powered" },
     { id: "arxiv", label: "ArXiv", icon: "📄", desc: "Preprints" },
+    { id: "crossref", label: "Crossref", icon: "🔗", desc: ">150M DOIs" },
+    { id: "core", label: "CORE", icon: "🌐", desc: "Open Access" },
+    { id: "scielo", label: "SciELO", icon: "🌎", desc: "Latinoamérica" },
+    { id: "redalyc", label: "Redalyc", icon: "📖", desc: "Iberoamérica" },
+    { id: "agecon", label: "AgEcon Search", icon: "🌾", desc: "Agro-economics" },
+    { id: "organic_eprints", label: "Organic Eprints", icon: "🌱", desc: "Organic agri" },
 ];
 
 import SearchWizardDescribe from "./SearchWizardDescribe";
@@ -54,7 +60,7 @@ export default function SearchWizard() {
 
     const [yearFrom, setYearFrom] = useState<number | undefined>();
     const [yearTo, setYearTo] = useState<number | undefined>();
-    const [selectedDBs, setSelectedDBs] = useState(["openalex", "semantic_scholar", "arxiv"]);
+    const [selectedDBs, setSelectedDBs] = useState(["openalex", "semantic_scholar", "arxiv", "crossref", "core", "scielo", "redalyc", "agecon", "organic_eprints"]);
     const [maxResults, setMaxResults] = useState(50);
     const [generatedQuery, setGeneratedQuery] = useState<GeneratedQuery | null>(null);
     const [editedQuery, setEditedQuery] = useState("");
@@ -167,6 +173,12 @@ export default function SearchWizard() {
             case "openalex": return "bg-blue-500/20 text-blue-400";
             case "semantic_scholar": return "bg-purple-500/20 text-purple-400";
             case "arxiv": return "bg-orange-500/20 text-orange-400";
+            case "crossref": return "bg-teal-500/20 text-teal-400";
+            case "core": return "bg-green-500/20 text-green-400";
+            case "scielo": return "bg-yellow-500/20 text-yellow-400";
+            case "redalyc": return "bg-red-500/20 text-red-400";
+            case "agecon": return "bg-amber-500/20 text-amber-400";
+            case "organic_eprints": return "bg-lime-500/20 text-lime-400";
             default: return "bg-slate-500/20 text-slate-400";
         }
     }

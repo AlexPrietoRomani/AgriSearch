@@ -132,7 +132,7 @@ export interface SearchResults {
   duplicates_removed: number;
   articles: Article[];
   counts_by_source: Record<string, number>;
-  adapted_queries: Record<string, string>;
+  adapted_queries?: Record<string, string>;
 }
 
 export async function executeSearch(data: {
