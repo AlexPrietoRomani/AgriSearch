@@ -15,4 +15,5 @@ Siempre que se añada una nueva funcionalidad significativa, se resuelva un bug 
    - Nombre de la funcionalidad o solución.
    - Componentes frontend (archivos `tsx`, `astro`) y endpoints backend modificados.
    - Cualquier dependencia, modelo de base de datos o comando externo necesario para su correcto despliegue.
-5. Incorpóralo a tu commit en caso de ser necesario.
+5. **Regla de Idioma Obligatoria:** Toda la documentación (docstrings tipo `""" """`) y comentarios de línea (`#` o `//`) deben escribirse en **Español**, tal como es el proyecto general. Sin embargo, los nombres de variables, funciones, parámetros y schemas de la base de código deben mantenerse en **Inglés** por convención técnica. (Ej: `def analyze_data(): # Analiza los datos de la base`).
+6. Incorpóralo a tu commit en caso de ser necesario.
