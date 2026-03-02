@@ -37,6 +37,7 @@ export interface Project {
   updated_at: string;
   article_count: number;
   reviewed_count: number;
+  llm_model: string | null;
 }
 
 export async function listProjects(): Promise<{ projects: Project[]; total: number }> {
@@ -48,6 +49,7 @@ export async function createProject(data: {
   description?: string;
   agri_area?: string;
   language?: string;
+  llm_model?: string;
 }): Promise<Project> {
   return request("/projects/", { method: "POST", body: JSON.stringify(data) });
 }
@@ -61,6 +63,7 @@ export async function updateProject(id: string, data: {
   description?: string;
   agri_area?: string;
   language?: string;
+  llm_model?: string;
 }): Promise<Project> {
   return request(`/projects/${id}`, { method: "PUT", body: JSON.stringify(data) });
 }
@@ -108,6 +111,7 @@ export async function buildQuery(data: {
   year_from?: number;
   year_to?: number;
   language?: string;
+  llm_model?: string;
 }): Promise<GeneratedQuery> {
   return request("/search/build-query", { method: "POST", body: JSON.stringify(data) });
 }

@@ -15,7 +15,21 @@ interface Props {
     handleGenerateQuery: () => void;
     loading: boolean;
     agriArea?: string;
+    selectedLlmModel: string;
+    setSelectedLlmModel: (val: string) => void;
 }
+
+const GPU_MODELS = [
+    { value: "llama3.1:8b", label: "Llama 3.1 8B (Recomendado)", desc: "Excelente equilibrio velocidad/calidad." },
+    { value: "qwen2.5:7b", label: "Qwen 2.5 7B (Rápido)", desc: "Muy bueno siguiendo instrucciones de formato." },
+    { value: "mistral-nemo:12b", label: "Mistral Nemo 12B (Potente)", desc: "Mayor razonamiento para temas complejos." },
+    { value: "gpt-oss20b", label: "GPT-OSS 20B (High-VRAM)", desc: "Para GPUs con 16GB+ VRAM." },
+];
+
+const CPU_MODELS = [
+    { value: "phi3:3.8b", label: "Phi-3 Mini (Ligero)", desc: "Rápido en CPUs modernas." },
+    { value: "gemma2:2b", label: "Gemma 2 2B", desc: "Muy pequeño y optimizado." },
+];
 
 export default function SearchWizardDescribe({
     userInput,
@@ -30,8 +44,36 @@ export default function SearchWizardDescribe({
     toggleDB,
     handleGenerateQuery,
     loading,
-    agriArea
+    agriArea,
+    selectedLlmModel,
+    setSelectedLlmModel
 }: Props) {
+    const [isCustomModel, setIsCustomModel] = React.useState(false);
+    const [customModelName, setCustomModelName] = React.useState("");
+
+    React.useEffect(() => {
+        // If the initial selected model isn't in our recommended list, it must be custom
+        const isRecommended = [...GPU_MODELS, ...CPU_MODELS].some(m => m.value === selectedLlmModel);
+        if (!isRecommended && selectedLlmModel) {
+            setIsCustomModel(true);
+            setCustomModelName(selectedLlmModel);
+        }
+    }, []);
+
+    const handleModelChange = (val: string) => {
+        if (val === "custom") {
+            setIsCustomModel(true);
+        } else {
+            setIsCustomModel(false);
+            setSelectedLlmModel(val);
+        }
+    };
+
+    const handleCustomSubmit = () => {
+        if (customModelName.trim()) {
+            setSelectedLlmModel(customModelName.trim());
+        }
+    };
     return (
         <div className="max-w-3xl">
             <h2 className="text-2xl font-bold text-white mb-2">¿Qué quieres investigar?</h2>
@@ -121,6 +163,57 @@ export default function SearchWizardDescribe({
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* Model Selection */}
+            <div className="mb-6 bg-slate-900/40 p-5 rounded-2xl border border-slate-800 shadow-inner">
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="text-sm font-bold text-slate-300 uppercase tracking-tighter">🤖 Cerebro IA (Modelo LLM)</span>
+                    <div className="group relative">
+                        <svg className="w-4 h-4 text-slate-500 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-300 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 leading-relaxed">
+                            <p className="font-bold text-emerald-400 mb-1">Configuración de Ollama:</p>
+                            Si usas un modelo personalizado, asegúrate de haberlo descargado antes con: <code className="bg-slate-800 px-1 rounded text-white">ollama run nombre_del_modelo</code>.
+                            Usa el formato exacto de Ollama (ej: <code className="bg-slate-800 px-1 rounded text-white">llama3:70b</code>).
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex-grow">
+                        <select
+                            value={isCustomModel ? "custom" : selectedLlmModel}
+                            onChange={(e) => handleModelChange(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm transition-all"
+                        >
+                            <optgroup label="Recomendados para GPU (Veloces)">
+                                {GPU_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </optgroup>
+                            <optgroup label="Recomendados para CPU (Ahorro)">
+                                {CPU_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </optgroup>
+                            <option value="custom">✍️ Otro modelo (Manual)</option>
+                        </select>
+                        <p className="mt-2 text-[10px] text-slate-500 italic px-1">
+                            {isCustomModel ? "Ingresa el nombre del modelo tal cual aparece en Ollama." : (GPU_MODELS.find(m => m.value === selectedLlmModel)?.desc || CPU_MODELS.find(m => m.value === selectedLlmModel)?.desc)}
+                        </p>
+                    </div>
+
+                    {isCustomModel && (
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={customModelName}
+                                onChange={(e) => setCustomModelName(e.target.value)}
+                                onBlur={handleCustomSubmit}
+                                placeholder="ej: llama3:70b"
+                                className="px-4 py-2 bg-slate-950 border border-emerald-500/30 rounded-xl text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none min-w-[150px]"
+                            />
+                        </div>
+                    )}
+                </div>
             </div>
 
             <button

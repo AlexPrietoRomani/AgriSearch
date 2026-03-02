@@ -23,7 +23,7 @@ export default function ProjectDashboard() {
     const [searches, setSearches] = useState<SearchQuery[]>([]);
     const [screenings, setScreenings] = useState<ScreeningSession[]>([]);
     const [isEditing, setIsEditing] = useState(false);
-    const [editData, setEditData] = useState({ name: "", description: "", agri_area: "", language: "es" });
+    const [editData, setEditData] = useState({ name: "", description: "", agri_area: "", language: "es", llm_model: "" });
     const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
     const [customArea, setCustomArea] = useState("");
     const [saving, setSaving] = useState(false);
@@ -56,7 +56,8 @@ export default function ProjectDashboard() {
                 name: p.name,
                 description: p.description || "",
                 agri_area: p.agri_area,
-                language: p.language
+                language: p.language,
+                llm_model: p.llm_model || "llama3.1:8b"
             });
             // Try to map back areas for editing if possible, or just set as custom if not in list
             // For now, let's keep it simple
@@ -148,7 +149,8 @@ export default function ProjectDashboard() {
             name: project.name,
             description: project.description || "",
             agri_area: project.agri_area,
-            language: project.language
+            language: project.language,
+            llm_model: project.llm_model || "llama3.1:8b"
         });
 
         // Parse current agri_area back to selectedAreas / customArea
@@ -435,6 +437,26 @@ export default function ProjectDashboard() {
                                 >
                                     <option value="es">Español</option>
                                     <option value="en">English</option>
+                                </select>
+                            </label>
+
+                            <label className="block">
+                                <span className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 block">Modelo LLM Predeterminado</span>
+                                <select
+                                    value={editData.llm_model}
+                                    onChange={(e) => setEditData({ ...editData, llm_model: e.target.value })}
+                                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                                >
+                                    <optgroup label="Recomendados para GPU">
+                                        <option value="llama3.1:8b">Llama 3.1 8B (Recomendado)</option>
+                                        <option value="qwen2.5:7b">Qwen 2.5 7B</option>
+                                        <option value="mistral-nemo:12b">Mistral Nemo 12B</option>
+                                        <option value="gpt-oss20b">GPT-OSS 20B (High-VRAM)</option>
+                                    </optgroup>
+                                    <optgroup label="Recomendados para CPU">
+                                        <option value="phi3:3.8b">Phi-3 Mini</option>
+                                        <option value="gemma2:2b">Gemma 2 2B</option>
+                                    </optgroup>
                                 </select>
                             </label>
 

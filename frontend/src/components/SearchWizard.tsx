@@ -39,6 +39,8 @@ export default function SearchWizard() {
     const [projectId, setProjectId] = useState("");
     const [projectName, setProjectName] = useState("Cargando...");
     const [projectAgriArea, setProjectAgriArea] = useState("");
+    const [projectLlmModel, setProjectLlmModel] = useState<string | undefined>();
+    const [selectedLlmModel, setSelectedLlmModel] = useState<string>("llama3.1:8b"); // Default to a GPU recommended model
 
     // Check initial search params
     const initialQueryId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get("query_id") : null;
@@ -55,6 +57,10 @@ export default function SearchWizard() {
             .then(p => {
                 setProjectName(p.name);
                 setProjectAgriArea(p.agri_area);
+                if (p.llm_model) {
+                    setProjectLlmModel(p.llm_model);
+                    setSelectedLlmModel(p.llm_model);
+                }
             })
             .catch(() => window.location.href = "/");
 
@@ -127,6 +133,7 @@ export default function SearchWizard() {
                 year_from: yearFrom,
                 year_to: yearTo,
                 agri_area: projectAgriArea,
+                llm_model: selectedLlmModel,
             });
             setGeneratedQuery(result);
             setEditedQuery(result.boolean_query);
@@ -303,6 +310,8 @@ export default function SearchWizard() {
                     handleGenerateQuery={handleGenerateQuery}
                     loading={loading}
                     agriArea={projectAgriArea}
+                    selectedLlmModel={selectedLlmModel}
+                    setSelectedLlmModel={setSelectedLlmModel}
                 />
             )}
 

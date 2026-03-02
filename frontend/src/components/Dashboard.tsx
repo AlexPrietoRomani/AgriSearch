@@ -25,7 +25,7 @@ export default function Dashboard() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
-    const [newProject, setNewProject] = useState({ name: "", description: "", language: "es" });
+    const [newProject, setNewProject] = useState({ name: "", description: "", language: "es", llm_model: "llama3.1:8b" });
     const [selectedAreas, setSelectedAreas] = useState<string[]>(["general"]);
     const [customArea, setCustomArea] = useState("");
     const [creating, setCreating] = useState(false);
@@ -68,7 +68,7 @@ export default function Dashboard() {
                 agri_area: agriAreaStr
             });
             setShowCreate(false);
-            setNewProject({ name: "", description: "", language: "es" });
+            setNewProject({ name: "", description: "", language: "es", llm_model: "llama3.1:8b" });
             setSelectedAreas(["general"]);
             setCustomArea("");
             await loadProjects();
@@ -282,6 +282,26 @@ export default function Dashboard() {
                                     <option value="en">English</option>
                                 </select>
                             </label>
+
+                            <label className="block">
+                                <span className="text-sm text-slate-400 font-medium italic">Modelo LLM Predeterminado</span>
+                                <select
+                                    value={newProject.llm_model}
+                                    onChange={(e) => setNewProject({ ...newProject, llm_model: e.target.value })}
+                                    className="mt-1 w-full px-4 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                                >
+                                    <optgroup label="Recomendados para GPU">
+                                        <option value="llama3.1:8b">Llama 3.1 8B (Recomendado)</option>
+                                        <option value="qwen2.5:7b">Qwen 2.5 7B</option>
+                                        <option value="mistral-nemo:12b">Mistral Nemo 12B</option>
+                                        <option value="gpt-oss20b">GPT-OSS 20B (High-VRAM)</option>
+                                    </optgroup>
+                                    <optgroup label="Recomendados para CPU">
+                                        <option value="phi3:3.8b">Phi-3 Mini</option>
+                                        <option value="gemma2:2b">Gemma 2 2B</option>
+                                    </optgroup>
+                                </select>
+                            </label>
                         </div>
 
                         <div className="flex justify-end gap-3">
@@ -298,133 +318,138 @@ export default function Dashboard() {
                         </div>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Delete Project Modal */}
-            {projectToDelete && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-8 w-full max-w-md shadow-2xl shadow-black/50 relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-rose-500" />
-                        <div className="flex items-center gap-4 mb-6">
-                            <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
-                                <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-white">Eliminar Proyecto</h3>
-                                <p className="text-slate-400 text-sm mt-1">Acción destructiva en cascada</p>
-                            </div>
-                        </div>
-
-                        <p className="text-slate-300 mb-6 font-medium">
-                            ¿Estás seguro que deseas eliminar el proyecto <span className="text-white font-bold">"{projectToDelete.name}"</span>?
-                        </p>
-
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-8">
-                            <div className="text-red-400 text-sm font-medium flex items-start gap-2">
-                                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                <span>
-                                    Se eliminarán <strong>todas las búsquedas</strong>, registros y <strong>PDFs descargados</strong> asociados al proyecto. Esta acción no se puede deshacer.
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row gap-3 justify-end sm:items-center">
-                            <button
-                                onClick={() => setProjectToDelete(null)}
-                                disabled={deleting}
-                                className="px-5 py-2.5 rounded-xl font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50 order-2 sm:order-1"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={executeDelete}
-                                disabled={deleting}
-                                className="px-6 py-2.5 rounded-xl font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2 order-1 sm:order-2"
-                            >
-                                {deleting ? (
-                                    <>
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        Eliminando...
-                                    </>
-                                ) : (
-                                    "Sí, Eliminar Proyecto"
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Project Grid */}
-            {loading ? (
-                <div className="flex items-center justify-center py-20">
-                    <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                </div>
-            ) : projects.length === 0 ? (
-                <div className="text-center py-20">
-                    <div className="text-6xl mb-4">🌾</div>
-                    <h2 className="text-xl text-slate-300 font-medium mb-2">No hay proyectos aún</h2>
-                    <p className="text-slate-500">Crea tu primer proyecto de revisión sistemática para comenzar.</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {projects.map((p) => (
-                        <a
-                            key={p.id}
-                            href={`/project?id=${p.id}`}
-                            className="group flex flex-col p-5 bg-slate-800/60 border border-slate-700/60 rounded-2xl hover:border-emerald-500/50 hover:bg-slate-800 hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 relative overflow-hidden"
-                        >
-                            <div className="absolute top-0 left-0 w-2 h-full bg-emerald-500/20 group-hover:bg-emerald-500/50 transition-colors" />
-                            <div className="flex items-start justify-between mb-2 pl-2">
-                                <h3 className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors pr-6">
-                                    {p.name}
-                                </h3>
-                                <button
-                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); confirmDelete(p.id, p.name); }}
-                                    className="text-slate-500 hover:text-red-400 focus:outline-none transition-colors p-1"
-                                    title="Eliminar proyecto"
-                                >
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            {
+                projectToDelete && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                        <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-8 w-full max-w-md shadow-2xl shadow-black/50 relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-rose-500" />
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                                    <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                     </svg>
-                                </button>
-                            </div>
-                            {p.description ? (
-                                <p className="text-slate-400 mb-4 pl-2 flex-grow text-sm">
-                                    {p.description}
-                                </p>
-                            ) : (
-                                <p className="text-slate-600 italic mb-4 pl-2 flex-grow text-sm">
-                                    Sin descripción...
-                                </p>
-                            )}
-                            <div className="flex items-center gap-3 text-xs font-semibold pl-2 mt-auto pt-4 border-t border-slate-700/50">
-                                <span className="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 tracking-wide">
-                                    {AGRI_AREAS.find((a) => a.value === p.agri_area)?.label || p.agri_area}
-                                </span>
-                                <div className="flex items-center gap-3 text-slate-400">
-                                    <span className="flex items-center gap-1">
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                        </svg>
-                                        {p.article_count} artículos
-                                    </span>
-                                    {p.reviewed_count > 0 && (
-                                        <span className="flex items-center gap-1 text-emerald-400">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                            {p.reviewed_count} revisados
-                                        </span>
-                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-white">Eliminar Proyecto</h3>
+                                    <p className="text-slate-400 text-sm mt-1">Acción destructiva en cascada</p>
                                 </div>
                             </div>
-                        </a>
-                    ))}
-                </div>
-            )}
-        </div>
+
+                            <p className="text-slate-300 mb-6 font-medium">
+                                ¿Estás seguro que deseas eliminar el proyecto <span className="text-white font-bold">"{projectToDelete.name}"</span>?
+                            </p>
+
+                            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-8">
+                                <div className="text-red-400 text-sm font-medium flex items-start gap-2">
+                                    <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <span>
+                                        Se eliminarán <strong>todas las búsquedas</strong>, registros y <strong>PDFs descargados</strong> asociados al proyecto. Esta acción no se puede deshacer.
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-3 justify-end sm:items-center">
+                                <button
+                                    onClick={() => setProjectToDelete(null)}
+                                    disabled={deleting}
+                                    className="px-5 py-2.5 rounded-xl font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50 order-2 sm:order-1"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={executeDelete}
+                                    disabled={deleting}
+                                    className="px-6 py-2.5 rounded-xl font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2 order-1 sm:order-2"
+                                >
+                                    {deleting ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Eliminando...
+                                        </>
+                                    ) : (
+                                        "Sí, Eliminar Proyecto"
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Project Grid */}
+            {
+                loading ? (
+                    <div className="flex items-center justify-center py-20">
+                        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : projects.length === 0 ? (
+                    <div className="text-center py-20">
+                        <div className="text-6xl mb-4">🌾</div>
+                        <h2 className="text-xl text-slate-300 font-medium mb-2">No hay proyectos aún</h2>
+                        <p className="text-slate-500">Crea tu primer proyecto de revisión sistemática para comenzar.</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {projects.map((p) => (
+                            <a
+                                key={p.id}
+                                href={`/project?id=${p.id}`}
+                                className="group flex flex-col p-5 bg-slate-800/60 border border-slate-700/60 rounded-2xl hover:border-emerald-500/50 hover:bg-slate-800 hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 relative overflow-hidden"
+                            >
+                                <div className="absolute top-0 left-0 w-2 h-full bg-emerald-500/20 group-hover:bg-emerald-500/50 transition-colors" />
+                                <div className="flex items-start justify-between mb-2 pl-2">
+                                    <h3 className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors pr-6">
+                                        {p.name}
+                                    </h3>
+                                    <button
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); confirmDelete(p.id, p.name); }}
+                                        className="text-slate-500 hover:text-red-400 focus:outline-none transition-colors p-1"
+                                        title="Eliminar proyecto"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                {p.description ? (
+                                    <p className="text-slate-400 mb-4 pl-2 flex-grow text-sm">
+                                        {p.description}
+                                    </p>
+                                ) : (
+                                    <p className="text-slate-600 italic mb-4 pl-2 flex-grow text-sm">
+                                        Sin descripción...
+                                    </p>
+                                )}
+                                <div className="flex items-center gap-3 text-xs font-semibold pl-2 mt-auto pt-4 border-t border-slate-700/50">
+                                    <span className="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 tracking-wide">
+                                        {AGRI_AREAS.find((a) => a.value === p.agri_area)?.label || p.agri_area}
+                                    </span>
+                                    <div className="flex items-center gap-3 text-slate-400">
+                                        <span className="flex items-center gap-1">
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            {p.article_count} artículos
+                                        </span>
+                                        {p.reviewed_count > 0 && (
+                                            <span className="flex items-center gap-1 text-emerald-400">
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                                {p.reviewed_count} revisados
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </a>
+                        ))}
+                    </div>
+                )
+            }
+        </div >
     );
 }
