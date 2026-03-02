@@ -38,6 +38,7 @@ export default function SearchWizard() {
     // Project info (loaded from URL param)
     const [projectId, setProjectId] = useState("");
     const [projectName, setProjectName] = useState("Cargando...");
+    const [projectAgriArea, setProjectAgriArea] = useState("");
 
     // Check initial search params
     const initialQueryId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get("query_id") : null;
@@ -51,7 +52,10 @@ export default function SearchWizard() {
         setProjectId(id);
 
         getProject(id)
-            .then(p => setProjectName(p.name))
+            .then(p => {
+                setProjectName(p.name);
+                setProjectAgriArea(p.agri_area);
+            })
             .catch(() => window.location.href = "/");
 
         const queryId = params.get("query_id");
@@ -101,7 +105,8 @@ export default function SearchWizard() {
                 articles: articles,
                 counts_by_source: counts,
                 adapted_queries: searchQueryInfo?.adapted_queries_json ? JSON.parse(searchQueryInfo.adapted_queries_json) : undefined,
-                prompt_used: searchQueryInfo?.raw_input
+                prompt_used: searchQueryInfo?.raw_input,
+                master_query: searchQueryInfo?.generated_query
             });
             setStep("results");
         } catch (e: any) {
@@ -121,6 +126,7 @@ export default function SearchWizard() {
                 user_input: userInput,
                 year_from: yearFrom,
                 year_to: yearTo,
+                agri_area: projectAgriArea,
             });
             setGeneratedQuery(result);
             setEditedQuery(result.boolean_query);
@@ -296,6 +302,7 @@ export default function SearchWizard() {
                     toggleDB={toggleDB}
                     handleGenerateQuery={handleGenerateQuery}
                     loading={loading}
+                    agriArea={projectAgriArea}
                 />
             )}
 

@@ -39,6 +39,12 @@ async def generate_search_query(
     system_prompt = f"""You are an expert agricultural research librarian specialized in systematic reviews.
 Your task is to extract the key research concepts from the user's question and provide synonyms for each.
 
+STRICT DOMAIN ENFORCEMENT:
+- THIS SYSTEM IS ONLY FOR AGRICULTURE AND LIFE SCIENCES.
+- You MUST filter and EXCLUDE any interpretations related to Social Sciences, Human Medicine (oncology, clinical trials), HVAC, Politics, or Urban Infrastructure UNLESS they are specifically and explicitly linked to agricultural production.
+- Example: If the user says "Combate" (Combat), do NOT imply military or social struggle; imply biological control or pest management.
+- If keywords are ambiguous, prioritize terms related to: plant pathology, entomology, agronomy, soil science, or crop protection.
+
 CONTEXT:
 - Agricultural area: {agri_area}
 - User language: {language}
@@ -48,15 +54,12 @@ INSTRUCTIONS:
 1. Analyze the user's input and identify 2-5 key research concepts (in English).
 2. For EACH concept, provide 1-3 synonyms or closely related terms (in English).
 3. Suggest relevant AGROVOC controlled vocabulary terms.
-4. Provide a PICO/PEO breakdown if applicable:
-   - P: Population/Problem (e.g., crop, pest, pathogen)
-   - I/E: Intervention/Exposure (e.g., treatment, technology)
-   - C: Comparison (e.g., control, conventional method)
-   - O: Outcome (e.g., yield, efficacy, resistance)
-5. Generate a readable summary query combining the main concepts (for display to user).
+4. Provide a PICO/PEO breakdown if applicable (Population=Crop/Pest, Intervention=Treatment, etc.).
+5. Generate a readable summary query combining the main concepts in Boolean logic.
 
 CRITICAL: The "concepts" must be SHORT phrases (1-3 words each), not full sentences.
 CRITICAL: Concepts must be in ENGLISH for database compatibility.
+CRITICAL: If the user's intent is purely non-agricultural, try to map it to the closest agricultural relevance or use agricultural terminology.
 
 RESPOND IN JSON FORMAT:
 {{

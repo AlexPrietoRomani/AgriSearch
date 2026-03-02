@@ -138,6 +138,7 @@ Pantalla de inicio donde se listan todos los **Proyectos de Revisión** del usua
 - **Tarjetas de Proyecto:** Cada tarjeta muestra el nombre del proyecto, descripción, áreas agrícolas, y conteo exacto de **artículos totales** y **artículos revisados** (gracias a subconsultas SQL dinámicas).
 - **Eliminar Proyecto (Seguridad en Cascada):** Interfaz modal superpuesta (backdrop blur) que pide confirmación estricta visual impidiendo el borrado accidental por desajustes gráficos nativos. Inicia la eliminación escalonada en SQL que erradica y limpia bases de datos de decisiones y PDFs físicos huérfanos locales.
 - **Acceso directo:** Click en tarjeta navega a `/project?id=X`.
+
 ### 3.2 Vista de Proyecto (`/project?id=X` → `project.astro` → `ProjectDashboard.tsx`)
 
 Consola individual del proyecto con la información y acciones disponibles.

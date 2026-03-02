@@ -131,6 +131,7 @@ class SearchResultsResponse(BaseModel):
     counts_by_source: dict[str, int]
     adapted_queries: dict[str, str] = Field(default_factory=dict, description="Query sent to each API")
     prompt_used: str | None = Field(None, description="Original NLP prompt typed by user")
+    master_query: str | None = Field(None, description="Generated boolean query")
 
 
 # ──────────────────── Download Schemas ────────────────────

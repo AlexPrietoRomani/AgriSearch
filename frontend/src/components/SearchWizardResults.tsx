@@ -140,6 +140,15 @@ export default function SearchWizardResults({
                                 </div>
                             )}
 
+                            {searchResults.master_query && (
+                                <div className="mb-4">
+                                    <h4 className="text-xs font-bold text-cyan-500 uppercase tracking-widest mb-2">Query Maestra Booleana (Optimized)</h4>
+                                    <div className="p-3 bg-slate-950 rounded-lg text-sm text-emerald-300 border border-slate-800 font-mono italic">
+                                        {searchResults.master_query}
+                                    </div>
+                                </div>
+                            )}
+
                             {searchResults.adapted_queries && Object.keys(searchResults.adapted_queries).length > 0 && (
                                 <div>
                                     <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-2">Queries Adaptadas Transmitidas (Por Base de Datos)</h4>

@@ -98,6 +98,7 @@ async def execute_search_endpoint(
         counts_by_source=result["counts_by_source"],
         adapted_queries=result.get("adapted_queries", {}),
         prompt_used=payload.raw_prompt,
+        master_query=payload.query
     )
 
 

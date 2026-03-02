@@ -138,6 +138,7 @@ export interface SearchResults {
   counts_by_source: Record<string, number>;
   adapted_queries?: Record<string, string>;
   prompt_used?: string;
+  master_query?: string;
 }
 
 export async function executeSearch(data: {
