@@ -30,6 +30,10 @@ export default function Dashboard() {
     const [customArea, setCustomArea] = useState("");
     const [creating, setCreating] = useState(false);
 
+    // Deletion Modal State
+    const [projectToDelete, setProjectToDelete] = useState<{ id: string, name: string } | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
     useEffect(() => {
         loadProjects();
     }, []);
@@ -83,13 +87,21 @@ export default function Dashboard() {
         }
     };
 
-    async function handleDelete(id: string, name: string) {
-        if (!confirm(`¿Eliminar el proyecto "${name}" y todos sus datos?`)) return;
+    function confirmDelete(id: string, name: string) {
+        setProjectToDelete({ id, name });
+    }
+
+    async function executeDelete() {
+        if (!projectToDelete) return;
+        setDeleting(true);
         try {
-            await deleteProject(id);
+            await deleteProject(projectToDelete.id);
             await loadProjects();
+            setProjectToDelete(null);
         } catch (e) {
             console.error("Failed to delete project:", e);
+        } finally {
+            setDeleting(false);
         }
     }
 
@@ -288,6 +300,61 @@ export default function Dashboard() {
                 </div>
             )}
 
+            {/* Delete Project Modal */}
+            {projectToDelete && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-8 w-full max-w-md shadow-2xl shadow-black/50 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-rose-500" />
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                                <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Eliminar Proyecto</h3>
+                                <p className="text-slate-400 text-sm mt-1">Acción destructiva en cascada</p>
+                            </div>
+                        </div>
+
+                        <p className="text-slate-300 mb-6 font-medium">
+                            ¿Estás seguro que deseas eliminar el proyecto <span className="text-white font-bold">"{projectToDelete.name}"</span>?
+                        </p>
+
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-8">
+                            <p className="text-red-400 text-sm font-medium flex gap-2">
+                                <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                Se eliminarán <strong>todas las búsquedas</strong>, registros y <strong>PDFs descargados</strong> asociados al proyecto. Esta acción no se puede deshacer.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-3 justify-end sm:items-center">
+                            <button
+                                onClick={() => setProjectToDelete(null)}
+                                disabled={deleting}
+                                className="px-5 py-2.5 rounded-xl font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50 order-2 sm:order-1"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={executeDelete}
+                                disabled={deleting}
+                                className="px-6 py-2.5 rounded-xl font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2 order-1 sm:order-2"
+                            >
+                                {deleting ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        Eliminando...
+                                    </>
+                                ) : (
+                                    "Sí, Eliminar Proyecto"
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Project Grid */}
             {loading ? (
                 <div className="flex items-center justify-center py-20">
@@ -313,12 +380,12 @@ export default function Dashboard() {
                                     {p.name}
                                 </h3>
                                 <button
-                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(p.id, p.name); }}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); confirmDelete(p.id, p.name); }}
                                     className="text-slate-500 hover:text-red-400 focus:outline-none transition-colors p-1"
                                     title="Eliminar proyecto"
                                 >
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                     </svg>
                                 </button>
                             </div>
