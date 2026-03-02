@@ -92,3 +92,144 @@ Para ejemplificar, se describe detalladamente qué pasa tras bambalinas cuando u
   - Igual metodología en acceso histórico (`setup_session=...`). La presentación dinámica redirige hacia `<ScreeningApp />` en otra URL aislada por ID de sesión.
 - **Eliminaciones (`DELETE /projects/{id}`, `DELETE /search/{p}/{q}`, o DELETE sesiones):**
   - Se orquestan en Cascada (Cascading Delete). Un `SearchQuery` eliminado erradica consigo no solo su metadata DB, si no mediante hooks y servicios se destruyen todos los archivos PDF locales asociados y registros de Screening generados encima de ellos garantizando congruencia del Disco Duro.
+
+---
+
+## 4. Diagramas de Computación y Flujos
+
+### 4.1 Arquitectura General del Sistema
+
+A nivel macro, AgriSearch funciona como un monolito divido en Frontend y Backend que se comunican de forma asíncrona, apoyándose de un LLM local e integrándose a la red científica a través de un patrón de conectores MCP (Model Context Protocol).
+
+```mermaid
+graph TD
+    subgraph Client [Navegador del Usuario]
+        UI[UI Components Astro/React]
+        API_C[API Client fetch/REST]
+    end
+
+    subgraph Servidor [Backend FastAPI]
+        Routes[Enrutadores API v1]
+        Logic[Servicios Core & Lógica]
+        DB[(Base de Datos SQLite)]
+    end
+
+    subgraph LLM_Provider [Procesamiento IA Local]
+        Ollama[Motor Ollama]
+        Models[Modelos: Aya, LLaMa3.1, Qwen]
+    end
+
+    subgraph Red_Cientifica [Fuentes Externas]
+        OA[OpenAlex]
+        SS[Semantic Scholar]
+        ArXiv[ArXiv]
+        Otras[Otras 6 Bases...]
+    end
+
+    UI <-->|HTTP JSON| API_C
+    API_C <-->|Peticiones REST| Routes
+    Routes <--> Logic
+    Logic <-->|Lectura/Escritura SQLAlchemy| DB
+    Logic <-->|Prompts de Sistema| Ollama
+    Ollama --- Models
+    Logic <-->|Adaptadores Deterministas| OA
+    Logic <-->|Consultas Paralelas| SS
+    Logic <-->|Requests Asíncronos| ArXiv
+    Logic <--> Otras
+```
+
+### 4.2 Flujo Interno de la "Búsqueda" (Search Generation & Execution)
+
+Este flujo expone qué pasa en la Fase 1. El motor no delega la construcción del lenguaje de la base de datos al LLM para prevenir fallos impredecibles de sintaxis; en su lugar, el modelo solo abstrae la matriz de conceptos, y adaptadores deterministas construyen el literal de búsqueda.
+
+```mermaid
+sequenceDiagram
+    actor User as Investigador
+    participant FE as Interfaz de Búsqueda
+    participant BE as FastAPI Backend
+    participant LLM as Ollama Local
+    participant QBuild as Constructor de Queries
+    participant MCP as MCP Clients (Scrapers/APIs)
+    participant DB as SQLite
+
+    User->>FE: Describe el tema (Ej. "Rendimiento de maíz con biofertilizantes")
+    FE->>BE: POST /search/build-query
+    BE->>LLM: Inyecta texto a Prompt Sistémico (Extracción Semántica)
+    LLM-->>BE: Devuelve JSON {conceptos, sinónimos, estructura PICO}
+    BE-->>FE: Presenta Tabla PICO interactiva
+    
+    User->>FE: Revisa/Edita matriz y presiona "Ejecutar"
+    FE->>BE: POST /search/execute
+    
+    BE->>DB: Guarda registro de Intención de Búsqueda
+    BE->>QBuild: build_all_queries() basada en conceptos matriciales
+    QBuild-->>BE: JSON Adaptado {OpenAlex: "(maize) AND (biofertilizers)", Arxiv: "all:maize..."}
+    
+    par Consultas Multihilo concurrentes
+        BE->>MCP: Client OpenAlex
+        BE->>MCP: Client Semantic Scholar
+        BE->>MCP: Client ArXiv ...etc
+    end
+    MCP-->>BE: Listas crudas de Artículos
+    
+    BE->>BE: Algoritmos de Fusión (Deduplicación por DOI y RapidFuzz Titles)
+    BE->>DB: Almacena Resultados Depurados
+    
+    BE-->>FE: Devuelve colección limpia
+    FE->>User: Renderiza Panel con Tabla de Artículos
+```
+
+### 4.3 Flujo del Sistema de "Revisiones" (Screening & Eligibility)
+
+Flujo para la Fase 2 (Cribado PRISMA). Subraya la comprobación de **artículos elegibles** y la arquitectura de **enriquecimiento local del PDF**.
+
+```mermaid
+sequenceDiagram
+    actor User as Revisor
+    participant FE as Project Dashboard
+    participant API as FastAPI Backend
+    participant DB as SQLite
+    participant PyMu as Motor PDF (PyMuPDF)
+    participant LLM as Ollama Local
+
+    User->>FE: Click en botón "Revisiones"
+    FE->>API: GET /screening/eligibility (Valida seguridad)
+    API->>DB: Cuenta (Descargas Totales) vs (Artículos ya asignados a otra sesión)
+    DB-->>API: {elegibles, asignados}
+    API-->>FE: Devuelve Conteo
+    
+    alt elegibles == 0
+        FE->>User: Bloqueo: "⚠️ No hay artículos libres para evaluar."
+    else elegibles > 0
+        FE->>User: Muestra Modal de Configuración (Nueva Sesión)
+        User->>FE: Define Modelo IA, Idioma de Lectura y Búsquedas Origen
+        FE->>API: POST /screening/sessions
+        
+        Note over API,PyMu: Fase 1: Enriquecimiento Offline Inteligente
+        API->>PyMu: Extrae textos de archivos PDF .pdf en disco
+        PyMu-->>API: Regex Parsing (Abstracts y Keywords perdidas de APIs abiertas)
+        API->>DB: Guarda nuevos hallazgos en Metadata de Artículos
+        
+        Note over API,DB: Fase 2: Configurando Sesión Concurrentes
+        API->>DB: Crea Objeto `ScreeningSession`
+        API->>DB: Crea fila `ScreeningDecision` (SÓLO para artículos NO asignados en otras sesiones)
+        DB-->>API: ID de la Sesión
+        API-->>FE: Redirecciona al Panel de Cribado interactivo
+        
+        FE->>User: Interfaz estilo Rayyan (Left: Artículos, Right: Detalles)
+        
+        loop Por cada lectura / evaluación
+            User->>FE: Click (Incluir ✅ / Excluir ❌)
+            FE->>API: PUT /decisions/{id} (Guarda estado)
+            
+            opt Abstract Ilegible
+                User->>FE: Click "Traducir Abstract"
+                FE->>API: POST /screening/translate
+                API->>LLM: Prompt estricto de traducción literal
+                LLM-->>API: Abstract traducido
+                API->>DB: Persiste texto en ScreeningDecision
+                API-->>FE: Refleja nuevo texto al investigador
+            end
+        end
+    end
+```

@@ -134,8 +134,10 @@ Interfaz interactiva para screening:
 El sistema ahora soporta formalmente la creación de **múltiples sesiones de screening concurrentes** en un mismo proyecto. 
 Esto permite que varias personas trabajen simultáneamente dividiéndose los artículos.
 - Al hacer clic en "Revisiones" dentro del Dashboard, un endpoint de validación (`GET /eligibility/{project_id}`) verifica cuántos artículos que fueron descargados con éxito (`SUCCESS`) aún están libres de asignación.
-- **Regla de Bloqueo**: Si todos los artículos exitosos ya están aglomerados en las sesiones existentes, el sistema levanta una alerta impidiendo la creación de una revisión vacía y exigiendo realizar más búsquedas previamente.
-
+- **Visualización Condicional**: En la pantalla de creación, se ocultan del listado aquellas búsquedas que ya completaron la asignación de todos sus artículos (es decir, aquellas con 0 artículos pendientes por evaluar). Las tarjetas de búsqueda muestran detalladamente la numeración original, prompt usado, artículos totales, duplicados y finalmente los "descargados por revisar".
+- **Lógica Estricta de Asignación (OuterJoin)**: Al registrar la sesión final, el backend cruza la base de datos (con `outerjoin`) para extraer matemáticamente SOLO los artículos elegibles exentos de participar en otra revisión activa. Ningún artículo se repetirá a través de múltiples revisiones.
+- **Nombres Automáticos:** El campo de "nombre de la sesión" ahora sugiere secuencias inteligentes opcionales ("Revisión 1", "Revisión 2") y el "Objetivo" es estrictamente prescindible.
+- **Regla de Bloqueo General**: Si todos los artículos exitosos del proyecto ya están aglomerados en las sesiones existentes, el sistema levanta una alerta gráfica (Popup) impidiendo la creación de una revisión vacía y exigiendo realizar más búsquedas previamente.
 ---
 
 ## Dependencias Críticas

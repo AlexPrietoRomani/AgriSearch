@@ -189,15 +189,15 @@ Interfaz de cribado inspirada en **Rayyan.ai**, organizada en una única vista u
 - Botón **"▶️ Continuar Screening"** → navega a la sesión activa.
 - Botón **"🗑️ Eliminar sesión y crear nueva"** → elimina la sesión y todas sus decisiones (requiere confirmación), regresa al formulario de creación.
 
-**Si no hay sesión existente (formulario de creación):**
-- **Nombre de la sesión** (requerido): texto descriptivo (ej. "Cribado inicial PRISMA — Control biológico").
-- **Objetivo / Meta** (opcional): textarea con el propósito del cribado.
-- **Selección de búsquedas:** Checklist con todas las `SearchQuery` del proyecto. Cada item muestra: fecha, query original, N artículos, BDs usadas.
-- **Resumen consolidado:** Muestra el total de artículos únicos, con advertencia de que solo entran los que tienen PDF descargado.
+**Si no hay sesión existente (formulario de creación de Nueva Revisión):**
+- **Soporte Multi-Screening Inteligente:** Por omisión al dar clic, buscará artículos no asignados y sugerirá nombres de revisión en base al contador.
+- **Nombre de la sesión y Objetivo:** Ambos son opcionales. El sistema asume nombres por default (Revisión N).
+- **Selección de búsquedas (Filtro Condicional):** Checklist. Se ocultan por defecto todas las búsquedas que ya no contengan artículos disponibles (0 artículos no asignados). Las tarjetas visuales marcan la métrica y fuentes exactas por cada query del prompt.
+- **Resumen consolidado:** Muestra el total de artículos no asignados únicos elegibles, con advertencia excluyente de lo que ya fue asignado previamente.
 - **Idioma de lectura:** Selector (español/inglés/portugués).
 - **Modelo de traducción:** Por defecto `aya:8b` (Cohere, multilingüe avanzado). Opciones: Llama 3.1 8B, Qwen 2.5 7B.
 - **Enriquecimiento previo:** Al crear la sesión, se ejecuta automáticamente la extracción de abstracts y keywords desde los PDFs descargados (vía PyMuPDF), con pantalla de progreso visual.
-- **Botón "🚀 Crear Sesión de Screening":** Crea la sesión (solo con artículos que tengan PDF) y navega a la interfaz de cribado.
+- **Construcción Segura:** Al hacer click en crear, un OUTER JOIN de lado de base de datos se encarga de acoplar matemática y exclusivamente a los artículos sin asignar con su nueva ronda, sin afectar el histórico PRISMA.
 
 ##### Página 2: Sesión de Screening (`/screening?id=X&session=Y` → `ScreeningSession.tsx`)
 
