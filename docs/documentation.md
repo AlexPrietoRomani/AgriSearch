@@ -167,10 +167,10 @@ La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmu
 
 ## Configuración de Inteligencia Artificial (Ollama)
 
-AgriSearch escala su rendimiento según tu hardware. Hemos definido **6 Perfiles de Hardware** y **4 Casos de Uso** principales para que elijas la configuración óptima.
+AgriSearch escala su rendimiento según tu hardware. Hemos definido **6 Perfiles de Hardware** y **4 Casos de Uso** principales. A continuación, la matriz completa de 24 recomendaciones validadas.
 
-### 1. Perfiles de Hardware y Modelos Generalistas
-Si solo quieres descargar **un modelo que haga todo en tu equipo**, elige el de tu perfil:
+### 1. Perfiles de Hardware (Modelos Generalistas)
+Si prefieres descargar **un solo modelo** que rinda bien en todas las tareas de tu equipo:
 
 | Perfil | Hardware Referencia | Modelo "Todoterreno" | Comando de Descarga |
 | :--- | :--- | :--- | :--- |
@@ -183,15 +183,21 @@ Si solo quieres descargar **un modelo que haga todo en tu equipo**, elige el de 
 
 ---
 
-### 2. Matriz de Recomendación por Caso de Uso
-Para investigadores que buscan la máxima precisión, se recomienda alternar modelos según la tarea:
+### 2. Matriz de Especialidad: 24 Modelos Recomendados
+Para usuarios avanzados que buscan optimizar cada fase del proceso PRISMA:
 
-| Uso en la App | Propósito | Perfil CPU (Recomendado) | Perfil GPU (Recomendado) |
-| :--- | :--- | :--- | :--- |
-| **Traducción** | EN/PT ↔ ES en Screening | `llama3.2:3b` | `aya:8b` (Optimizado 23 idiomas) |
-| **Queries** | Generación de sintaxis booleana | `phi3:mini` | `qwen2.5:7b` (Format-strict) |
-| **Screening** | Evaluación de relevancia IA | `llama3.1:8b` | `mistral-nemo:12b` |
-| **RAG (Chat)** | Conversación con citación APA | `llama3.1:8b` | `command-r:latest` (Especialista RAG) |
+| Perfil de Hardware | Traducción (ES/EN/PT) | Queries (Búsqueda) | Screening (Cribado) | RAG (Chat / APA) |
+| :--- | :--- | :--- | :--- | :--- |
+| **CPU Baja** | `qwen2.5:0.5b` | `smollm2:1.7b` | `gemma2:2b` | `llama3.2:1b` |
+| **CPU Media** | `llama3.2:3b` | `qwen2.5:1.5b` | `phi3:mini` | `qwen2.5:3b` |
+| **CPU Alta** | `llama3.1:8b` | `qwen2.5:7b` | `phi3:medium` | `llama3.1:8b` |
+| **GPU Baja** | `gemma2:2b` | `qwen2.5:3b` | `llama3.2:3b` | `qwen2.5:3b` |
+| **GPU Media** | `aya:8b` | `qwen2.5:7b` | `llama3.1:8b` | `command-r7b` |
+| **GPU Alta** | `aya:8b` | `qwen2.5:7b` | `mistral-nemo:12b` | `command-r:35b` |
+
+> 💡 **Tip de Rendimiento:** Los modelos `qwen2.5` son excepcionales para la generación de **Queries** debido a su estricto cumplimiento de esquemas JSON y operadores booleanos. Para **Traducción**, `aya:8b` (de Cohere) sigue siendo el referente multilingüe en local.
+
+---
 
 > **Nota Crítica sobre RAG:** Independientemente del perfil, es **obligatorio** tener instalado el modelo de embeddings para que el chat funcione: 
 > `ollama pull nomic-embed-text`
