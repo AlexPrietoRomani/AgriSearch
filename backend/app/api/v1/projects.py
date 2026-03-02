@@ -195,7 +195,10 @@ async def list_project_searches(
     project_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> list[SearchQueryResponse]:
-    """Get all executed searches within a project."""
+    """Get all executed searches within a project with their screening availability stats."""
+    from app.models.project import Article, DownloadStatus
+    from app.models.screening_decision import ScreeningDecision
+
     query = (
         select(SearchQuery)
         .where(SearchQuery.project_id == project_id)
@@ -203,5 +206,34 @@ async def list_project_searches(
     )
     result = await db.execute(query)
     searches = result.scalars().all()
-    return [SearchQueryResponse.model_validate(s) for s in searches]
+    
+    responses = []
+    
+    for s in searches:
+        # Get total downloaded
+        stmt_dl = select(func.count(Article.id)).where(
+            Article.search_query_id == s.id,
+            Article.download_status == DownloadStatus.SUCCESS,
+            Article.is_duplicate == False
+        )
+        total_dl = (await db.execute(stmt_dl)).scalar_one_or_none() or 0
+        
+        # Get assigned downloaded
+        stmt_assigned = (
+            select(func.count(func.distinct(ScreeningDecision.article_id)))
+            .join(Article, ScreeningDecision.article_id == Article.id)
+            .where(
+                Article.search_query_id == s.id,
+                Article.download_status == DownloadStatus.SUCCESS,
+                Article.is_duplicate == False
+            )
+        )
+        assigned = (await db.execute(stmt_assigned)).scalar_one_or_none() or 0
+        
+        resp = SearchQueryResponse.model_validate(s)
+        resp.total_downloaded = total_dl
+        resp.unassigned_articles = max(0, total_dl - assigned)
+        responses.append(resp)
+        
+    return responses
 

@@ -41,7 +41,8 @@ export default function ScreeningSetup() {
     const isNew = params.has("new");
 
     const [project, setProject] = useState<Project | null>(null);
-    const [searches, setSearches] = useState<SearchQuery[]>([]);
+    const [searches, setSearches] = useState<(SearchQuery & { originalIndex: number })[]>([]);
+    const [sessionsCount, setSessionsCount] = useState(0);
     const [existingSession, setExistingSession] = useState<ScreeningSession | null>(null);
     const [selectedSearchIds, setSelectedSearchIds] = useState<Set<string>>(new Set());
     const [readingLanguage, setReadingLanguage] = useState("es");
@@ -67,7 +68,12 @@ export default function ScreeningSetup() {
                     listProjectScreeningSessions(projectId),
                 ]);
                 setProject(proj);
-                setSearches(srch);
+                setSessionsCount(sessions.length);
+
+                // Keep only searches with unassigned articles to review
+                const availableSearches = srch.map((s, i) => ({ ...s, originalIndex: i + 1 })).filter(s => s.unassigned_articles > 0);
+                setSearches(availableSearches);
+
                 if (sessions.length > 0 && !isNew) {
                     const targetSession = setupSessionId
                         ? sessions.find(s => s.id === setupSessionId) || sessions[0]
@@ -77,7 +83,9 @@ export default function ScreeningSetup() {
                     if (savedModel === "aya-expanse") savedModel = "aya:8b";
                     setExistingSessionModel(savedModel);
                 }
-                setSelectedSearchIds(new Set(srch.map((s) => s.id)));
+
+                // Auto-select by default only the available searches
+                setSelectedSearchIds(new Set(availableSearches.map((s) => s.id)));
             } catch (e: any) {
                 setError(e.message);
             } finally {
@@ -120,10 +128,6 @@ export default function ScreeningSetup() {
             setError("Selecciona al menos una búsqueda.");
             return;
         }
-        if (!sessionName.trim()) {
-            setError("Escribe un nombre para la sesión de screening.");
-            return;
-        }
         setCreating(true);
         setEnriching(true);
         setError("");
@@ -136,9 +140,10 @@ export default function ScreeningSetup() {
             await new Promise(r => setTimeout(r, 800));
 
             setEnriching(false);
+            const finalName = sessionName.trim() || `Revisión ${sessionsCount + 1}`;
             const session = await createScreeningSession({
                 project_id: projectId,
-                name: sessionName.trim(),
+                name: finalName,
                 goal: sessionGoal.trim(),
                 search_query_ids: Array.from(selectedSearchIds),
                 reading_language: readingLanguage,
@@ -429,17 +434,24 @@ export default function ScreeningSetup() {
                                     onChange={() => toggleSearch(search.id)}
                                     style={styles.checkbox}
                                 />
-                                <div style={styles.searchInfo}>
-                                    <div style={styles.searchQuery}>
-                                        {search.raw_input.length > 80
-                                            ? search.raw_input.slice(0, 80) + "..."
-                                            : search.raw_input}
+                                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", width: "100%" }}>
+                                    <div style={{ fontWeight: 600, color: "#e2e8f0", fontSize: "1rem" }}>
+                                        Búsqueda {search.originalIndex}
                                     </div>
-                                    <div style={styles.searchMeta}>
-                                        <span>📅 {new Date(search.created_at).toLocaleDateString("es")}</span>
-                                        <span>📊 {search.total_results} artículos</span>
-                                        <span>🗑️ {search.duplicates_removed} duplicados</span>
-                                        <span style={styles.dbBadge}>{search.databases_used}</span>
+                                    <div style={{ fontSize: "0.85rem", color: "#94a3b8", fontStyle: "italic", marginBottom: "0.2rem" }}>
+                                        "{search.raw_input.length > 120 ? search.raw_input.slice(0, 120) + "..." : search.raw_input}"
+                                    </div>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", fontSize: "0.80rem", color: "#cbd5e1" }}>
+                                        <span title="Fecha de búsqueda">📅 {new Date(search.created_at).toLocaleDateString("es")}</span>
+                                        <span title="Total de artículos (incluyendo no descargados y duplicados)">📚 {search.total_results} totales</span>
+                                        <span title="Artículos duplicados removidos" style={{ color: "#ef4444" }}>🗑️ {search.duplicates_removed} duplicados</span>
+                                        <span title="Artículos descargados con éxito" style={{ color: "#22c55e" }}>📥 {search.total_downloaded} descargados</span>
+                                        <span title="Artículos descargados pendientes de evaluar" style={{ color: "#a855f7", fontWeight: 600 }}>🔍 {search.unassigned_articles} por revisar</span>
+                                    </div>
+                                    <div style={{ marginTop: "0.2rem" }}>
+                                        <span style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", borderRadius: "4px", backgroundColor: "rgba(30,41,59,0.8)", border: "1px solid rgba(148,163,184,0.2)", display: "inline-block" }}>
+                                            {search.databases_used.split(",").join(" • ")}
+                                        </span>
                                     </div>
                                 </div>
                             </label>
@@ -451,7 +463,7 @@ export default function ScreeningSetup() {
                         <div>
                             <strong>{selectedSearchIds.size}</strong> búsquedas seleccionadas
                             <br />
-                            <strong>~{totalArticles}</strong> artículos — solo los que tienen <strong style={{ color: "#22c55e" }}>PDF descargado</strong> entrarán al screening
+                            <strong>{totalArticles}</strong> artículos descargados entrarán al nuevo screening
                         </div>
                     </div>
                 </div>
@@ -525,7 +537,7 @@ export default function ScreeningSetup() {
                     </button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 

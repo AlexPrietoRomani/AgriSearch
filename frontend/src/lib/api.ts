@@ -82,6 +82,8 @@ export interface SearchQuery {
   duplicates_removed: number;
   adapted_queries_json?: string;
   created_at: string;
+  total_downloaded: number;
+  unassigned_articles: number;
 }
 
 export async function getProjectSearches(id: string): Promise<SearchQuery[]> {

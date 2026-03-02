@@ -79,6 +79,8 @@ class SearchQueryResponse(BaseModel):
     duplicates_removed: int
     adapted_queries_json: str | None = None
     created_at: datetime
+    total_downloaded: int = 0
+    unassigned_articles: int = 0
 
     model_config = {"from_attributes": True}
 

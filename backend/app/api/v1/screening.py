@@ -144,15 +144,19 @@ async def create_screening_session(
     except Exception as e:
         logger.warning("Pre-screening enrichment failed (continuing anyway): %s", e)
 
-    # 2. Gather unique, non-duplicate articles WITH PDF DOWNLOADED from selected searches
+    # 2. Gather unique, non-duplicate articles WITH PDF DOWNLOADED and UNASSIGNED from selected searches
     from app.models.project import DownloadStatus
+    from app.models.screening_decision import ScreeningDecision
+    
     stmt = (
         select(Article)
+        .outerjoin(ScreeningDecision, Article.id == ScreeningDecision.article_id)
         .where(
             Article.project_id == req.project_id,
             Article.search_query_id.in_(req.search_query_ids),
             Article.is_duplicate == False,  # noqa: E712
             Article.download_status == DownloadStatus.SUCCESS,
+            ScreeningDecision.id.is_(None)  # Only unassigned articles
         )
     )
     result = await db.execute(stmt)
