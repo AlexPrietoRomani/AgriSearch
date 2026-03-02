@@ -25,6 +25,7 @@ async def generate_search_query(
     language: str = "es",
     year_from: int | None = None,
     year_to: int | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """
     Generate an optimized boolean search query from natural language input.
@@ -80,8 +81,13 @@ RESPOND IN JSON FORMAT:
 }}"""
 
     try:
+        llm_model = model or settings.litellm_model
+        # Prefix with ollama/ if not present to ensure it routes correctly via LiteLLM
+        if not (llm_model.startswith("ollama/") or llm_model.startswith("openai/")):
+             llm_model = f"ollama/{llm_model}"
+
         response = await litellm.acompletion(
-            model=settings.litellm_model,
+            model=llm_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_input},

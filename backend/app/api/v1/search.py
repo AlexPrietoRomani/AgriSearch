@@ -43,6 +43,7 @@ async def build_query(payload: SearchBuildQueryRequest) -> GeneratedQuery:
         language=payload.language,
         year_from=payload.year_from,
         year_to=payload.year_to,
+        model=payload.llm_model,
     )
 
     return GeneratedQuery(

@@ -29,6 +29,7 @@ async def create_project(
         description=payload.description,
         agri_area=payload.agri_area,
         language=payload.language,
+        llm_model=payload.llm_model,
     )
     db.add(project)
     await db.flush()
@@ -41,6 +42,7 @@ async def create_project(
         description=project.description,
         agri_area=project.agri_area,
         language=project.language,
+        llm_model=project.llm_model,
         created_at=project.created_at,
         updated_at=project.updated_at,
         article_count=0,
@@ -86,6 +88,7 @@ async def list_projects(
             description=p.description,
             agri_area=p.agri_area,
             language=p.language,
+            llm_model=p.llm_model,
             created_at=p.created_at,
             updated_at=p.updated_at,
             article_count=a_count or 0,
@@ -124,6 +127,7 @@ async def get_project(
         description=project.description,
         agri_area=project.agri_area,
         language=project.language,
+        llm_model=project.llm_model,
         created_at=project.created_at,
         updated_at=project.updated_at,
         article_count=count,
@@ -151,6 +155,8 @@ async def update_project(
         project.agri_area = payload.agri_area
     if payload.language is not None:
         project.language = payload.language
+    if payload.llm_model is not None:
+        project.llm_model = payload.llm_model
 
     await db.commit()
     await db.refresh(project)
@@ -168,6 +174,7 @@ async def update_project(
         description=project.description,
         agri_area=project.agri_area,
         language=project.language,
+        llm_model=project.llm_model,
         created_at=project.created_at,
         updated_at=project.updated_at,
         article_count=count,

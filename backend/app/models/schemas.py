@@ -17,6 +17,7 @@ class ProjectCreate(BaseModel):
     description: str | None = Field(None, description="Optional project description")
     agri_area: str = Field("general", description="Agricultural area focus")
     language: str = Field("es", description="Primary language (BCP-47)")
+    llm_model: str | None = Field(None, description="Preferred LLM model for this project")
 
 
 class ProjectUpdate(BaseModel):
@@ -25,6 +26,7 @@ class ProjectUpdate(BaseModel):
     description: str | None = Field(None)
     agri_area: str | None = Field(None)
     language: str | None = Field(None)
+    llm_model: str | None = Field(None)
 
 
 class ProjectResponse(BaseModel):
@@ -34,6 +36,7 @@ class ProjectResponse(BaseModel):
     description: str | None
     agri_area: str
     language: str
+    llm_model: str | None = None
     created_at: datetime
     updated_at: datetime
     article_count: int = 0
@@ -58,6 +61,7 @@ class SearchBuildQueryRequest(BaseModel):
     year_from: int | None = Field(None, description="Start year filter")
     year_to: int | None = Field(None, description="End year filter")
     language: str = Field("es", description="Language preference for query generation")
+    llm_model: str | None = Field(None, description="Specific model to use for this query")
 
 
 class GeneratedQuery(BaseModel):

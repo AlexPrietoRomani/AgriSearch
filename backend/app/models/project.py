@@ -76,6 +76,7 @@ class Project(Base):
     description = Column(Text, nullable=True)
     agri_area = Column(String(500), default="general")
     language = Column(String(10), default="es")  # BCP-47
+    llm_model = Column(String(100), nullable=True)  # Preferred LLM model
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
