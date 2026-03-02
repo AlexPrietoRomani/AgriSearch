@@ -11,7 +11,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
-from app.models.project import Project, Article, SearchQuery
+from app.models.project import Project, Article, SearchQuery, ScreeningSession
 from app.models.schemas import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse, SearchQueryResponse
 
 logger = logging.getLogger(__name__)
@@ -51,15 +51,28 @@ async def create_project(
 async def list_projects(
     db: AsyncSession = Depends(get_db),
 ) -> ProjectListResponse:
-    """List all systematic review projects with article counts."""
-    # Get projects with article counts
+    # Get projects with article counts and reviewed counts
+    # Using scalar subqueries to avoid Cartesian product explosion
+    article_count_subq = (
+        select(func.count(Article.id))
+        .where((Article.project_id == Project.id) & (Article.is_duplicate == False))
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    
+    reviewed_count_subq = (
+        select(func.coalesce(func.sum(ScreeningSession.reviewed_count), 0))
+        .where(ScreeningSession.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+
     query = (
         select(
             Project,
-            func.count(Article.id).label("article_count"),
+            article_count_subq.label("article_count"),
+            reviewed_count_subq.label("reviewed_count"),
         )
-        .outerjoin(Article, (Article.project_id == Project.id) & (Article.is_duplicate == False))  # noqa: E712
-        .group_by(Project.id)
         .order_by(Project.updated_at.desc())
     )
 
@@ -75,9 +88,10 @@ async def list_projects(
             language=p.language,
             created_at=p.created_at,
             updated_at=p.updated_at,
-            article_count=count,
+            article_count=a_count or 0,
+            reviewed_count=r_count or 0,
         )
-        for p, count in rows
+        for p, a_count, r_count in rows
     ]
 
     return ProjectListResponse(projects=projects, total=len(projects))
@@ -98,6 +112,11 @@ async def get_project(
         Article.is_duplicate == False,  # noqa: E712
     )
     count = (await db.execute(count_query)).scalar() or 0
+    
+    review_count_query = select(func.coalesce(func.sum(ScreeningSession.reviewed_count), 0)).where(
+        ScreeningSession.project_id == project_id
+    )
+    r_count = (await db.execute(review_count_query)).scalar() or 0
 
     return ProjectResponse(
         id=project.id,
@@ -108,6 +127,7 @@ async def get_project(
         created_at=project.created_at,
         updated_at=project.updated_at,
         article_count=count,
+        reviewed_count=r_count,
     )
 
 

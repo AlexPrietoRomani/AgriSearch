@@ -36,6 +36,7 @@ export interface Project {
   created_at: string;
   updated_at: string;
   article_count: number;
+  reviewed_count: number;
 }
 
 export async function listProjects(): Promise<{ projects: Project[]; total: number }> {

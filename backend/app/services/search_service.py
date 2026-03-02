@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timezone
 
 from rapidfuzz import fuzz
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -373,6 +373,7 @@ async def delete_search_query(
         except Exception as e:
             logger.warning(f"Failed to delete PDF {pdf_path}: {e}")
             
-    # Delete the search query (SQLAlchemy cascade deletes Articles)
+    # Delete the search query and explicitely delete the articles due to lack of relationship schema cascade.
+    await db.execute(delete(Article).where(Article.search_query_id == query_id))
     await db.delete(search_query)
     await db.commit()

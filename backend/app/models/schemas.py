@@ -37,6 +37,7 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     article_count: int = 0
+    reviewed_count: int = 0
 
     model_config = {"from_attributes": True}
 

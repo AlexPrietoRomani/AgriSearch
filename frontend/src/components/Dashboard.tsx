@@ -239,8 +239,8 @@ export default function Dashboard() {
                                         type="button"
                                         onClick={() => toggleArea(a.value)}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${selectedAreas.includes(a.value)
-                                                ? "bg-emerald-500 border-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20"
-                                                : "bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500"
+                                            ? "bg-emerald-500 border-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20"
+                                            : "bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500"
                                             }`}
                                     >
                                         {a.label}
@@ -335,12 +335,22 @@ export default function Dashboard() {
                                 <span className="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 tracking-wide">
                                     {AGRI_AREAS.find((a) => a.value === p.agri_area)?.label || p.agri_area}
                                 </span>
-                                <span className="text-slate-400 flex items-center gap-1">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                    {p.article_count} artículos
-                                </span>
+                                <div className="flex items-center gap-3 text-slate-400">
+                                    <span className="flex items-center gap-1">
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                        {p.article_count} artículos
+                                    </span>
+                                    {p.reviewed_count > 0 && (
+                                        <span className="flex items-center gap-1 text-emerald-400">
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            {p.reviewed_count} revisados
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </a>
                     ))}
