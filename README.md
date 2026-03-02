@@ -54,14 +54,18 @@ Para ejecutar este proyecto en tu entorno de desarrollo, asegúrate de tener ins
 
 Para la configuración detallada de los modelos, descarga y optimización (CPU vs GPU), por favor consulta primero la **[Guía de Ejecución (ejecucion.md)](ejecucion.md)**.
 
-A continuación un resumen de modelos recomendados (Ollama):
+A continuación el **Modelo Generalista** recomendado según tu perfil de hardware:
 
-| Modelo | Perfil | RAM / VRAM | Uso en AgriSearch |
+| Perfil | Hardware | Modelo Ideal | Comando |
 | :--- | :--- | :--- | :--- |
-| **Llama 3.1 8B** | GPU | 8GB+ | Consultas y Razonamiento (Defecto) |
-| **Aya 8B** | GPU | 8GB | Traducción y Multi-idioma |
-| **Phi-3 Mini** | CPU | 4GB+ | Generación rápida en Laptops |
-| **Gemma 2 2B** | CPU | 2GB+ | Equipos con recursos limitados |
+| **CPU Baja** | < 8GB RAM | `gemma2:2b` | `ollama pull gemma2:2b` |
+| **CPU Media** | 16GB RAM | `llama3.2:3b` | `ollama pull llama3.2:3b` |
+| **CPU Alta** | 32GB+ RAM | `llama3.1:8b` | `ollama pull llama3.1:8b` |
+| **GPU Baja** | 4GB VRAM | `qwen2.5:3b` | `ollama pull qwen2.5:3b` |
+| **GPU Media** | 8GB VRAM | `llama3.1:8b` | `ollama pull llama3.1:8b` |
+| **GPU Alta** | 16GB VRAM | `mistral-nemo:12b`| `ollama pull mistral-nemo:12b` |
+
+*(Consulta `docs/documentation.md` para ver la matriz completa por casos de uso).*
 
 *(Mantén Ollama corriendo en segundo plano antes de iniciar la aplicación).*
 

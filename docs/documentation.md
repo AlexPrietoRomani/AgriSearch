@@ -165,20 +165,38 @@ La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmu
 - **PyMuPDF**: Necesario en el backend para la extracción limpia de texto de archivos PDF durante la fase pre-screening. (`pip install PyMuPDF`).
 - **Ollama**: Requiere tener en ejecución instancias de modelos LLM. Por ejemplo, `aya-expanse` como opción multilingüe óptima de 8B.
 
-## Modelos LLM Sugeridos (Ollama)
+## Configuración de Inteligencia Artificial (Ollama)
 
-Se recomienda utilizar **Ollama** como motor local. A continuación, se detallan los modelos probados y optimizados para las diversas tareas de la aplicación:
+AgriSearch escala su rendimiento según tu hardware. Hemos definido **6 Perfiles de Hardware** y **4 Casos de Uso** principales para que elijas la configuración óptima.
 
-| Modelo | Perfil | VRAM / RAM Necesaria | Descripción | Uso Recomendado en la App | Pull de Ollama |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Llama 3.1 8B** | GPU | 8GB VRAM / 16GB RAM | Equilibrio perfecto entre razonamiento y velocidad. | Generación de consultas y análisis general. | `ollama pull llama3.1:8b` |
-| **Qwen 2.5 7B** | GPU | 8GB VRAM / 12GB RAM | Optimizado para seguir instrucciones de formato y extracción. | Extracción de conceptos PICO y JSON. | `ollama pull qwen2.5:7b` |
-| **Aya 8B** | GPU | 8GB VRAM | Modelo de Cohere optimizado para 23+ idiomas. | Traducción de abstracts y temas multilingües. | `ollama pull aya:8b` |
-| **Mistral Nemo 12B** | GPU Alta Gama | 12GB+ VRAM | Razonamiento superior para temas científicos complejos. | Screening avanzado y resúmenes técnicos. | `ollama pull mistral-nemo:12b` |
-| **Phi-3 Mini 3.8B** | CPU | 4GB+ RAM | Extremadamente ligero y rápido en procesadores modernos. | Generación rápida de consultas en laptops. | `ollama pull phi3:3.8b` |
-| **Gemma 2 2B** | CPU | 2GB+ RAM | El más pequeño y eficiente para hardware limitado. | Tareas básicas de filtrado en equipos modestos. | `ollama pull gemma2:2b` |
+### 1. Perfiles de Hardware y Modelos Generalistas
+Si solo quieres descargar **un modelo que haga todo en tu equipo**, elige el de tu perfil:
 
-> **Importante:** Para las capacidades de búsqueda vectorial (RAG), es obligatorio descargar el modelo de embeddings: `ollama pull nomic-embed-text`.
+| Perfil | Hardware Referencia | Modelo "Todoterreno" | Comando de Descarga |
+| :--- | :--- | :--- | :--- |
+| **CPU Baja** | < 8GB RAM / Intel i3 | `gemma2:2b` | `ollama pull gemma2:2b` |
+| **CPU Media** | 16GB RAM / Intel i5-i7 | `llama3.2:3b` | `ollama pull llama3.2:3b` |
+| **CPU Alta** | 32GB+ RAM / Ryzen 7-9 | `llama3.1:8b` | `ollama pull llama3.1:8b` |
+| **GPU Baja** | 4-6GB VRAM (RTX 3050) | `qwen2.5:3b` | `ollama pull qwen2.5:3b` |
+| **GPU Media** | 8-12GB VRAM (RTX 4060) | `llama3.1:8b` | `ollama pull llama3.1:8b` |
+| **GPU Alta** | 16GB+ VRAM (RTX 4090) | `mistral-nemo:12b`| `ollama pull mistral-nemo:12b` |
+
+---
+
+### 2. Matriz de Recomendación por Caso de Uso
+Para investigadores que buscan la máxima precisión, se recomienda alternar modelos según la tarea:
+
+| Uso en la App | Propósito | Perfil CPU (Recomendado) | Perfil GPU (Recomendado) |
+| :--- | :--- | :--- | :--- |
+| **Traducción** | EN/PT ↔ ES en Screening | `llama3.2:3b` | `aya:8b` (Optimizado 23 idiomas) |
+| **Queries** | Generación de sintaxis booleana | `phi3:mini` | `qwen2.5:7b` (Format-strict) |
+| **Screening** | Evaluación de relevancia IA | `llama3.1:8b` | `mistral-nemo:12b` |
+| **RAG (Chat)** | Conversación con citación APA | `llama3.1:8b` | `command-r:latest` (Especialista RAG) |
+
+> **Nota Crítica sobre RAG:** Independientemente del perfil, es **obligatorio** tener instalado el modelo de embeddings para que el chat funcione: 
+> `ollama pull nomic-embed-text`
+
+---
 
 ## UI/UX Global
 - **Modo claro/oscuro:** Toggle global persistente (localStorage) en la barra de navegación, disponible en todas las páginas.
