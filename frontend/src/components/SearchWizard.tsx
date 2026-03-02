@@ -163,10 +163,12 @@ export default function SearchWizard() {
         setLoading(true);
         setError(null);
         try {
-            const result = await downloadArticles({ project_id: projectId });
+            const articleIds = articles.map(a => a.id);
+            const result = await downloadArticles({ project_id: projectId, article_ids: articleIds });
             setDownloadProgress(result);
-            // Refresh articles
-            const updated = await listArticles(projectId, 0, 500);
+            // Refresh articles for current search
+            const queryId = searchResults?.query_id && searchResults.query_id !== "historical" ? searchResults.query_id : undefined;
+            const updated = await listArticles(projectId, 0, 1000, undefined, queryId);
             setArticles(updated.articles);
         } catch (e: any) {
             setError(e.message || "Error en la descarga");
