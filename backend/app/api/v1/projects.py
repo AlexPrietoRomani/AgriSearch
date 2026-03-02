@@ -196,8 +196,7 @@ async def list_project_searches(
     db: AsyncSession = Depends(get_db),
 ) -> list[SearchQueryResponse]:
     """Get all executed searches within a project with their screening availability stats."""
-    from app.models.project import Article, DownloadStatus
-    from app.models.screening_decision import ScreeningDecision
+    from app.models.project import Article, DownloadStatus, ScreeningDecision
 
     query = (
         select(SearchQuery)
