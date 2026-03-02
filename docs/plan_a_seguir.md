@@ -181,13 +181,14 @@ Interfaz de cribado inspirada en **Rayyan.ai**, organizada en una única vista u
 - **Solo artículos con PDF descargado** (`download_status = SUCCESS`) entran al screening. Los artículos sin PDF (paywall, failed, pending) quedan excluidos.
 - **Soporte Multi-Screening:** Se permite tener crear sesiones concurrentes por proyecto, ideal para que diversas personas trabajen simultáneamente (multi-persona).
 - **Control de Artículos Libres (*Eligibility*):** Al crear una nueva revisión, el sistema contabiliza estrictamente si todos los artículos descargados ya están aglomerados por sesiones anteriores. En tal caso, bloquea la creación de revisiones vacías hasta recopilar más literatura.
+- **Estrategia de Integridad de Base de Datos y UUIDs:** Todos los modelos (Proyectos, Búsquedas, Artículos, Revisiones y Decisiones) usan obligatoriamente un `UUIDv4` como Clave Primaria (tipo `String`). Esto asegura que es matemáticamente imposible que un ID de artículo de un proyecto se cruce con una revisión de otro proyecto, favoreciendo entornos asíncronos y manteniendo las relaciones Foreign Key inmutables.
 
 ##### Página 1: Configuración del Screening (`/screening?id=X` → `ScreeningSetup.tsx`)
 
 **Si ya existe una sesión activa:**
 - Muestra tarjeta con nombre, fecha, objetivo, estadísticas (total, revisados, incluidos, excluidos, tal vez), barra de progreso.
 - Botón **"▶️ Continuar Screening"** → navega a la sesión activa.
-- Botón **"🗑️ Eliminar sesión y crear nueva"** → elimina la sesión y todas sus decisiones (requiere confirmación), regresa al formulario de creación.
+- Botón **"🗑️ Eliminar sesión y crear nueva"** → elimina la sesión y todas sus decisiones (cadena de borrado en cascada del UUID), regresa al formulario de creación.
 
 **Si no hay sesión existente (formulario de creación de Nueva Revisión):**
 - **Soporte Multi-Screening Inteligente:** Por omisión al dar clic, buscará artículos no asignados y sugerirá nombres de revisión en base al contador.
@@ -196,8 +197,8 @@ Interfaz de cribado inspirada en **Rayyan.ai**, organizada en una única vista u
 - **Resumen consolidado:** Muestra el total de artículos no asignados únicos elegibles, con advertencia excluyente de lo que ya fue asignado previamente.
 - **Idioma de lectura:** Selector (español/inglés/portugués).
 - **Modelo de traducción:** Por defecto `aya:8b` (Cohere, multilingüe avanzado). Opciones: Llama 3.1 8B, Qwen 2.5 7B.
-- **Enriquecimiento previo:** Al crear la sesión, se ejecuta automáticamente la extracción de abstracts y keywords desde los PDFs descargados (vía PyMuPDF), con pantalla de progreso visual.
-- **Construcción Segura:** Al hacer click en crear, un OUTER JOIN de lado de base de datos se encarga de acoplar matemática y exclusivamente a los artículos sin asignar con su nueva ronda, sin afectar el histórico PRISMA.
+- **Enriquecimiento previo:** Al crear la sesión, se ejecuta automáticamente la extracción de abstracts y keywords desde los PDFs descargados (vía PyMuPDF).
+- **Construcción Segura SQL:** Al hacer click en crear, un OUTER JOIN se encarga de acoplar matemática y exclusivamente a los artículos sin asignar con su nueva ronda invocando sus UUIDs, sin afectar el histórico PRISMA.
 
 ##### Página 2: Sesión de Screening (`/screening?id=X&session=Y` → `ScreeningSession.tsx`)
 

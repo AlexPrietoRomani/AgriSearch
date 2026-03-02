@@ -1,0 +1,42 @@
+{
+    "document": "Documentación y Análisis de Arquitectura de la Base de Datos",
+    "descripcion_general": "Este archivo documenta el comportamiento esperado vs el comportamiento actual (as of version actual) al crear cada entidad en la base de datos SQLite (agrisearch.db). También incluye un punto de análisis estratégico para el manejo de IDs y Claves Primarias (PK).",
+    "entidades": {
+        "Proyecto (projects)": {
+            "evento_de_creacion": "El usuario hace clic en 'Nuevo Proyecto', llenando un nombre, área agrícola y una posible descripción.",
+            "comportamiento_esperado": "Se debe generar un registro raíz con un ID único inmutable. Este ID dictará la vida de todas las entidades hijas (borrado en cascada).",
+            "comportamiento_actual": "Se crea un nuevo registro con UUIDv4 en la tabla `projects`. Sirve de ancla y actualmente usa `cascade='all, delete-orphan'` en sqlalchemy."
+        },
+        "Búsqueda Sistemática (search_queries)": {
+            "evento_de_creacion": "El usuario transforma un prompt en una query booleana y luego la ejecuta en múltiples bases de datos.",
+            "comportamiento_esperado": "Se registra el prompt, la query booleana en limpio y los JSONs de cada query adaptada. Debe relacionarse mediante Foreign Key obligatoria con un Proyecto.",
+            "comportamiento_actual": "Se almacena con UUIDv4. Atado a `project_id`. Almacena metadata (`raw_input`, `generated_query`, `adapted_queries_json`) exitosamente."
+        },
+        "Artículo (articles)": {
+            "evento_de_creacion": "Durante la fase de ejecución de búsqueda, cada base de datos (OpenAlex, Crossref, etc) retorna la metadata de artículos.",
+            "comportamiento_esperado": "Cada nuevo artículo original recibe un ID propio y se ata al `project_id` y al `search_query_id`. Si es un duplicado, se guarda con `is_duplicate = True` y referenciando a su artículo padre en `duplicate_of_id`. Debe tener estado PENDING.",
+            "comportamiento_actual": "Cada artíulo adquiere un UUIDv4. Tiene FK de Proyecto y Búsqueda. Existe lógica de validación de URL Open Access y control con enumeradores de `DownloadStatus` (PENDING, SUCCESS, FAILED)."
+        },
+        "Sesión de Screening (screening_sessions)": {
+            "evento_de_creacion": "El usuario solicita revisar un cúmulo de artículos limpios que no hayan sido atados a otra sesión.",
+            "comportamiento_esperado": "Se crea un nuevo UUIDv4. La información debe capturar el nombre arbitrario, el objetivo, qué búsquedas (`search_query_ids` en JSON) se eligieron y el modelo a utilizar.",
+            "comportamiento_actual": "Se crea correctamente con UUIDv4. Contiene recuento global de progreso y funciona para iteración de Revisiones concurrentes."
+        },
+        "Decisión de Screening (screening_decisions)": {
+            "evento_de_creacion": "El proyecto genera automáticamente todas estas 'Decisiones en Vacio/PENDING' justo al crear la Sesión de Screening. Luego, el usuario las actualiza una por una.",
+            "comportamiento_esperado": "Generar rápidamente entidades atadas al `session_id` y al `article_id`. Capturar el status (PENDING, INCLUDE, EXCLUDE, MAYBE) y la razón de exclusión. Almacenar el translation_cache.",
+            "comportamiento_actual": "Tienen UUIDv4, FK compuesta conceptualmente (`session_id` + `article_id`). Se actualizan iterativamente en la UI."
+        }
+    },
+    "estrategia_de_identificadores": {
+        "problema": "Evitar que los IDs (llaves primarias) sufran colisiones (se crucen), de forma que un artículo de la Búsqueda 1 del Proyecto A nunca se confunda con un artículo de la Búsqueda 1 del Proyecto B.",
+        "diagnostico_actual": "Actualmente, la arquitectura de `sqlalchemy` está utilizando `uuid.uuid4()` para TODO (Proyectos, Búsquedas, Artículos y Screening).",
+        "ventajas_uuidv4": [
+            "Los UUID (Universally Unique Identifiers) de versión 4 se generan aleatoriamente. La posibilidad matemática de una colisión es tan baja que se considera cero para aplicaciones de tamaño mediano/grande.",
+            "Permite creación de IDs desligados del motor de la DB. Así en el futuro, si AgriSearch se migra a la nube, no dependen de un Sequence autoincremental de SQLite.",
+            "Imposibilita iteraciones maliciosas si se expusiera una API pública (nadie puede adivinar que el siguiente artículo es el 'ID 5')."
+        ],
+        "desventaja_considerada": "La indexación en la DB de Strings UUID ocupa ligeramente más espacio y memoria que los autoincrementales Integer.",
+        "veredicto_y_recomendacion_oficial": "MANTENER LA ARQUITECTURA UUID ACTUAL. Es la estrategia empresarial y de software estándar más segura para sistemas distribuidos y previene inherentemente el cruce (cross-contamination) de entidades. Como mejora (Mejor Práctica), podemos asegurarnos que la Base de Datos tenga constrain explícitos en SQLAlchemy (`UniqueConstraint('session_id', 'article_id')`) para uniones de muchos a muchos que exijan estrictamente unicidad."
+    }
+}
