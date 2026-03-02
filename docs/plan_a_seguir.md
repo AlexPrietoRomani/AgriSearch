@@ -135,10 +135,9 @@ Pantalla de inicio donde se listan todos los **Proyectos de Revisión** del usua
 
 **Estado actual (✅ Implementado):**
 - **Crear Nuevo Proyecto:** Formulario con nombre, descripción, selección múltiple de áreas agrícolas (entomología, fitopatología, breeding, biotecnología, agricultura de precisión, ciencias del suelo, agronomía, malherbología, otro), e idioma (ES/EN).
-- **Tarjetas de Proyecto:** Cada tarjeta muestra el nombre del proyecto, descripción truncada (con `text-overflow: ellipsis`), áreas agrícolas como badges, conteo de artículos, y fecha de última actualización.
-- **Eliminar Proyecto:** Botón con confirmación.
+- **Tarjetas de Proyecto:** Cada tarjeta muestra el nombre del proyecto, descripción, áreas agrícolas, y conteo exacto de **artículos totales** y **artículos revisados** (gracias a subconsultas SQL dinámicas).
+- **Eliminar Proyecto (Seguridad en Cascada):** Interfaz modal superpuesta (backdrop blur) que pide confirmación estricta visual impidiendo el borrado accidental por desajustes gráficos nativos. Inicia la eliminación escalonada en SQL que erradica y limpia bases de datos de decisiones y PDFs físicos huérfanos locales.
 - **Acceso directo:** Click en tarjeta navega a `/project?id=X`.
-
 ### 3.2 Vista de Proyecto (`/project?id=X` → `project.astro` → `ProjectDashboard.tsx`)
 
 Consola individual del proyecto con la información y acciones disponibles.

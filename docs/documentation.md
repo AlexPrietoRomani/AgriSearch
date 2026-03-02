@@ -145,6 +145,8 @@ Esto permite que varias personas trabajen simultáneamente dividiéndose los art
 - **Trazabilidad del Prompt Natural:** Se guarda e incluye explícitamente el prompt natural inicial (`raw_prompt`) para diferenciarlo de la Query generada en la interfaz gráfica del Dashboard y los Resultados.
 - **Rutas de PDF Sanitizadas Human-Readable:** Los archivos PDF se agrupan en carpetas locales con el nombre del proyecto y la búsqueda transformados dinámicamente a 'Snake_Case' (removiendo acentos y reemplazando espacios por subguiones).
 - **Contador de Artículos "No Encontrados/Sin Enlace":** Monitoreo visible post-búsqueda para aquellos artículos a los cuales los MCPs (ej. Crossref) no devolvieron explícitamente un Open Access URL, transparentando qué PDFs faltarían.
+- **Modal Interactivo de Eliminación de Proyectos:** Pop-up estilizado con Glassmorphism que previene eliminaciones accidentales en cascada, garantizando una mejor experiencia de usuario al pedir confirmación para borrar de raíz búsquedas, registros y PDFs físicos integrales del disco.
+- **Contador Dinámico de Revisiones:** El Dashboard muestra independientemente la figura estricta de documentos "revisados" a partir del cruce de sumas SQL (subconsultas escalares), erradicando reportes inconsistentes de metadatos huérfanos.
 
 #### Arquitectura de Base de Datos y Diccionarios Funcionales (`/docs`)
 La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmutabilidad multi-usuario descansa en un modelado de Base de Datos robusto documentado explícitamente en tres artefactos fundacionales:
