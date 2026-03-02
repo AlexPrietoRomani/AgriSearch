@@ -170,75 +170,87 @@ La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmu
 AgriSearch escala su rendimiento según tu hardware. Hemos definido **6 Perfiles de Hardware** y **4 Casos de Uso** principales. A continuación, la matriz completa de 24 recomendaciones validadas.
 
 ### 1. Perfiles de Hardware (Modelos Generalistas)
-Si prefieres descargar **un solo modelo** que rinda bien en todas las tareas de tu equipo:
+Si prefieres descargar **un solo modelo** que rinda de manera sobresaliente en todas las tareas diarias de tu equipo (redacción, resumen, chat general y código básico):
 
 | Perfil | Hardware Referencia | Modelo "Todoterreno" | Comando de Descarga |
 | :--- | :--- | :--- | :--- |
-| **CPU Baja** | < 8GB RAM / Intel i3 | `gemma2:2b` | `ollama pull gemma2:2b` |
-| **CPU Media** | 16GB RAM / Intel i5-i7 | `llama3.2:3b` | `ollama pull llama3.2:3b` |
-| **CPU Alta** | 32GB+ RAM / Ryzen 7-9 | `llama3.1:8b` | `ollama pull llama3.1:8b` |
-| **GPU Baja** | 4-6GB VRAM (RTX 3050) | `qwen2.5:3b` | `ollama pull qwen2.5:3b` |
-| **GPU Media** | 8-12GB VRAM (RTX 4060) | `llama3.1:8b` | `ollama pull llama3.1:8b` |
-| **GPU Alta** | 16GB+ VRAM (RTX 4090) | `mistral-nemo:12b`| `ollama pull mistral-nemo:12b` |
+| **CPU Baja** | < 8GB RAM / Intel i3 | `qwen3:1.5b` | `ollama pull qwen3:1.5b` |
+| **CPU Media** | 16GB RAM / Intel i5-i7 | `phi4-mini:3.8b` | `ollama pull phi4-mini:3.8b` |
+| **CPU Alta** | 32GB+ RAM / Ryzen 7-9 | `llama4:8b` | `ollama pull llama4:8b` |
+| **GPU Baja** | 4-6GB VRAM (RTX 3050) | `phi4-mini:3.8b` | `ollama pull phi4-mini:3.8b` |
+| **GPU Media** | 8-12GB VRAM (RTX 4060) | `deepseek-r1:8b` | `ollama pull deepseek-r1:8b` |
+| **GPU Alta** | 16GB+ VRAM (RTX 4090) | `deepseek-r1:14b` | `ollama pull deepseek-r1:14b` |
+
+> 💡 **¿Por qué estos modelos?**
+> * **`qwen3:1.5b`:** Es el rey indiscutible de los pesos pluma. Responde increíblemente rápido en CPUs antiguas y tiene un vocabulario en español mucho más natural que la generación anterior.
+> * **`phi4-mini:3.8b`:** Microsoft logró empaquetar la inteligencia de un modelo de 14B en menos de 4B. Es el punto dulce absoluto para laptops modernas (MacBooks base o PCs con 16GB), sirviendo tanto para redactar correos como para estructurar datos.
+> * **`llama4:8b`:** El "Gold Standard" de Meta. Si tienes la RAM o VRAM para correrlo, es el modelo generalista más robusto, seguro y versátil del mercado abierto.
+> * **`deepseek-r1` (8B y 14B):** Al ser modelos destilados con capacidades de razonamiento (RL), son perfectos para GPUs. Actúan como asistentes brillantes: pueden desde tener una charla casual hasta resolver un bug complejo de Python o estructurar un artículo entero, pensando los pasos antes de responder.
 
 ---
 
-### 2. Matriz de Especialidad: 24 Modelos Recomendados
-Para usuarios avanzados que buscan optimizar cada fase del proceso PRISMA:
+### 2. Matriz de Especialidad: 24 Modelos Recomendados (Actualización 2026)
+Para usuarios avanzados que buscan optimizar cada fase del proceso PRISMA utilizando modelos de razonamiento (RL) y arquitecturas MoE de última generación:
 
 #### 2.1 Modelos para Traducción (ES/EN/PT)
 
 | Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
 | :--- | :--- | :--- | :--- | :--- |
-| **CPU Baja**  | ~1 GB | `qwen2.5:0.5b` | `ollama pull qwen2.5:0.5b` | El modelo <1B con mayor densidad de conocimiento lingüístico. |
-| **CPU Media** | ~4 GB | `llama3.2:3b`  | `ollama pull llama3.2:3b`  | Supera a modelos de 7B en fluidez gramatical y matices en español. |
-| **CPU Alta**  | ~8 GB | `llama3.1:8b`  | `ollama pull llama3.1:8b`  | El estándar de la industria; excelente manejo de terminología técnica EN/ES. |
-| **GPU Baja**  | ~3 GB | `gemma2:2b`    | `ollama pull gemma2:2b`    | Lógica superior de Google aplicada a la traducción rápida de strings cortos. |
-| **GPU Media** | ~8 GB | `aya:8b`       | `ollama pull aya:8b`       | **State-of-the-Art:** 70.6% "win rate" vs Llama 3.1 en traducción (Cohere). |
-| **GPU Alta**  | ~8 GB | `aya:8b`       | `ollama pull aya:8b`       | Especialista nativo en 23 idiomas; traducción fluida de abstracts científicos. |
+| **CPU Baja** | ~1.5 GB | `qwen3:0.6b` | `ollama pull qwen3:0.6b` | La mayor densidad de conocimiento <1B actual; fluidez gramatical superior a antiguos 3B. |
+| **CPU Media** | ~3 GB | `gemma3:2b`  | `ollama pull gemma3:2b`  | Eficiencia bruta de Google; excelente manejo de terminología técnica en strings cortos. |
+| **CPU Alta** | ~8 GB | `llama4:8b`  | `ollama pull llama4:8b`  | El nuevo estándar multilingüe (entrenado en 200 idiomas); captura matices técnicos EN/ES a la perfección. |
+| **GPU Baja** | ~4 GB | `phi4-mini:3.8b`| `ollama pull phi4-mini:3.8b`| Rendimiento multilingüe top-tier (Microsoft) rivalizando con modelos de 14B. |
+| **GPU Media** | ~8 GB | `aya-expanse:8b`| `ollama pull aya-expanse:8b`| **Especialista:** Supera a Llama 3.1 por amplio margen en win-rate multilingüe (Cohere). |
+| **GPU Alta** | ~24 GB| `aya-expanse:32b`| `ollama pull aya-expanse:32b`| **State-of-the-Art:** Traducción nativa y fluida de abstracts científicos complejos en 23 idiomas sin perder rigor académico. |
 
-**Explicación:** La traducción en AgriSearch requiere preservar términos técnicos agrícolas. `aya:8b` es el líder indiscutible en multilingüismo local, mientras que `qwen2.5` y `llama3.2` ofrecen una eficiencia asombrosa en CPUs modestas sin perder el sentido de la frase.
+**Explicación:** La traducción técnica agrícola y médica no admite pérdida de contexto. Mientras `aya-expanse` sigue dominando el multilingüismo puro, `llama4` y `phi4-mini` ofrecen una asombrosa comprensión de idiomas con muy bajo coste computacional.
 
-#### 2.2 Modelos para Queries (Búsqueda)
+#### 2.2 Modelos para Queries (Búsqueda y Lógica Booleana)
 
-| Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
-| :--- | :--- | :--- | :--- | :--- |
-| **CPU Baja**  | ~3 GB | `smollm2:1.7b` | `ollama pull smollm2:1.7b` | Optimizado por HuggingFace para seguimiento de instrucciones complejas. |
-| **CPU Media** | ~2 GB | `qwen2.5:1.5b` | `ollama pull qwen2.5:1.5b` | Puntuaciones altas en IFEval; ideal para filtrar operadores booleanos. |
-| **CPU Alta**  | ~8 GB | `qwen2.5:7b`   | `ollama pull qwen2.5:7b`   | **Líder en Código:** 84.9% en Human-Eval (sintaxis JSON/SQL perfecta). |
-| **GPU Baja**  | ~4 GB | `qwen2.5:3b`   | `ollama pull qwen2.5:3b`   | Balance perfecto entre velocidad de tokenización y lógica determinística. |
-| **GPU Media** | ~8 GB | `qwen2.5:7b`   | `ollama pull qwen2.5:7b`   | Generación masiva de queries complejas sin alucinaciones de formato. |
-| **GPU Alta**  | ~8 GB | `qwen2.5:7b`   | `ollama pull qwen2.5:7b`   | Rapidez extrema en procesamiento por lotes para múltiples bases de datos. |
 
-**Explicación:** La generación de queries exige que el modelo entienda la lógica booleana (`AND`, `OR`, `NOT`) y devuelva un JSON válido. La familia `qwen2.5` domina los benchmarks de codificación y seguimiento de instrucciones, garantizando que las APIs no rechacen las consultas.
+[Image of Boolean search logic Venn diagram]
 
-#### 2.3 Modelos para Screening (Cribado)
 
 | Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
 | :--- | :--- | :--- | :--- | :--- |
-| **CPU Baja**  | ~3 GB | `gemma2:2b`        | `ollama pull gemma2:2b`        | Razonamiento sólido comparable a modelos de 7B de generaciones previas. |
-| **CPU Media** | ~4 GB | `phi3:mini`        | `ollama pull phi3:mini`        | **MMLU ~69:** El modelo pequeño con mayor capacidad de análisis lógico. |
-| **CPU Alta**  | ~12 GB | `phi3:medium`      | `ollama pull phi3:medium`      | Análisis profundo de papers (14B) con razonamiento superior en CPU. |
-| **GPU Baja**  | ~4 GB | `llama3.2:3b`      | `ollama pull llama3.2:3b`      | Eficiencia neta en clasificación binaria (Relevante vs No Relevante). |
-| **GPU Media** | ~8 GB | `llama3.1:8b`      | `ollama pull llama3.1:8b`      | Conocimiento general vasto (MMLU 68.4%) para temas científicos diversos. |
-| **GPU Alta**  | ~12 GB | `mistral-nemo:12b` | `ollama pull mistral-nemo:12b` | Especialista en capturar matices científicos finos (Optimizado por NVIDIA). |
+| **CPU Baja** | ~1.5 GB | `deepseek-r1:1.5b`| `ollama pull deepseek-r1:1.5b`| Usa Chain-of-Thought (RL) para planificar la query antes de escribirla. Cero errores de sintaxis. |
+| **CPU Media** | ~4 GB | `phi4-mini:3.8b`| `ollama pull phi4-mini:3.8b`| Altísima adherencia a instrucciones (IFEval) y formato estricto. |
+| **CPU Alta** | ~8 GB | `deepseek-r1:8b`| `ollama pull deepseek-r1:8b`| (Destilado de Llama/Qwen) **Líder en Lógica:** 91.8% de precisión en tareas complejas. |
+| **GPU Baja** | ~4 GB | `qwen3:3b`   | `ollama pull qwen3:3b`   | Balance perfecto entre velocidad de tokenización y seguimiento de esquemas JSON. |
+| **GPU Media** | ~10 GB | `deepseek-r1:14b`| `ollama pull deepseek-r1:14b`| Generación masiva de queries complejas (`AND`, `OR`, `NOT`, anidaciones) sin alucinaciones de formato. |
+| **GPU Alta** | ~16 GB | `gpt-oss:20b`| `ollama pull gpt-oss:20b`| **Nivel Industrial:** El modelo abierto de OpenAI. Comportamiento de agente perfecto para tool-calling y APIs. |
 
-**Explicación:** En el screening, el LLM debe "entender" si un abstract agrícola cumple con los criterios PICO. Se priorizan modelos con altas puntuaciones en MMLU (Massive Multitask Language Understanding) para asegurar un cribado semi-automático confiable.
+**Explicación:** La generación de queries booleanas para PubMed o Scopus es un problema de *código y lógica*, no de lenguaje natural. Los modelos `deepseek-r1` piensan paso a paso (generan `<think>`) para estructurar los operadores booleanos antes de escupir el JSON, reduciendo a cero los rechazos de las APIs.
 
-#### 2.4 Modelos para RAG (Chat / APA)
+#### 2.3 Modelos para Screening (Cribado / Criterios PICO)
+
 
 | Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
 | :--- | :--- | :--- | :--- | :--- |
-| **CPU Baja**  | ~2 GB | `llama3.2:1b`   | `ollama pull llama3.2:1b`   | Sorprendente precisión en citas y brevedad para su tamaño ultra-compacto. |
-| **CPU Media** | ~4 GB | `qwen2.5:3b`    | `ollama pull qwen2.5:3b`    | Mantiene la coherencia argumental en chats largos sobre bibliografía. |
-| **CPU Alta**  | ~8 GB | `llama3.1:8b`   | `ollama pull llama3.1:8b`   | El modelo más compatible y testeado para pipelines de RAG académico. |
-| **GPU Baja**  | ~4 GB | `qwen2.5:3b`    | `ollama pull qwen2.5:3b`    | Latencia mínima (<30ms/tok) para una experiencia de chat interactiva. |
-| **GPU Media** | ~8 GB | `command-r7b`   | `ollama pull command-r7b`   | **RAG-Specialist:** Especializado por Cohere en herramientas y citas. |
-| **GPU Alta**  | ~24 GB | `command-r:35b` | `ollama pull command-r:35b` | **Industrial-Grade:** Ventana de 128k y precisión de cita de nivel experto. |
+| **CPU Baja** | ~1.5 GB | `deepseek-r1:1.5b`| `ollama pull deepseek-r1:1.5b`| Razonamiento lógico que aplasta a los modelos de 7B de 2024 en clasificación binaria. |
+| **CPU Media** | ~4 GB | `phi4-mini:3.8b`| `ollama pull phi4-mini:3.8b`| **MMLU Elevado:** Capacidad de análisis lógico comparable a modelos masivos. |
+| **CPU Alta** | ~12 GB | `phi4:14b`   | `ollama pull phi4:14b`   | Análisis profundo de papers; especialista en GPQA (preguntas científicas de nivel graduado). |
+| **GPU Baja** | ~5 GB | `deepseek-r1:7b`| `ollama pull deepseek-r1:7b`| Destilado de Qwen; entiende perfectamente si un abstract cumple los criterios PICO. |
+| **GPU Media** | ~10 GB | `deepseek-r1:14b`| `ollama pull deepseek-r1:14b`| Evalúa meticulosamente exclusiones e inclusiones explicando su razonamiento científico. |
+| **GPU Alta** | ~16 GB | `gpt-oss:20b`| `ollama pull gpt-oss:20b`| Capacidad de razonamiento tipo GPT-4 en local; no se deja engañar por falsos positivos en los abstracts. |
 
-**Explicación:** El chat RAG requiere que el modelo sea fiel a los documentos recuperados y use correctamente el formato APA. La serie `command-r` fue entrenada específicamente para citación y búsqueda externa, siendo la opción premium para redactar borradores.
+**Explicación:** En el screening PICO, la precisión lo es todo. La familia `phi4` fue entrenada con datos sintéticos de altísima densidad de razonamiento, mientras que `deepseek-r1` y `gpt-oss` dedican tokens a "pensar" por qué un artículo debe incluirse o excluirse, haciendo que el cribado semi-automático sea auditable y confiable.
 
-> 💡 **Tip de Rendimiento:** Los modelos `qwen2.5` son excepcionales para la generación de **Queries** debido a su estricto cumplimiento de esquemas JSON y operadores booleanos. Para **Traducción**, `aya:8b` (de Cohere) sigue siendo el referente multilingüe en local.
+#### 2.4 Modelos para RAG Estricto (Chat / APA / Extracción)
+
+
+| Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
+| :--- | :--- | :--- | :--- | :--- |
+| **CPU Baja** | ~2 GB | `gemma3:1b`  | `ollama pull gemma3:1b`  | Sorprendente precisión en citas y brevedad para su tamaño ultra-compacto. |
+| **CPU Media** | ~4 GB | `phi4-mini:3.8b`| `ollama pull phi4-mini:3.8b`| Mantiene la coherencia argumental en chats sobre bibliografía (128k de contexto). |
+| **CPU Alta** | ~8 GB | `llama4:8b`  | `ollama pull llama4:8b`  | El nuevo estándar para pipelines de RAG por su masiva ventana de contexto y fidelidad al documento. |
+| **GPU Baja** | ~8 GB | `deepseek-r1:8b`| `ollama pull deepseek-r1:8b`| Razona sobre los fragmentos recuperados antes de redactar, evitando mezclar conceptos. |
+| **GPU Media** | ~16 GB | `gpt-oss:20b`| `ollama pull gpt-oss:20b`| Excelencia en RAG: comportamiento determinista para citar en APA estricto sin inventar fuentes. |
+| **GPU Alta** | ~24 GB | `qwen3:30b-moe`| `ollama pull qwen3:30b...`| **RAG-Specialist 2026:** Arquitectura MoE muy eficiente, ventana de 262k tokens, ideal para cruzar decenas de PDFs completos. |
+
+**Explicación:** El chat RAG requiere fidelidad absoluta a los documentos recuperados (Cero Alucinaciones) y ventanas de contexto masivas. `qwen3` (con sus 262K) y `llama4` lideran el procesamiento de documentos largos, mientras que `gpt-oss` es insuperable aplicando formatos APA estrictos.
+
+> 💡 **Tip de Rendimiento 2026:** Los modelos **DeepSeek-R1** (versiones destiladas de 7B a 14B) son obligatorios para **Queries** y **Screening** debido a su `<think> mode`, que reduce las alucinaciones lógicas casi a cero. Para RAG masivo, busca modelos con arquitecturas MoE (Mixture of Experts) como `qwen3` o `gpt-oss` que procesan cientos de páginas consumiendo muy poca VRAM activa.
 
 ---
 

@@ -37,6 +37,14 @@ async def build_query(payload: SearchBuildQueryRequest) -> GeneratedQuery:
     Use the LLM to transform a natural language research question
     into an optimized boolean search query with AGROVOC terms and PICO breakdown.
     """
+    logger.info(
+        "[build-query] received llm_model=%r agri_area=%r years=%s-%s",
+        payload.llm_model,
+        payload.agri_area,
+        payload.year_from,
+        payload.year_to,
+    )
+    
     result = await generate_search_query(
         user_input=payload.user_input,
         agri_area=payload.agri_area,

@@ -33,8 +33,8 @@ settings = get_settings()
 
 DOI_REGEX = re.compile(r"^10\.\d{4,}/\S+$")
 
-# Common boolean/separator tokens to strip from queries
-_QUERY_SEPARATORS = re.compile(r'\b(?:AND|OR|NOT)\b', re.IGNORECASE)
+# Common boolean/separator tokens to strip from queries (English and Spanish)
+_QUERY_SEPARATORS = re.compile(r'\b(?:AND|OR|NOT|Y|O|E|U|NO)\b', re.IGNORECASE)
 _CLEAN_RE = re.compile(r'[()"\[\]]')
 
 
@@ -48,13 +48,14 @@ def _extract_concepts_from_query(query: str) -> list[str]:
     if not query or not query.strip():
         return []
 
-    # Remove boolean operators and parentheses
-    cleaned = _QUERY_SEPARATORS.sub(' ', query)
+    # Remove boolean operators and parentheses, leaving multiple spaces for splitting
+    cleaned = _QUERY_SEPARATORS.sub('  ', query)
     cleaned = _CLEAN_RE.sub(' ', cleaned)
 
     # Split by whitespace runs and rejoin meaningful phrases
     # A concept is a group of words between boolean operators
-    raw_parts = [part.strip() for part in cleaned.split('  ') if part.strip()]
+    # Split by whitespace runs (2 or more spaces) where operators once were
+    raw_parts = [p.strip() for p in re.split(r'\s{2,}', cleaned) if p.strip()]
 
     # If splitting by double-spaces didn't work well, try single-space chunks
     if len(raw_parts) <= 1:

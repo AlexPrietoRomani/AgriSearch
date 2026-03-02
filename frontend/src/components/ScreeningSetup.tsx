@@ -27,10 +27,16 @@ const LANGUAGES = [
     { code: "pt", label: "🇧🇷 Português" },
 ];
 
-const MODELS = [
-    { id: "aya:8b", label: "Aya 8B (Multilingüe Avanzado)", desc: "El mejor para traducciones exactas EN↔ES/PT." },
-    { id: "llama3.1:8b", label: "Llama 3.1 8B (General)", desc: "Buen rendimiento general, traducción aceptable." },
-    { id: "qwen2.5:7b", label: "Qwen 2.5 7B (Excelente Multilingüe)", desc: "Alternativa rápida y precisa en varios idiomas." },
+const GPU_MODELS = [
+    { value: "deepseek-r1:7b", label: "DeepSeek R1 7B (Excelente)", desc: "Gran balance en razonamiento y precisión." },
+    { value: "deepseek-r1:14b", label: "DeepSeek R1 14B (Recomendado GPU)", desc: "Alta capacidad analítica para screening complejo." },
+    { value: "qwen2.5:7b", label: "Qwen 2.5 7B (Veloz)", desc: "Traducción muy buena y rápida." },
+];
+
+const CPU_MODELS = [
+    { value: "deepseek-r1:1.5b", label: "DeepSeek R1 1.5B (Ligero)", desc: "Ideal para CPUs básicas, buen razonamiento." },
+    { value: "phi4-mini:3.8b", label: "Phi-4 Mini 3.8B (Recomendado CPU)", desc: "Eficiente en general." },
+    { value: "qwen3:0.6b", label: "Qwen 3 0.6B (Micro)", desc: "Extra ligero para tareas simples." },
 ];
 
 export default function ScreeningSetup() {
@@ -46,10 +52,14 @@ export default function ScreeningSetup() {
     const [existingSession, setExistingSession] = useState<ScreeningSession | null>(null);
     const [selectedSearchIds, setSelectedSearchIds] = useState<Set<string>>(new Set());
     const [readingLanguage, setReadingLanguage] = useState("es");
-    const [translationModel, setTranslationModel] = useState("aya:8b");
+    const [translationModel, setTranslationModel] = useState("deepseek-r1:7b");
     const [existingSessionModel, setExistingSessionModel] = useState<string>("");
     const [sessionName, setSessionName] = useState("");
     const [sessionGoal, setSessionGoal] = useState("");
+    const [isCustomModel, setIsCustomModel] = useState(false);
+    const [customModelName, setCustomModelName] = useState("");
+    const [isCustomExistingModel, setIsCustomExistingModel] = useState(false);
+    const [customExistingModelName, setCustomExistingModelName] = useState("");
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [enriching, setEnriching] = useState(false);
@@ -79,9 +89,15 @@ export default function ScreeningSetup() {
                         ? sessions.find(s => s.id === setupSessionId) || sessions[0]
                         : sessions[0];
                     setExistingSession(targetSession);
-                    let savedModel = targetSession.translation_model || "aya:8b";
-                    if (savedModel === "aya-expanse") savedModel = "aya:8b";
+                    let savedModel = targetSession.translation_model || "deepseek-r1:7b";
+                    if (savedModel === "aya-expanse" || savedModel === "aya:8b") savedModel = "deepseek-r1:7b";
                     setExistingSessionModel(savedModel);
+
+                    const isRecommended = [...GPU_MODELS, ...CPU_MODELS].some(m => m.value === savedModel);
+                    if (!isRecommended && savedModel) {
+                        setIsCustomExistingModel(true);
+                        setCustomExistingModelName(savedModel);
+                    }
                 }
 
                 // Auto-select by default only the available searches
@@ -95,6 +111,32 @@ export default function ScreeningSetup() {
     }, [projectId, hasSession]);
 
     if (hasSession) return null;
+
+    const handleModelChange = (val: string, isExisting: boolean) => {
+        if (isExisting) {
+            if (val === "custom") {
+                setIsCustomExistingModel(true);
+            } else {
+                setIsCustomExistingModel(false);
+                setExistingSessionModel(val);
+            }
+        } else {
+            if (val === "custom") {
+                setIsCustomModel(true);
+            } else {
+                setIsCustomModel(false);
+                setTranslationModel(val);
+            }
+        }
+    };
+
+    const handleCustomSubmit = (isExisting: boolean) => {
+        if (isExisting && customExistingModelName.trim()) {
+            setExistingSessionModel(customExistingModelName.trim());
+        } else if (!isExisting && customModelName.trim()) {
+            setTranslationModel(customModelName.trim());
+        }
+    };
 
     const toggleSearch = (id: string) => {
         setSelectedSearchIds((prev) => {
@@ -333,15 +375,33 @@ export default function ScreeningSetup() {
                                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: '#cbd5e1' }}>
                                     🤖 Modelo para continuar traducciones:
                                 </label>
-                                <select
-                                    value={existingSessionModel}
-                                    onChange={(e) => setExistingSessionModel(e.target.value)}
-                                    style={styles.modelSelect}
-                                >
-                                    {MODELS.map(m => (
-                                        <option key={m.id} value={m.id}>{m.label}</option>
-                                    ))}
-                                </select>
+                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    <select
+                                        value={isCustomExistingModel ? "custom" : existingSessionModel}
+                                        onChange={(e) => handleModelChange(e.target.value, true)}
+                                        style={{ ...styles.modelSelect, flex: 1, minWidth: '200px' }}
+                                    >
+                                        <optgroup label="Recomendados GPU">
+                                            {GPU_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                        </optgroup>
+                                        <optgroup label="Recomendados CPU">
+                                            {CPU_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                        </optgroup>
+                                        <option value="custom">✍️ Otro modelo (Manual)</option>
+                                    </select>
+                                    {isCustomExistingModel && (
+                                        <input
+                                            type="text"
+                                            value={customExistingModelName}
+                                            onChange={(e) => {
+                                                setCustomExistingModelName(e.target.value);
+                                                setExistingSessionModel(e.target.value);
+                                            }}
+                                            placeholder="ej: llama3:70b"
+                                            style={{ ...styles.textInput, flex: 1, minWidth: '150px', margin: 0 }}
+                                        />
+                                    )}
+                                </div>
                             </div>
                             <button
                                 onClick={handleContinueScreening}
@@ -494,30 +554,41 @@ export default function ScreeningSetup() {
 
                     {/* Model Card */}
                     <div style={styles.card}>
-                        <h2 style={styles.cardTitle}>🤖 Modelo de Traducción</h2>
+                        <h2 style={styles.cardTitle}>🤖 Modelo de Inteligencia Artificial</h2>
                         <p style={styles.configDesc}>
-                            Modelo Ollama para traducir abstracts. Selecciona según tu balance velocidad/calidad.
+                            Modelo Ollama que se utilizará para traducir abstracts y generar sugerencias (AI Screening).
                         </p>
-                        <div style={styles.modelList}>
-                            {MODELS.map((model) => (
-                                <label key={model.id} style={styles.modelItem}>
-                                    <input
-                                        type="radio"
-                                        name="translation_model"
-                                        value={model.id}
-                                        checked={translationModel === model.id}
-                                        onChange={() => setTranslationModel(model.id)}
-                                        style={styles.radio}
-                                    />
-                                    <div>
-                                        <strong>{model.label}</strong>
-                                        <div style={styles.modelDesc}>{model.desc}</div>
-                                    </div>
-                                </label>
-                            ))}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                            <select
+                                value={isCustomModel ? "custom" : translationModel}
+                                onChange={(e) => handleModelChange(e.target.value, false)}
+                                style={styles.textInput}
+                            >
+                                <optgroup label="Recomendados GPU (Veloces)">
+                                    {GPU_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                </optgroup>
+                                <optgroup label="Recomendados CPU (Ligeros)">
+                                    {CPU_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                </optgroup>
+                                <option value="custom">✍️ Otro modelo (Manual)</option>
+                            </select>
+                            <p style={{ fontSize: "0.75rem", color: "#64748b", margin: "0 0 0.5rem" }}>
+                                {isCustomModel ? "Ingresa el nombre del modelo tal cual aparece en Ollama." : (GPU_MODELS.find(m => m.value === translationModel)?.desc || CPU_MODELS.find(m => m.value === translationModel)?.desc)}
+                            </p>
+                            {isCustomModel && (
+                                <input
+                                    type="text"
+                                    value={customModelName}
+                                    onChange={(e) => {
+                                        setCustomModelName(e.target.value);
+                                        setTranslationModel(e.target.value);
+                                    }}
+                                    placeholder="ej: llama3:70b"
+                                    style={styles.textInput}
+                                />
+                            )}
                         </div>
                     </div>
-
                     {/* Start Button */}
                     <button
                         onClick={handleStartScreening}

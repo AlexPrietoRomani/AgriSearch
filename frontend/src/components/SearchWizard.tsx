@@ -40,7 +40,7 @@ export default function SearchWizard() {
     const [projectName, setProjectName] = useState("Cargando...");
     const [projectAgriArea, setProjectAgriArea] = useState("");
     const [projectLlmModel, setProjectLlmModel] = useState<string | undefined>();
-    const [selectedLlmModel, setSelectedLlmModel] = useState<string>("llama3.1:8b"); // Default to a GPU recommended model
+    const [selectedLlmModel, setSelectedLlmModel] = useState<string>("deepseek-r1:14b"); // Default to a GPU recommended model
 
     // Check initial search params
     const initialQueryId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get("query_id") : null;
@@ -128,12 +128,19 @@ export default function SearchWizard() {
         setLoading(true);
         setError(null);
         try {
+            const effectiveLlmModel = selectedLlmModel || projectLlmModel || "qwen2.5:7b";
+            console.debug("[SearchWizard] build-query model", {
+                selectedLlmModel,
+                projectLlmModel,
+                effectiveLlmModel,
+            });
+
             const result = await buildQuery({
                 user_input: userInput,
                 year_from: yearFrom,
                 year_to: yearTo,
                 agri_area: projectAgriArea,
-                llm_model: selectedLlmModel,
+                llm_model: effectiveLlmModel,
             });
             setGeneratedQuery(result);
             setEditedQuery(result.boolean_query);

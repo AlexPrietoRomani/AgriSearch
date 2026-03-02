@@ -20,15 +20,15 @@ interface Props {
 }
 
 const GPU_MODELS = [
-    { value: "llama3.1:8b", label: "Llama 3.1 8B (Recomendado)", desc: "Excelente equilibrio velocidad/calidad." },
-    { value: "qwen2.5:7b", label: "Qwen 2.5 7B (Rápido)", desc: "Muy bueno siguiendo instrucciones de formato." },
-    { value: "mistral-nemo:12b", label: "Mistral Nemo 12B (Potente)", desc: "Mayor razonamiento para temas complejos." },
-    { value: "gpt-oss20b", label: "GPT-OSS 20B (High-VRAM)", desc: "Para GPUs con 16GB+ VRAM." },
+    { value: "qwen3:3b", label: "Qwen 3 3B (Rápido)", desc: "Excelente estructurando queries booleanas rápidas." },
+    { value: "deepseek-r1:14b", label: "DeepSeek R1 14B (Recomendado)", desc: "Gran balance en razonamiento y adherencia al formato JSON." },
+    { value: "gpt-oss:20b", label: "GPT-OSS 20B (High-VRAM)", desc: "Para GPUs de alta gama (16GB+ VRAM)." },
 ];
 
 const CPU_MODELS = [
-    { value: "phi3:3.8b", label: "Phi-3 Mini (Ligero)", desc: "Rápido en CPUs modernas." },
-    { value: "gemma2:2b", label: "Gemma 2 2B", desc: "Muy pequeño y optimizado." },
+    { value: "deepseek-r1:1.5b", label: "DeepSeek R1 1.5B (Ligero)", desc: "Súper liviano y rápido para CPUs básicas." },
+    { value: "phi4-mini:3.8b", label: "Phi-4 Mini 3.8B (Intermedio)", desc: "Razonamiento eficiente en CPUs modernas." },
+    { value: "deepseek-r1:8b", label: "DeepSeek R1 8B (Potente)", desc: "El mejor razonamiento en CPU con 8GB+ RAM." },
 ];
 
 export default function SearchWizardDescribe({
@@ -206,8 +206,10 @@ export default function SearchWizardDescribe({
                             <input
                                 type="text"
                                 value={customModelName}
-                                onChange={(e) => setCustomModelName(e.target.value)}
-                                onBlur={handleCustomSubmit}
+                                onChange={(e) => {
+                                    setCustomModelName(e.target.value);
+                                    setSelectedLlmModel(e.target.value);
+                                }}
                                 placeholder="ej: llama3:70b"
                                 className="px-4 py-2 bg-slate-950 border border-emerald-500/30 rounded-xl text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none min-w-[150px]"
                             />

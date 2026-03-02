@@ -58,9 +58,11 @@ INSTRUCTIONS:
 4. Provide a PICO/PEO breakdown if applicable (Population=Crop/Pest, Intervention=Treatment, etc.).
 5. Generate a readable summary query combining the main concepts in Boolean logic.
 
-CRITICAL: The "concepts" must be SHORT phrases (1-3 words each), not full sentences.
-CRITICAL: Concepts must be in ENGLISH for database compatibility.
-CRITICAL: If the user's intent is purely non-agricultural, try to map it to the closest agricultural relevance or use agricultural terminology.
+61. CRITICAL: The "concepts" must be SHORT phrases (1-3 words each) in ENGLISH for core compatibility.
+62. CRITICAL: For each concept, provide synonyms in BOTH English and Spanish to ensure coverage in regional databases (SciELO/Redalyc).
+63. CRITICAL: Do NOT include Boolean operators (AND, OR, NOT, Y, O) or logic expressions inside the concept strings.
+64. CRITICAL: The "boolean_query" MUST use English Boolean operators (AND, OR, NOT) exclusively.
+65. CRITICAL: If the user's intent is purely non-agricultural, try to map it to the closest agricultural relevance or use agricultural terminology.
 
 RESPOND IN JSON FORMAT:
 {{
@@ -81,10 +83,21 @@ RESPOND IN JSON FORMAT:
 }}"""
 
     try:
-        llm_model = model or settings.litellm_model
+        requested_model = (model or "").strip()
+        llm_model = requested_model or settings.litellm_model
+        llm_model_source = "request_payload" if requested_model else "settings_default"
+
         # Prefix with ollama/ if not present to ensure it routes correctly via LiteLLM
         if not (llm_model.startswith("ollama/") or llm_model.startswith("openai/")):
              llm_model = f"ollama/{llm_model}"
+
+        logger.info(
+            "[generate_search_query] model_source=%s requested_model=%r resolved_model=%s api_base=%s",
+            llm_model_source,
+            requested_model,
+            llm_model,
+            settings.litellm_api_base,
+        )
 
         response = await litellm.acompletion(
             model=llm_model,
@@ -106,7 +119,13 @@ RESPOND IN JSON FORMAT:
         return result
 
     except Exception as e:
-        logger.error("LLM query generation failed: %s", str(e))
+        logger.error(
+            "LLM query generation failed (requested_model=%r, default_model=%s): %s",
+            model,
+            settings.litellm_model,
+            str(e),
+        )
+        
         # Fallback: use the raw input as the query
         return {
             "boolean_query": user_input,
