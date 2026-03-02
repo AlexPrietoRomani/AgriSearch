@@ -161,10 +161,13 @@ export default function SearchWizardResults({
             {/* Download Progress */}
             {downloadProgress && (
                 <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                    <div className="flex items-center gap-6 text-sm">
+                    <div className="flex items-center gap-6 text-sm flex-wrap">
                         <span className="text-emerald-400 font-medium">✅ {downloadProgress.downloaded} descargados</span>
                         <span className="text-red-400">❌ {downloadProgress.failed} fallidos</span>
                         <span className="text-yellow-400">🔒 {downloadProgress.paywall} paywall</span>
+                        {downloadProgress.not_found !== undefined && (
+                            <span className="text-slate-400">ℹ️ {downloadProgress.not_found} sin enlace abierto</span>
+                        )}
                     </div>
                 </div>
             )}

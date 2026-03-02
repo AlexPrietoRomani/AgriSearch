@@ -1,43 +1,43 @@
-# Astro Starter Kit: Minimal
+# Chat Búsqueda Sistemática - Frontend
 
-```sh
-npm create astro@latest -- --template minimal
-```
+Este es el frontend de la herramienta de Búsqueda Sistemática, construido con **Astro**, **React**, y **Tailwind CSS**.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## 🚀 Estructura del Proyecto
 
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
+El proyecto está diseñado para ser rápido, modular y con un estilo visual "dark glassmorphic" de alto nivel.
 
 ```text
 /
-├── public/
+├── public/              # Archivos estáticos
 ├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+│   ├── components/      # Componentes React interactivos (islands)
+│   ├── layouts/         # Layouts de Astro (ej. base HTML, estilos globales)
+│   ├── lib/             # Funciones de utilidad y llamadas a la API (api.ts)
+│   └── pages/           # Rutas automáticas de Astro (ej. index.astro, search.astro, screening.astro)
+└── tailwind.config.mjs  # Configuración de Tailwind CSS
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## 🌟 Funcionalidades Principales
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+- **Dashboard Principal**: Gestión de Proyectos, listado de búsquedas y revisiones pasadas y control general del pipeline mediante `ProjectDashboard.tsx`.
+- **Wizard de Búsqueda Sistemática**: Un componente Multi-Step poderoso (`SearchWizard`) dividido en 4 pasos (Descripción, Revisión de Query LLC, Búsqueda asíncrona concurrente, Resultados con LaTeX y descarga PDF local).
+- **Control Inteligente de Inputs**: Preservación del Prompt Natural en paralelo a las queries crudas. Control visual del número de artículos *no encontrados/sin enlace* disponible para descarga.
+- **Sistema de Revisiones (Screening) Multi-Persona**: Una interfaz estricta (tipo Rayyan) que permite gestionar artículos con su PDF local en pantalla dividida o mediante modal. Traducciones automáticas vía LLM locales (Aya, Qwen, LLaMA), atajos de teclado y conteos en vivo.
+- **Botones de Purga de Sesión**: Posibilidad de eliminar búsquedas o revisiones. Al borrar una revisión se usa "Eliminación Segura", manteniendo los PDFs descargados intactos en sus rutas sanitizadas (`Project_Name/Search_Name/descargas`).
 
-Any static assets, like images, can be placed in the `public/` directory.
+## 🧞 Comandos Locales
 
-## 🧞 Commands
+Ejecutables desde la raíz de `frontend/` en tu terminal:
 
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
+| Comando                   | Acción                                           |
 | :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+| `npm install`             | Instala dependencias                             |
+| `npm run dev`             | Inicia el servidor de desarrollo (`localhost:4321`) |
+| `npm run build`           | Compila el sitio listo para producción a `./dist/`|
+| `npm run preview`         | Previsualiza el build de producción localmente   |
 
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+## 🤝 Tecnologías Destacadas
+- **Astro**: Core framework, manejando enrutamiento y SSR liviano.
+- **React**: Interacciones complejas del cliente (via `client:only="react"` o `client:load`).
+- **KaTeX / react-latex-next**: Renderizado matemático in-browser de ecuaciones LaTeX en abstracts.
+- **Tailwind CSS + Glassmorphism**: Utilidades de estilo para visuales limpias, futuristas y altamente accesibles.

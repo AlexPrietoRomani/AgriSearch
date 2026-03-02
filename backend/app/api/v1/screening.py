@@ -607,3 +607,18 @@ async def get_relevance_suggestion(
         justification=suggestion.get("justification", "Sin justificación."),
         confidence=suggestion.get("confidence")
     )
+
+@router.delete("/session/{session_id}", summary="Delete a screening session")
+async def delete_screening_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a screening session and all its associated screening decisions. PDFs are unaffected."""
+    session = await db.get(ScreeningSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Screening session not found")
+
+    await db.delete(session)
+    await db.commit()
+    logger.info("Deleted screening session: %s", session_id)
+    return {"status": "success", "message": "Screening session deleted"}

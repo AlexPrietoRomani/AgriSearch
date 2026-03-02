@@ -89,6 +89,7 @@ class SearchExecuteRequest(BaseModel):
     """Schema for executing a search across databases."""
     project_id: str = Field(..., description="Project UUID")
     query: str = Field(..., description="Search query to execute")
+    raw_prompt: str | None = Field(None, description="Original natural language prompt typed by user")
     databases: list[str] = Field(
         default=["openalex", "semantic_scholar", "arxiv", "crossref",
                  "core", "scielo", "redalyc", "agecon", "organic_eprints"],
@@ -128,6 +129,7 @@ class SearchResultsResponse(BaseModel):
     articles: list[ArticleResponse]
     counts_by_source: dict[str, int]
     adapted_queries: dict[str, str] = Field(default_factory=dict, description="Query sent to each API")
+    prompt_used: str | None = Field(None, description="Original NLP prompt typed by user")
 
 
 # ──────────────────── Download Schemas ────────────────────
@@ -145,6 +147,7 @@ class DownloadProgressResponse(BaseModel):
     downloaded: int
     failed: int
     paywall: int
+    not_found: int = 0
     in_progress: int
     articles: list[ArticleResponse] = []
 

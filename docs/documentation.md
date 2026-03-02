@@ -140,6 +140,12 @@ Esto permite que varias personas trabajen simultáneamente dividiéndose los art
 - **Regla de Bloqueo General**: Si todos los artículos exitosos del proyecto ya están aglomerados en las sesiones existentes, el sistema levanta una alerta gráfica (Popup) impidiendo la creación de una revisión vacía y exigiendo realizar más búsquedas previamente.
 - **Control de Colisiones en Base de Datos (Estrategia UUID)**: En el sistema backend, todos los modelos (`projects`, `search_queries`, `articles`, `screening_sessions`, `screening_decisions`) utilizan `UUIDv4` como Clave Primaria inmutable (`String`). Esta decisión arquitectónica avala que es computacional y probabilísticamente imposible que un artículo o revisión de un proyecto sufra una "colisión de IDs" (cruce de información) con sesiones o artículos de otro proyecto, blindando la integridad referencial.
 
+#### Funcionalidades Recientes
+- **Eliminación Segura de Revisiones:** Desde el Dashboard del Proyecto, se puede eliminar definitivamente una revisión (Screening Session). Esto elimina en cascada las decisiones (incluido/excluido), pero **respeta de forma segura e intacta los PDFs**, de manera que estén disponibles para futuras revisiones.
+- **Trazabilidad del Prompt Natural:** Se guarda e incluye explícitamente el prompt natural inicial (`raw_prompt`) para diferenciarlo de la Query generada en la interfaz gráfica del Dashboard y los Resultados.
+- **Rutas de PDF Sanitizadas Human-Readable:** Los archivos PDF se agrupan en carpetas locales con el nombre del proyecto y la búsqueda transformados dinámicamente a 'Snake_Case' (removiendo acentos y reemplazando espacios por subguiones).
+- **Contador de Artículos "No Encontrados/Sin Enlace":** Monitoreo visible post-búsqueda para aquellos artículos a los cuales los MCPs (ej. Crossref) no devolvieron explícitamente un Open Access URL, transparentando qué PDFs faltarían.
+
 #### Arquitectura de Base de Datos y Diccionarios Funcionales (`/docs`)
 La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmutabilidad multi-usuario descansa en un modelado de Base de Datos robusto documentado explícitamente en tres artefactos fundacionales:
 1. `docs/database_schema_expected.json`: Diccionario canónico que delimita el objetivo, tipo de dato y restricciones SQL lógicas (Ejemplo y Explicación) sobre cada tabla de `agrisearch.db`.

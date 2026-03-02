@@ -142,6 +142,7 @@ export interface SearchResults {
 export async function executeSearch(data: {
   project_id: string;
   query: string;
+  raw_prompt?: string;
   databases?: string[];
   max_results_per_source?: number;
   year_from?: number;
@@ -174,6 +175,7 @@ export interface DownloadProgress {
   downloaded: number;
   failed: number;
   paywall: number;
+  not_found: number;
   in_progress: number;
 }
 
@@ -282,8 +284,8 @@ export async function createScreeningSession(data: {
   return request("/screening/sessions", { method: "POST", body: JSON.stringify(data) });
 }
 
-export async function deleteScreeningSession(sessionId: string): Promise<{ status: string; message: string }> {
-  return request(`/screening/sessions/${sessionId}`, { method: "DELETE" });
+export async function deleteScreeningSession(sessionId: string): Promise<void> {
+  return request(`/screening/session/${sessionId}`, { method: "DELETE" });
 }
 
 export async function updateScreeningSession(sessionId: string, data: {

@@ -141,6 +141,7 @@ export default function SearchWizard() {
             const result = await executeSearch({
                 project_id: projectId,
                 query: editedQuery,
+                raw_prompt: userInput,
                 databases: selectedDBs,
                 max_results_per_source: maxResults,
                 year_from: yearFrom,

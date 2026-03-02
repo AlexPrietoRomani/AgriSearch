@@ -188,7 +188,7 @@ Interfaz de cribado inspirada en **Rayyan.ai**, organizada en una única vista u
 **Si ya existe una sesión activa:**
 - Muestra tarjeta con nombre, fecha, objetivo, estadísticas (total, revisados, incluidos, excluidos, tal vez), barra de progreso.
 - Botón **"▶️ Continuar Screening"** → navega a la sesión activa.
-- Botón **"🗑️ Eliminar sesión y crear nueva"** → elimina la sesión y todas sus decisiones (cadena de borrado en cascada del UUID), regresa al formulario de creación.
+- Botón **"🗑️ Eliminar sesión y crear nueva"** → elimina la sesión y todas sus decisiones (cadena de borrado en cascada del UUID), regresa al formulario de creación. Esta funcionalidad también se ha extendido al Dashboard, logrando una **eliminación segura de la revisión manteniendo ilesos los PDFs extraídos.**
 
 **Si no hay sesión existente (formulario de creación de Nueva Revisión):**
 - **Soporte Multi-Screening Inteligente:** Por omisión al dar clic, buscará artículos no asignados y sugerirá nombres de revisión en base al contador.

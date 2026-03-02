@@ -118,6 +118,7 @@ async def execute_search(
     max_results_per_source: int = 50,
     year_from: int | None = None,
     year_to: int | None = None,
+    raw_prompt: str | None = None,
 ) -> dict:
     """
     Execute a search across selected databases, deduplicate, and store results.
@@ -132,7 +133,7 @@ async def execute_search(
     # Store the search query
     search_query = SearchQuery(
         project_id=project_id,
-        raw_input=query,
+        raw_input=raw_prompt or query,
         generated_query=query,
         databases_used=",".join(databases),
     )

@@ -90,8 +90,9 @@ Para ejemplificar, se describe detalladamente qué pasa tras bambalinas cuando u
   - Solicita `GET /screening/eligibility/{project_id}` antes de permitir crear una revisión. El servidor valida artículos disponibles cruzando datos con sesiones activas.
   - Al hacer click en "Revisiones", el usuario puede crear una nueva (`new=true`) si cumple elegibilidad.
   - Igual metodología en acceso histórico (`setup_session=...`). La presentación dinámica redirige hacia `<ScreeningApp />` en otra URL aislada por ID de sesión.
-- **Eliminaciones (`DELETE /projects/{id}`, `DELETE /search/{p}/{q}`, o DELETE sesiones):**
-  - Se orquestan en Cascada (Cascading Delete). Un `SearchQuery` eliminado erradica consigo no solo su metadata DB, si no mediante hooks y servicios se destruyen todos los archivos PDF locales asociados y registros de Screening generados encima de ellos garantizando congruencia del Disco Duro.
+- **Eliminaciones Inteligentes (`DELETE /projects`, `DELETE /search`, o `DELETE /screening/session`):**
+  - **Eliminar Proyecto/Búsqueda**: Se orquestan en Cascada estricta (Cascading Delete). Un `SearchQuery` o proyecto eliminado erradica su metadata en BD, y mediante hooks y servicios **se destruyen todos los archivos PDF locales** asociados junto con los registros de Screening que dependían de ellos.
+  - **Eliminar Revisión (Screening Session)**: "Eliminación Segura". Se destruye la revisión y todas sus decisiones de inclusión/exclusión, pero **los PDFs descargados no sufren ninguna alteración**. Permanecen listos y disponibles subyacentemente en su carpeta sanitizada o para ser asignados a una nueva revisión concurrente.
 
 ---
 
