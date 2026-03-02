@@ -139,6 +139,12 @@ Esto permite que varias personas trabajen simultáneamente dividiéndose los art
 - **Nombres Automáticos:** El campo de "nombre de la sesión" ahora sugiere secuencias inteligentes opcionales ("Revisión 1", "Revisión 2") y el "Objetivo" es estrictamente prescindible.
 - **Regla de Bloqueo General**: Si todos los artículos exitosos del proyecto ya están aglomerados en las sesiones existentes, el sistema levanta una alerta gráfica (Popup) impidiendo la creación de una revisión vacía y exigiendo realizar más búsquedas previamente.
 - **Control de Colisiones en Base de Datos (Estrategia UUID)**: En el sistema backend, todos los modelos (`projects`, `search_queries`, `articles`, `screening_sessions`, `screening_decisions`) utilizan `UUIDv4` como Clave Primaria inmutable (`String`). Esta decisión arquitectónica avala que es computacional y probabilísticamente imposible que un artículo o revisión de un proyecto sufra una "colisión de IDs" (cruce de información) con sesiones o artículos de otro proyecto, blindando la integridad referencial.
+
+#### Arquitectura de Base de Datos y Diccionarios Funcionales (`/docs`)
+La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmutabilidad multi-usuario descansa en un modelado de Base de Datos robusto documentado explícitamente en tres artefactos fundacionales:
+1. `docs/database_schema_expected.json`: Diccionario canónico que delimita el objetivo, tipo de dato y restricciones SQL lógicas (Ejemplo y Explicación) sobre cada tabla de `agrisearch.db`.
+2. `docs/database_schema_current.json`: Snapshot auto-generado de SQLite usando pragmas para evidenciar el estado 1:1 real del servidor.
+3. `docs/database_diagram.md`: Diagrama de Arquitectura ER (Entity Relationship) escrito nativamente en código `mermaid`. Ilustra el proceso de cómo 1 Proyecto se ramifica atando fuertemente el destino de una "Búsqueda" o "Revisión" hasta las múltiples "Decisiones PRISMA" usando UUIDs.
 ---
 
 ## Dependencias Críticas

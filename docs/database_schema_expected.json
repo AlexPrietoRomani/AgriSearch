@@ -1,0 +1,348 @@
+{
+    "document": "Esquema Esperado de Base de Datos - Agrisearch.db",
+    "database": "agrisearch.db (SQLite via SQLAlchemy Async)",
+    "tables": {
+        "projects": {
+            "description": "Tabla raíz. Almacena todos los proyectos de revisión sistemática aislados entre sí.",
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "PK inmutable. Clave que sujeta en cascada toda la vida útil de los datos de este proyecto."
+                },
+                {
+                    "name": "name",
+                    "type": "VARCHAR(255)",
+                    "description": "Nombre humano dado por el usuario al proyecto.",
+                    "example": "Detección de Fenología con YOLO"
+                },
+                {
+                    "name": "description",
+                    "type": "TEXT",
+                    "description": "Propósito detallado del proyecto para contexto general."
+                },
+                {
+                    "name": "agri_area",
+                    "type": "VARCHAR(500)",
+                    "description": "Tag de áreas agrícolas (Entomología, Genética, etc).",
+                    "example": "Agricultura de Precisión"
+                },
+                {
+                    "name": "language",
+                    "type": "VARCHAR(10)",
+                    "description": "Idioma principal BCP-47.",
+                    "example": "es"
+                },
+                {
+                    "name": "created_at",
+                    "type": "DATETIME",
+                    "description": "Timestamp de creación original."
+                },
+                {
+                    "name": "updated_at",
+                    "type": "DATETIME",
+                    "description": "Timestamp de la última modificación."
+                }
+            ]
+        },
+        "search_queries": {
+            "description": "Tabla que guarda cada ejecución de búsqueda independiente e incrusta el prompt original y su query.",
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "PK inmutable."
+                },
+                {
+                    "name": "project_id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "Foreign Key apuntando a projects.id.",
+                    "example": "d55603a6-..."
+                },
+                {
+                    "name": "raw_input",
+                    "type": "TEXT",
+                    "description": "El prompt original que el investigador ingresó en lenguaje natural."
+                },
+                {
+                    "name": "generated_query",
+                    "type": "TEXT",
+                    "description": "La query booleana abstracta global generada por el LLM.",
+                    "example": "\"phenology\" AND \"YOLO\""
+                },
+                {
+                    "name": "databases_used",
+                    "type": "VARCHAR(500)",
+                    "description": "Lista separada por comas de las fuentes usadas.",
+                    "example": "openalex,crossref"
+                },
+                {
+                    "name": "total_results",
+                    "type": "INTEGER",
+                    "description": "Total reportado global de artículos devueltos sin limpiar."
+                },
+                {
+                    "name": "duplicates_removed",
+                    "type": "INTEGER",
+                    "description": "Cantidad de artículos limpios que ya existían previamente mediante cruce de DOIs."
+                },
+                {
+                    "name": "adapted_queries_json",
+                    "type": "TEXT",
+                    "description": "El mapping interno exacto por fuente API enviado vía LLM."
+                },
+                {
+                    "name": "created_at",
+                    "type": "DATETIME",
+                    "description": "Timestamp de ejecución de la búsqueda."
+                }
+            ]
+        },
+        "articles": {
+            "description": "Almacena los metadatos de los papers, el tracking de las colisiones (duplicados) y el estatus de PDFs.",
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "PK de artículo único dentro del sistema."
+                },
+                {
+                    "name": "project_id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "FK a projects.id."
+                },
+                {
+                    "name": "search_query_id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "FK opcional apuntando a la búsqueda que trajo este reporte por primera vez."
+                },
+                {
+                    "name": "doi",
+                    "type": "VARCHAR(255)",
+                    "description": "Identificador Digital Persistente.",
+                    "example": "10.1016/j.compag.2023.107500"
+                },
+                {
+                    "name": "title",
+                    "type": "TEXT",
+                    "description": "Título original de la publicación."
+                },
+                {
+                    "name": "authors",
+                    "type": "TEXT",
+                    "description": "Varios autores separados por comas.",
+                    "example": "Wang J., Zhang H."
+                },
+                {
+                    "name": "year",
+                    "type": "INTEGER",
+                    "description": "Año base astronómico."
+                },
+                {
+                    "name": "abstract",
+                    "type": "TEXT",
+                    "description": "Resumen original textual extraído."
+                },
+                {
+                    "name": "journal",
+                    "type": "VARCHAR(500)",
+                    "description": "La editorial o el journal host."
+                },
+                {
+                    "name": "url",
+                    "type": "VARCHAR(1000)",
+                    "description": "Link navegable del recurso."
+                },
+                {
+                    "name": "keywords",
+                    "type": "TEXT",
+                    "description": "Palabras clave originales."
+                },
+                {
+                    "name": "source_database",
+                    "type": "VARCHAR(100)",
+                    "description": "Ej: openalex, arxiv, manual.",
+                    "example": "arxiv"
+                },
+                {
+                    "name": "external_id",
+                    "type": "VARCHAR(500)",
+                    "description": "Id interno del origen (Ej: OpenAlex W321...)"
+                },
+                {
+                    "name": "is_duplicate",
+                    "type": "BOOLEAN",
+                    "description": "Si es True, no formará parte de los reportes por ser un solapamiento detectado.",
+                    "example": 0
+                },
+                {
+                    "name": "duplicate_of_id",
+                    "type": "VARCHAR",
+                    "description": "Referencia circular; dice a qué article.id corresponde la muestra maestra."
+                },
+                {
+                    "name": "download_status",
+                    "type": "VARCHAR(12)",
+                    "description": "Label del modelo de enumerador (PENDING, SUCCESS, FAILED, PAYWALL).",
+                    "example": "SUCCESS"
+                },
+                {
+                    "name": "local_pdf_path",
+                    "type": "VARCHAR(1000)",
+                    "description": "Ruta en disco hosteo o local.",
+                    "example": "C:/data/papers/2023_Wang_YOLO_agric.pdf"
+                },
+                {
+                    "name": "open_access_url",
+                    "type": "VARCHAR(1000)",
+                    "description": "Mirror link de recolección en PDF libre directo."
+                },
+                {
+                    "name": "created_at",
+                    "type": "DATETIME",
+                    "description": "Fecha de indexación en BD."
+                },
+                {
+                    "name": "updated_at",
+                    "type": "DATETIME",
+                    "description": "Fecha de última manipulación de status."
+                }
+            ]
+        },
+        "screening_sessions": {
+            "description": "Instancia agrupacional temporal y asincrónica para efectuar un proceso PRISMA individual a cargo de un investigador.",
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "PK que sostiene la ronda actual de revisiones en cascada hacia sus decisiones."
+                },
+                {
+                    "name": "project_id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "FK a projects.id"
+                },
+                {
+                    "name": "name",
+                    "type": "VARCHAR(255)",
+                    "description": "Alias arbitrario.",
+                    "example": "Revisión 1"
+                },
+                {
+                    "name": "goal",
+                    "type": "TEXT",
+                    "description": "Objetivo textual opcional para guía metodológica."
+                },
+                {
+                    "name": "search_query_ids",
+                    "type": "TEXT",
+                    "description": "JSON crudo o Array en texto separando los UUIDs de consultas abarcadas por esta sesión."
+                },
+                {
+                    "name": "reading_language",
+                    "type": "VARCHAR(10)",
+                    "description": "Para traducción LLM.",
+                    "example": "es"
+                },
+                {
+                    "name": "translation_model",
+                    "type": "VARCHAR(100)",
+                    "description": "Bandera de modelo seleccionado.",
+                    "example": "aya:8b"
+                },
+                {
+                    "name": "total_articles",
+                    "type": "INTEGER",
+                    "description": "Recuento de volumen asignado matemáticamente a esta sesión.",
+                    "example": "15"
+                },
+                {
+                    "name": "reviewed_count",
+                    "type": "INTEGER",
+                    "description": "Métrica volátil."
+                },
+                {
+                    "name": "included_count",
+                    "type": "INTEGER",
+                    "description": "Métrica volátil."
+                },
+                {
+                    "name": "excluded_count",
+                    "type": "INTEGER",
+                    "description": "Métrica volátil."
+                },
+                {
+                    "name": "maybe_count",
+                    "type": "INTEGER",
+                    "description": "Métrica volátil."
+                },
+                {
+                    "name": "created_at",
+                    "type": "DATETIME",
+                    "description": "Instalación de la revisión."
+                }
+            ]
+        },
+        "screening_decisions": {
+            "description": "Objeto vinculante Muchos-a-Muchos que certifica el resultado de veredicto sobre 1 artículo en 1 sesión en particular.",
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "PK inmutable local."
+                },
+                {
+                    "name": "session_id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "FK al Screening padre."
+                },
+                {
+                    "name": "article_id",
+                    "type": "VARCHAR/UUIDv4",
+                    "description": "FK al metadata source genérico del Proyecto."
+                },
+                {
+                    "name": "decision",
+                    "type": "VARCHAR",
+                    "description": "Etiqueta final tipo Enumerador PRISMA (PENDING, INCLUDE, EXCLUDE, MAYBE).",
+                    "example": "INCLUDE"
+                },
+                {
+                    "name": "exclusion_reason",
+                    "type": "VARCHAR(255)",
+                    "description": "Obligatorio a veces para graficar exclusiones."
+                },
+                {
+                    "name": "reviewer_note",
+                    "type": "TEXT",
+                    "description": "Cuaderno personal de recordatorios iterativos."
+                },
+                {
+                    "name": "translated_abstract",
+                    "type": "TEXT",
+                    "description": "Caché masivo del texto procesado y devuelto por el LLM."
+                },
+                {
+                    "name": "original_language",
+                    "type": "VARCHAR(10)",
+                    "description": "Auto-detectado por LLM."
+                },
+                {
+                    "name": "display_order",
+                    "type": "INTEGER",
+                    "description": "Orden del carrusel por iteración UI."
+                },
+                {
+                    "name": "decided_at",
+                    "type": "DATETIME",
+                    "description": "Timestamp único en el que PENDING desapareció."
+                },
+                {
+                    "name": "updated_at",
+                    "type": "DATETIME",
+                    "description": "Timestamp de sobrescritura de nota o rollback de decisión."
+                }
+            ]
+        }
+    }
+}

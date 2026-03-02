@@ -260,6 +260,15 @@ Interfaz principal de cribado artículo-por-artículo, estilo Rayyan:
 - Parámetros de RAG: tamaño de chunk, top-K de recuperación, umbral de similitud.
 - Exportar/Importar proyecto completo (backup).
 
+#### 3.2.5 Base de Datos (`data/agrisearch.db` — ✅ Implementado)
+La arquitectura backend cuenta con su propia base de código documental que expone el comportamiento, ejemplos vivos y la estructura atómica de las tablas SQLite (`agrisearch.db`) mediante SQLAlchemy Async (`aiosqlite`).
+
+*   **Identificadores Inmutables y Seguros (`UUIDv4`):** El mayor pilar del diseño de AgriSearch contra colisiones entre las revisiones concurrentes y los proyectos. Toda asignación genera dinámicamente UUIDs con cero colisiones probabilísticas.
+*   **Recursos Aprobados:**
+    *   `docs/database_schema_expected.json`: El diccionario exacto de qué información y restricciones de tabla requiere cada modelo SQLAlchemy en producción.
+    *   `docs/database_schema_current.json`: Generado automáticamente mediante PRAGMAs para auditar el SQLite real.
+    *   `docs/database_diagram.md`: Un diagrama ER completo construido en Mermaid ilustrando las relaciones Muchos-a-Muchos y Uno-a-Muchos que dominan la selección de artículos para screening y el almacenamiento histórico PRISMA.
+
 ### 3.3 Wireframe Conceptual del Flujo General
 
 ```mermaid

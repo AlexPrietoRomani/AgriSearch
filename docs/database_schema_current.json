@@ -1,0 +1,590 @@
+{
+  "projects": {
+    "columns": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "name",
+        "type": "VARCHAR(255)",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "agri_area",
+        "type": "VARCHAR(21)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "language",
+        "type": "VARCHAR(10)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "created_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "updated_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "example_row": {
+      "id": "d55603a6-e9ef-4af2-8077-ab00b6c8d46a",
+      "name": "Agricultura de Precisión YOLO",
+      "description": "Búsqueda de artículos científicos para detección de objetos de fenología en agricultura. ",
+      "agri_area": "Agricultura de Precisión, Fenología",
+      "language": "es",
+      "created_at": "2026-02-22 17:53:06.187206",
+      "updated_at": "2026-02-22 21:02:32.880722"
+    }
+  },
+  "search_queries": {
+    "columns": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "project_id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "raw_input",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "generated_query",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "databases_used",
+        "type": "VARCHAR(500)",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "total_results",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "duplicates_removed",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "created_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "adapted_queries_json",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "example_row": {
+      "id": "96d800ad-5cde-43a2-8f27-068c682c6558",
+      "project_id": "d55603a6-e9ef-4af2-8077-ab00b6c8d46a",
+      "raw_input": "10 articulos mas recientes sobre agricultura de precision de deteccion de fenologias con YOLO detection",
+      "generated_query": "10 articulos mas recientes sobre agricultura de precision de deteccion de fenologias con YOLO detection",
+      "databases_used": "openalex,semantic_scholar,arxiv",
+      "total_results": 11,
+      "duplicates_removed": 1,
+      "created_at": "2026-02-22 17:59:05.215582",
+      "adapted_queries_json": null
+    }
+  },
+  "articles": {
+    "columns": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "project_id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "search_query_id",
+        "type": "VARCHAR",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "doi",
+        "type": "VARCHAR(255)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "title",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "authors",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "year",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "abstract",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "journal",
+        "type": "VARCHAR(500)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "url",
+        "type": "VARCHAR(1000)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "keywords",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "source_database",
+        "type": "VARCHAR(100)",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "external_id",
+        "type": "VARCHAR(500)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "is_duplicate",
+        "type": "BOOLEAN",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "duplicate_of_id",
+        "type": "VARCHAR",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "download_status",
+        "type": "VARCHAR(9)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 16,
+        "name": "local_pdf_path",
+        "type": "VARCHAR(1000)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 17,
+        "name": "open_access_url",
+        "type": "VARCHAR(1000)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 18,
+        "name": "created_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 19,
+        "name": "updated_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "example_row": {
+      "id": "75f0c7df-38f9-4fcd-bacc-70e894dbd5b9",
+      "project_id": "d55603a6-e9ef-4af2-8077-ab00b6c8d46a",
+      "search_query_id": "96d800ad-5cde-43a2-8f27-068c682c6558",
+      "doi": "10.22490/24629448.10573",
+      "title": "Avanzando hacia la Excelencia en Investigación Biomédica",
+      "authors": "Olga Lucia Ostos Ortiz",
+      "year": 2025,
+      "abstract": "Es con gran satisfacción que presentamos el volumen 24, número 46 de la Revista NOVA, correspondiente al año 2026, una edición que consolida el compromiso de nuestra publicación con la difusión de conocimiento científico de alta calidad en el ámbito de las ciencias biomédicas. \nEste número refleja la diversidad y profundidad de la investigación contemporánea en ciencias de la vida, abarcando desde innovaciones tecnológicas aplicadas a la biotecnología hasta estudios epidemiológicos de relevancia para la salud pública. Los siete artículos de investigación y tres artículos de revisión incluidos demuestran la aplicación de enfoques metodológicos rigurosos para abordar problemas complejos en diversas disciplinas biomédicas. \nEl estudio sobre \"Tecnologías IOT aplicadas al cultivo de Pleurotus ostreatus, hongo de relevancia nutricional y terapéutica, en ambientes controlados\" representa un avance significativo en la integración de la biotecnología con sistemas de monitoreo inteligente. La aplicación de tecnologías del Internet de las Cosas (IoT) para optimizar las condiciones de cultivo de Pleurotus ostreatus demuestra cómo los sistemas automatizados pueden mantener parámetros ambientales óptimos, minimizando errores humanos y estableciendo bases para el control automatizado en la producción de hongos con propiedades funcionales. \nLa investigación sobre \"Evaluación del lactosuero como sustrato alternativo para la producción de Bacillus thuringiensis\" contribuye significativamente a la sostenibilidad en procesos biotecnológicos. El uso de Bacillus thuringiensis como biopesticida ha cobrado relevancia mundial debido a su alta especificidad, estabilidad y biodegradabilidad, y la exploración de sustratos alternativos como el lactosuero representa una aproximación innovadora hacia la economía circular en biotecnología. \nEl artículo \"Efecto de la composición del medio de cultivo sobre la capacidad antagónica de los basidiomicetos comerciales contra Fusarium spp. y Alternaria alternata\" aporta conocimiento fundamental sobre el control biológico de fitopatógenos. La caracterización de la actividad antagonista de hongos basidiomicetos contra patógenos como Fusarium y Alternaria es crucial para el desarrollo de estrategias de biocontrol sostenibles en agricultura. \nLa \"Caracterización de bacilos Gram negativos resistentes, aislados en Instituciones de Salud del Departamento de Boyacá, Colombia\" aborda un problema de salud pública de primera magnitud. La resistencia bacteriana en bacilos Gram negativos tiene un impacto económico y social significativo, incrementando morbilidad y mortalidad. La caracterización fenotípica de perfiles de resistencia regionales es fundamental para implementar estrategias de vigilancia y contención de la resistencia antimicrobiana. \nEl estudio de \"Validación del método analítico por HPLC para la cuantificación de trazas del fármaco Meloxicam en equipos y áreas de fabricación\" demuestra el compromiso con estándares analíticos de excelencia en la industria farmacéutica. La validación de métodos analíticos para cuantificación de residuos farmacéuticos es esencial para garantizar la calidad y seguridad en procesos de manufactura. \nLa investigación sobre \"Emergency triage classification with machine learning. A Colombian Case\" representa la aplicación innovadora de inteligencia artificial en medicina de urgencias. Los modelos de aprendizaje automático han demostrado capacidad superior para predecir desenlaces críticos y hospitalización comparado con sistemas convencionales como el Emergency Severity Index, mejorando la precisión del triaje y optimizando la utilización de recursos. \nEl metaanálisis \"Dislipidemia en pacientes intervenidos con bypass y manga gástrica\" proporciona evidencia robusta sobre los efectos de la cirugía bariátrica en el metabolismo lipídico. Los resultados confirman mejoras significativas en el perfil lipídico posterior a procedimientos bariátricos, con remisión de dislipidemia aterogénica en una proporción considerable de pacientes. \nArtículos de Revisión: Síntesis de Evidencia Contemporánea \nLa \"Prevalencia de Toxoplasmosis Congénita en Colombia: Revisión Sistemática y Metaanálisis\" aborda una problemática de salud pública de particular relevancia en el contexto nacional. Este análisis de 16 estudios publicados entre 2005 y 2022 reveló una prevalencia ponderada de IgG del 38% (IC 95%: 20-57%) en gestantes y del 39% (IC 95%: 10-74%) en recién nacidos, evidenciando alta exposición materna y riesgo real de transmisión vertical. La detección de anticuerpos IgM en el 16% (IC 95%: 7-27%) de las gestantes sugiere infecciones recientes, muchas asintomáticas, que incrementan el riesgo de secuelas congénitas. La alta heterogeneidad observada entre los estudios refleja la distribución geográfica limitada y metodologías heterogéneas, evidenciando deficiencias estructurales en la vigilancia epidemiológica nacional de esta zoonosis. \nEl artículo \"Microorganismos asociados a infecciones endodónticas: factores de virulencia, resistencia y persistencia\" proporciona una síntesis actualizada sobre la etiología microbiana del sistema de conductos radiculares. Enterococcus faecalis es el microorganismo más predominante en infecciones endodónticas secundarias con una prevalencia del 36.6%, seguido de Candida albicans, Propionibacterium acnes y Veillonella parvula con frecuencias del 20%, 2% y 2%, respectivamente. La revisión destaca que la prevalencia de E. faecalis en infecciones endodónticas llega al 80-90% en algunos contextos clínicos. La prevalencia global de Candida spp. en infecciones de conductos radiculares fue del 8.20%, siendo C. albicans la especie aislada con mayor frecuencia. En Colombia, la prevalencia de periodontitis endodóntica es del 51.6%, con mayor frecuencia en mujeres (51.8%) y predominio en molares (40%). \nLa revisión \"Esfuerzo recompensa y Síndrome de Burnout en el Sector Salud, una Revisión Integrativa, 2018 a 2024\" aborda una problemática crítica en el sistema de salud contemporáneo. El análisis de 22 artículos reveló que la mayoría (90.9%) emplearon metodología cuantitativa de tipo descriptivo con análisis correlacional. Las profesiones más estudiadas fueron médicos (30.4%), seguidos de enfermeras (21.7%). Los hallazgos principales establecen que los hombres más jóvenes tienen mayor probabilidad de desarrollar desgaste profesional, mientras que las mujeres presentaron más riesgo de agotamiento emocional y exceso de compromiso. La evidencia demuestra consistentemente que los profesionales de la salud con mayor desbalance esfuerzo-recompensa tienen mayor riesgo de desarrollar síndrome de burnout. El modelo de desequilibrio esfuerzo-recompensa mostró correlaciones significativas con todas las dimensiones del burnout, siendo el agotamiento emocional la dimensión con la asociación más fuerte. \nFortalecimiento del Comité Editorial Internacional \nUn aspecto fundamental de este número es el reconocimiento a los distinguidos miembros del comité editorial y científico de la Revista NOVA, quienes han fortalecido significativamente nuestra capacidad de evaluación y proyección internacional. \nDestacamos especialmente la incorporación de reconocidos investigadores internacionales: el Dr. Ian James Martins de Australia, galardonado con el Nobel Research Award 2024 y especialista en neurobiología con más de 500 publicaciones científicas y un h-index de 257; el Dr. Arun Kumar de India, con más de 144 publicaciones en bioquímica cardiovascular y experiencia editorial en múltiples revistas indexadas; y el Dr. Adham Farouk Mohammad de Egipto, experto en cirugía plástica y reconstructiva con más de 20 artículos científicos y participación en misiones médicas humanitarias. \nAgradecemos la valiosa contribución del Dr. José Antonio Rodríguez Montes, reconocido cirujano y académico de amplia trayectoria internacional. Con más de 270 artículos, 29 libros y 120 capítulos publicados, así como su experiencia como jefe de servicio y decano en prestigiosas instituciones europeas. \nLa presencia del Dr. Javier Aranceta Bartrina, Presidente de la Academia Española de Nutrición con más de 480 publicaciones científicas y un h-index de 81, fortalece significativamente nuestras áreas de nutrición y salud pública. El Dr. Francisco López Muñoz, Vicerrector de Investigación de la Universidad Camilo José Cela y miembro de más de veinte academias internacionales, con 798 publicaciones científicas, consolida nuestra excelencia en neurociencias y psicofarmacología. \nLos investigadores españoles Dr. Antonio Bascones Martínez, Presidente de la Real Academia de Doctores de España, y Dr. Félix María Goñi Urcelay, referente mundial en biofísica de membranas con más de 265 artículos científicos, aportan perspectivas de investigación básica y clínica de alto nivel. \nLa representación latinoamericana incluye al Dr. Enrique Soto Eguibar de México, especialista en neurobiología del sistema auditivo con 120 artículos publicados; Dr. Luis Jesús Villareal Gómez, experto en biomateriales con más de 60 publicaciones; Dra. Claudia Gómez Acevedo, especialista en farmacología conductual; al Dr. Gregorio Rodríguez-Boto Amago, Decano de Medicina de la Universidad Nebrija y Premio Nacional de Medicina 2025 en Neurocirugía ; y Dr. Manuel Alfonso Patarroyo de Colombia, reconocido mundialmente por su trabajo en vacunas sintéticas con más de 500 publicaciones científicas. \nEste fortalecimiento del comité editorial refleja el crecimiento y reconocimiento internacional de la Revista NOVA, consolidando nuestra posición como una publicación de referencia en el ámbito biomédico iberoamericano. La experiencia combinada de estos investigadores, que abarca desde ciencias básicas hasta aplicaciones clínicas, asegura una evaluación integral y rigurosa de las contribuciones científicas. \nPerspectivas Futuras \nLos trabajos incluidos en este volumen ilustran la creciente integración de tecnologías avanzadas en investigación biomédica, desde aplicaciones",
+      "journal": "Revista Nova publicación científica en ciencias biomédicas",
+      "url": "https://www.semanticscholar.org/paper/1bb44f527e9b4bd956255017f077586f1e424c44",
+      "keywords": null,
+      "source_database": "semantic_scholar",
+      "external_id": "1bb44f527e9b4bd956255017f077586f1e424c44",
+      "is_duplicate": 0,
+      "duplicate_of_id": null,
+      "download_status": "NOT_FOUND",
+      "local_pdf_path": null,
+      "open_access_url": "",
+      "created_at": "2026-02-22 17:59:07.210869",
+      "updated_at": "2026-02-22 18:32:56.986327"
+    }
+  },
+  "screening_sessions": {
+    "columns": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "project_id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "search_query_ids",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "reading_language",
+        "type": "VARCHAR(10)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "translation_model",
+        "type": "VARCHAR(100)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "total_articles",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "reviewed_count",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "included_count",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "excluded_count",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "maybe_count",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "created_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "updated_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "goal",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "example_row": {
+      "id": "e5451d98-1fb8-46fc-9fb3-15f9be422e51",
+      "project_id": "d55603a6-e9ef-4af2-8077-ab00b6c8d46a",
+      "search_query_ids": "[\"96d800ad-5cde-43a2-8f27-068c682c6558\", \"d70eb7b5-78ad-4efe-a575-ddf93d8a0d6e\"]",
+      "reading_language": "es",
+      "translation_model": "aya:8b",
+      "total_articles": 35,
+      "reviewed_count": 35,
+      "included_count": 1,
+      "excluded_count": 34,
+      "maybe_count": 0,
+      "created_at": "2026-02-26 23:40:22.006478",
+      "updated_at": "2026-02-27 01:44:45.527546",
+      "name": "Cribado inicial",
+      "goal": ""
+    }
+  },
+  "screening_decisions": {
+    "columns": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "session_id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "article_id",
+        "type": "VARCHAR",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "decision",
+        "type": "VARCHAR(7)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "exclusion_reason",
+        "type": "VARCHAR(255)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "reviewer_note",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "translated_abstract",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "original_language",
+        "type": "VARCHAR(10)",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "display_order",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "decided_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "created_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "updated_at",
+        "type": "DATETIME",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "example_row": {
+      "id": "5b499d8c-28d1-49bb-adb9-9d613a249798",
+      "session_id": "e5451d98-1fb8-46fc-9fb3-15f9be422e51",
+      "article_id": "fba619d4-7232-41a8-a206-9fc0922ce2b7",
+      "decision": "EXCLUDE",
+      "exclusion_reason": "No es artículo original",
+      "reviewer_note": null,
+      "translated_abstract": null,
+      "original_language": null,
+      "display_order": 0,
+      "decided_at": "2026-02-27 01:37:50.936405",
+      "created_at": "2026-02-26 23:40:22.010990",
+      "updated_at": "2026-02-27 01:37:50.938429"
+    }
+  }
+}
