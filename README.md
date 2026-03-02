@@ -64,8 +64,8 @@ A continuación el **Modelo Generalista** recomendado según tu perfil de hardwa
 | **GPU Baja** | 4GB VRAM | `qwen2.5:3b` | `ollama pull qwen2.5:3b` |
 | **GPU Media** | 8GB VRAM | `llama3.1:8b` | `ollama pull llama3.1:8b` |
 | **GPU Alta** | 16GB VRAM | `mistral-nemo:12b`| `ollama pull mistral-nemo:12b` |
-
-> 📊 **Matriz de Especialidad:** Para configuraciones optimizadas por tarea (Traducción, Queries, Screening, RAG), consulta la **[Matriz de 24 Modelos en la Documentación](docs/documentation.md#2-matriz-de-especialidad-24-modelos-recomendados)**.
+ 
+> 📊 **Matriz de Especialidad Avanzada:** Para configuraciones optimizadas por tarea basándose en benchmarks (MMLU, Human-Eval), consulta la **[Matriz de 24 Modelos con Métricas y RAM](docs/documentation.md#2-matriz-de-especialidad-24-modelos-recomendados)**.
 
 *(Mantén Ollama corriendo en segundo plano antes de iniciar la aplicación).*
 

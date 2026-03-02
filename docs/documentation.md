@@ -186,14 +186,57 @@ Si prefieres descargar **un solo modelo** que rinda bien en todas las tareas de 
 ### 2. Matriz de Especialidad: 24 Modelos Recomendados
 Para usuarios avanzados que buscan optimizar cada fase del proceso PRISMA:
 
-| Perfil de Hardware | Traducción (ES/EN/PT) | Queries (Búsqueda) | Screening (Cribado) | RAG (Chat / APA) |
+#### 2.1 Modelos para Traducción (ES/EN/PT)
+
+| Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
 | :--- | :--- | :--- | :--- | :--- |
-| **CPU Baja** | `qwen2.5:0.5b` | `smollm2:1.7b` | `gemma2:2b` | `llama3.2:1b` |
-| **CPU Media** | `llama3.2:3b` | `qwen2.5:1.5b` | `phi3:mini` | `qwen2.5:3b` |
-| **CPU Alta** | `llama3.1:8b` | `qwen2.5:7b` | `phi3:medium` | `llama3.1:8b` |
-| **GPU Baja** | `gemma2:2b` | `qwen2.5:3b` | `llama3.2:3b` | `qwen2.5:3b` |
-| **GPU Media** | `aya:8b` | `qwen2.5:7b` | `llama3.1:8b` | `command-r7b` |
-| **GPU Alta** | `aya:8b` | `qwen2.5:7b` | `mistral-nemo:12b` | `command-r:35b` |
+| **CPU Baja**  | ~1 GB | `qwen2.5:0.5b` | `ollama pull qwen2.5:0.5b` | El modelo <1B con mayor densidad de conocimiento lingüístico. |
+| **CPU Media** | ~4 GB | `llama3.2:3b`  | `ollama pull llama3.2:3b`  | Supera a modelos de 7B en fluidez gramatical y matices en español. |
+| **CPU Alta**  | ~8 GB | `llama3.1:8b`  | `ollama pull llama3.1:8b`  | El estándar de la industria; excelente manejo de terminología técnica EN/ES. |
+| **GPU Baja**  | ~3 GB | `gemma2:2b`    | `ollama pull gemma2:2b`    | Lógica superior de Google aplicada a la traducción rápida de strings cortos. |
+| **GPU Media** | ~8 GB | `aya:8b`       | `ollama pull aya:8b`       | **State-of-the-Art:** 70.6% "win rate" vs Llama 3.1 en traducción (Cohere). |
+| **GPU Alta**  | ~8 GB | `aya:8b`       | `ollama pull aya:8b`       | Especialista nativo en 23 idiomas; traducción fluida de abstracts científicos. |
+
+**Explicación:** La traducción en AgriSearch requiere preservar términos técnicos agrícolas. `aya:8b` es el líder indiscutible en multilingüismo local, mientras que `qwen2.5` y `llama3.2` ofrecen una eficiencia asombrosa en CPUs modestas sin perder el sentido de la frase.
+
+#### 2.2 Modelos para Queries (Búsqueda)
+
+| Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
+| :--- | :--- | :--- | :--- | :--- |
+| **CPU Baja**  | ~3 GB | `smollm2:1.7b` | `ollama pull smollm2:1.7b` | Optimizado por HuggingFace para seguimiento de instrucciones complejas. |
+| **CPU Media** | ~2 GB | `qwen2.5:1.5b` | `ollama pull qwen2.5:1.5b` | Puntuaciones altas en IFEval; ideal para filtrar operadores booleanos. |
+| **CPU Alta**  | ~8 GB | `qwen2.5:7b`   | `ollama pull qwen2.5:7b`   | **Líder en Código:** 84.9% en Human-Eval (sintaxis JSON/SQL perfecta). |
+| **GPU Baja**  | ~4 GB | `qwen2.5:3b`   | `ollama pull qwen2.5:3b`   | Balance perfecto entre velocidad de tokenización y lógica determinística. |
+| **GPU Media** | ~8 GB | `qwen2.5:7b`   | `ollama pull qwen2.5:7b`   | Generación masiva de queries complejas sin alucinaciones de formato. |
+| **GPU Alta**  | ~8 GB | `qwen2.5:7b`   | `ollama pull qwen2.5:7b`   | Rapidez extrema en procesamiento por lotes para múltiples bases de datos. |
+
+**Explicación:** La generación de queries exige que el modelo entienda la lógica booleana (`AND`, `OR`, `NOT`) y devuelva un JSON válido. La familia `qwen2.5` domina los benchmarks de codificación y seguimiento de instrucciones, garantizando que las APIs no rechacen las consultas.
+
+#### 2.3 Modelos para Screening (Cribado)
+
+| Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
+| :--- | :--- | :--- | :--- | :--- |
+| **CPU Baja**  | ~3 GB | `gemma2:2b`        | `ollama pull gemma2:2b`        | Razonamiento sólido comparable a modelos de 7B de generaciones previas. |
+| **CPU Media** | ~4 GB | `phi3:mini`        | `ollama pull phi3:mini`        | **MMLU ~69:** El modelo pequeño con mayor capacidad de análisis lógico. |
+| **CPU Alta**  | ~12 GB | `phi3:medium`      | `ollama pull phi3:medium`      | Análisis profundo de papers (14B) con razonamiento superior en CPU. |
+| **GPU Baja**  | ~4 GB | `llama3.2:3b`      | `ollama pull llama3.2:3b`      | Eficiencia neta en clasificación binaria (Relevante vs No Relevante). |
+| **GPU Media** | ~8 GB | `llama3.1:8b`      | `ollama pull llama3.1:8b`      | Conocimiento general vasto (MMLU 68.4%) para temas científicos diversos. |
+| **GPU Alta**  | ~12 GB | `mistral-nemo:12b` | `ollama pull mistral-nemo:12b` | Especialista en capturar matices científicos finos (Optimizado por NVIDIA). |
+
+**Explicación:** En el screening, el LLM debe "entender" si un abstract agrícola cumple con los criterios PICO. Se priorizan modelos con altas puntuaciones en MMLU (Massive Multitask Language Understanding) para asegurar un cribado semi-automático confiable.
+
+#### 2.4 Modelos para RAG (Chat / APA)
+
+| Perfil | RAM necesaria | Modelo | Comando de Descarga | Por qué es el mejor (Métrica) |
+| :--- | :--- | :--- | :--- | :--- |
+| **CPU Baja**  | ~2 GB | `llama3.2:1b`   | `ollama pull llama3.2:1b`   | Sorprendente precisión en citas y brevedad para su tamaño ultra-compacto. |
+| **CPU Media** | ~4 GB | `qwen2.5:3b`    | `ollama pull qwen2.5:3b`    | Mantiene la coherencia argumental en chats largos sobre bibliografía. |
+| **CPU Alta**  | ~8 GB | `llama3.1:8b`   | `ollama pull llama3.1:8b`   | El modelo más compatible y testeado para pipelines de RAG académico. |
+| **GPU Baja**  | ~4 GB | `qwen2.5:3b`    | `ollama pull qwen2.5:3b`    | Latencia mínima (<30ms/tok) para una experiencia de chat interactiva. |
+| **GPU Media** | ~8 GB | `command-r7b`   | `ollama pull command-r7b`   | **RAG-Specialist:** Especializado por Cohere en herramientas y citas. |
+| **GPU Alta**  | ~24 GB | `command-r:35b` | `ollama pull command-r:35b` | **Industrial-Grade:** Ventana de 128k y precisión de cita de nivel experto. |
+
+**Explicación:** El chat RAG requiere que el modelo sea fiel a los documentos recuperados y use correctamente el formato APA. La serie `command-r` fue entrenada específicamente para citación y búsqueda externa, siendo la opción premium para redactar borradores.
 
 > 💡 **Tip de Rendimiento:** Los modelos `qwen2.5` son excepcionales para la generación de **Queries** debido a su estricto cumplimiento de esquemas JSON y operadores booleanos. Para **Traducción**, `aya:8b` (de Cohere) sigue siendo el referente multilingüe en local.
 
