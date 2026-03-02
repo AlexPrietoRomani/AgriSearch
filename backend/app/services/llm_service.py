@@ -6,6 +6,7 @@ Handles query generation, summarization, and all LLM interactions.
 """
 
 import logging
+import json
 from typing import Any
 
 import litellm
@@ -18,6 +19,51 @@ settings = get_settings()
 # Configure LiteLLM
 litellm.set_verbose = settings.debug
 
+def _extract_json_payload(raw_content: Any) -> dict[str, Any]:
+    """
+    Extract a JSON object from a model response content payload.
+
+    Supports:
+    - direct dict payloads
+    - plain JSON strings
+    - JSON wrapped in markdown code fences
+    - JSON embedded inside additional text
+    """
+    if isinstance(raw_content, dict):
+        return raw_content
+
+    if raw_content is None:
+        raise ValueError("Empty LLM response content")
+
+    content = str(raw_content).strip()
+    if not content:
+        raise ValueError("Empty LLM response content")
+
+    # Fast path: direct JSON
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    # Remove common markdown code fence wrappers
+    if content.startswith("```"):
+        lines = content.splitlines()
+        if len(lines) >= 3 and lines[-1].strip().startswith("```"):
+            content = "\n".join(lines[1:-1]).strip()
+            if content.lower().startswith("json"):
+                content = content[4:].strip()
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                pass
+
+    # Last resort: extract the first JSON object block found in the text
+    start = content.find("{")
+    end = content.rfind("}")
+    if start != -1 and end != -1 and start < end:
+        return json.loads(content[start : end + 1])
+
+    raise ValueError("LLM response did not contain valid JSON")
 
 async def generate_search_query(
     user_input: str,
@@ -111,9 +157,8 @@ RESPOND IN JSON FORMAT:
             max_tokens=1500,
         )
 
-        import json
         content = response.choices[0].message.content
-        result = json.loads(content)
+        result = _extract_json_payload(content)
 
         logger.info("Search query generated successfully for input: %s", user_input[:80])
         return result
@@ -125,7 +170,7 @@ RESPOND IN JSON FORMAT:
             settings.litellm_model,
             str(e),
         )
-        
+
         # Fallback: use the raw input as the query
         return {
             "boolean_query": user_input,
@@ -199,7 +244,6 @@ async def generate_relevance_suggestion(
     """
     Generate an inclusion/exclusion suggestion based on previous decisions (Few-shot learning).
     """
-    import json
     
     # Format few-shot examples from history
     examples_str = ""
@@ -244,7 +288,7 @@ RESPOND IN JSON FORMAT:
         )
 
         content = response.choices[0].message.content
-        result = json.loads(content)
+        result = _extract_json_payload(content)
         return result
 
     except Exception as e:
