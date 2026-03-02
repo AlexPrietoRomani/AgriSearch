@@ -238,15 +238,15 @@ export default function ScreeningSetup() {
         );
     }
 
-    // ── No searches ──
-    if (!project || searches.length === 0) {
+    // ── No searches / No eligible articles ──
+    if (!project || (searches.length === 0 && !existingSession)) {
         return (
             <div className="screening-setup" style={styles.container}>
                 <div style={styles.emptyState}>
                     <span style={{ fontSize: "3rem" }}>📭</span>
-                    <h2 style={styles.emptyTitle}>No hay búsquedas disponibles</h2>
+                    <h2 style={styles.emptyTitle}>Sin Artículos Disponibles</h2>
                     <p style={styles.emptyDesc}>
-                        Para iniciar un screening, primero necesitas realizar al menos una búsqueda en el proyecto.
+                        Para iniciar un nuevo screening, realiza primero una búsqueda y descarga los PDFs. Si ya lo hiciste, es posible que todos los artículos ya estén asignados a otras revisiones activas.
                     </p>
                     <a href={`/project?id=${projectId}`} style={styles.backLink}>
                         ← Volver al proyecto
