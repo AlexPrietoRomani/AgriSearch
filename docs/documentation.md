@@ -23,6 +23,12 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 - **Subida Manual (Upload):** Endpoint `POST /search/upload-pdf/{article_id}`. Para los artículos que están bloqueados por un paywall, el usuario puede subir localmente su archivo PDF desde el dashboard de resultados. El archivo se enlaza directamente a su base de datos.
 - **Eliminación de Búsquedas Segura:** Los usuarios pueden eliminar consultas del historial preventivamente. Esta acción ejecuta un Cascade Delete en la base de datos (eliminando `SearchQuery` y sus `Article`s) e intercepta el almacenamiento local, eliminando automáticamente los archivos PDF asociados a tales IDs para liberar espacio en disco. En la UI, el botón de eliminación está correctamente posicionado por encima del bloque redireccionador (con `z-index` y `stopPropagation`) para evitar colisiones de clics.
 - **Transparencia Total de Queries:** `ArticleResponse` incluye `local_pdf_path` para que el frontend pueda mostrar el nombre del archivo local en la tabla de resultados. `SearchResultsResponse` incluye la propiedad `prompt_used` y `adapted_queries` con precisión literal. Además se ha modificado la tabla `SearchQuery` en SQLite (añadiendo la columna en texto plano `adapted_queries_json`) para preservar perennemente qué le fue enviado a cada API. En la Interfaz de Resultados, un Acordeón desplegable de "Depuración" expone ambos parámetros al investigador.
+- **Selección Flexible de Modelos LLM:** Los usuarios pueden elegir qué modelo de Ollama utilizar para la generación de queries. 
+  - **Preferencia por Proyecto:** Se puede definir un modelo por defecto al crear o editar un proyecto.
+  - **Selección en Caliente:** Durante la fase de "Descripción", el usuario puede cambiar el modelo recomendado (GPU o CPU) o ingresar manualmente cualquier nombre de modelo de Ollama.
+  - **Modelos Recomendados:**
+    - **GPU (Alto rendimiento):** `llama3.1:8b` (defecto), `qwen2.5:7b`, `mistral-nemo:12b`, `gpt-oss20b`.
+    - **CPU (Bajos recursos):** `phi3:3.8b`, `gemma2:2b`.
 - **Dashboard Integrado:** La portada de cada proyecto (`ProjectDashboard.tsx`) amalgama eficientemente tanto el **Historial de Búsquedas** como el **Historial de Revisiones (Screening)**, creando un ecosistema completo para monitorear el progreso del cribado PRISMA en una sola vista central. Asimismo se han refactorizado las asignaciones de estado (`useState`) iniciales en base a parámetros URl para eliminar destellos visuales o pestañeos transaccionales del renderizado (Flicker Fixes).
 
 #### Flujo de Búsqueda (Diagrama de Secuencia)
@@ -160,11 +166,19 @@ La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmu
 - **Ollama**: Requiere tener en ejecución instancias de modelos LLM. Por ejemplo, `aya-expanse` como opción multilingüe óptima de 8B.
 
 ## Modelos LLM Sugeridos (Ollama)
-1. **Aya 8B (`aya:8b`)** — Recomendado. Modelo multilingüe optimizado de Cohere. Excelente para traducciones EN↔ES/PT.
-2. **Llama 3.1 8B (`llama3.1:8b`)** — Rendimiento general sólido.
-3. **Qwen 2.5 7B (`qwen2.5:7b`)** — Alternativa rápida y eficiente.
 
-> **Nota:** Se utiliza `aya:8b` como tag preferente por su disponibilidad y rendimiento estable en entornos locales.
+Se recomienda utilizar **Ollama** como motor local. A continuación, se detallan los modelos probados y optimizados para las diversas tareas de la aplicación:
+
+| Modelo | Perfil | VRAM / RAM Necesaria | Descripción | Uso Recomendado en la App | Pull de Ollama |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Llama 3.1 8B** | GPU | 8GB VRAM / 16GB RAM | Equilibrio perfecto entre razonamiento y velocidad. | Generación de consultas y análisis general. | `ollama pull llama3.1:8b` |
+| **Qwen 2.5 7B** | GPU | 8GB VRAM / 12GB RAM | Optimizado para seguir instrucciones de formato y extracción. | Extracción de conceptos PICO y JSON. | `ollama pull qwen2.5:7b` |
+| **Aya 8B** | GPU | 8GB VRAM | Modelo de Cohere optimizado para 23+ idiomas. | Traducción de abstracts y temas multilingües. | `ollama pull aya:8b` |
+| **Mistral Nemo 12B** | GPU Alta Gama | 12GB+ VRAM | Razonamiento superior para temas científicos complejos. | Screening avanzado y resúmenes técnicos. | `ollama pull mistral-nemo:12b` |
+| **Phi-3 Mini 3.8B** | CPU | 4GB+ RAM | Extremadamente ligero y rápido en procesadores modernos. | Generación rápida de consultas en laptops. | `ollama pull phi3:3.8b` |
+| **Gemma 2 2B** | CPU | 2GB+ RAM | El más pequeño y eficiente para hardware limitado. | Tareas básicas de filtrado en equipos modestos. | `ollama pull gemma2:2b` |
+
+> **Importante:** Para las capacidades de búsqueda vectorial (RAG), es obligatorio descargar el modelo de embeddings: `ollama pull nomic-embed-text`.
 
 ## UI/UX Global
 - **Modo claro/oscuro:** Toggle global persistente (localStorage) en la barra de navegación, disponible en todas las páginas.

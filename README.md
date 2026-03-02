@@ -23,8 +23,9 @@ El sistema integra **9 Bases de Datos Científicas** y Modelos de Lenguaje Grand
 ### Flujo de Búsqueda
 
 1. **Describir** — El usuario describe su tema en lenguaje natural.
-2. **Extraer conceptos** — Un LLM local (Ollama) extrae conceptos clave, sinónimos y desglose PICO/PEO.
-3. **Construir queries** — Un módulo determinista (`query_builder.py`) genera la query óptima para cada API, sin depender de un LLM para la adaptación.
+2. **Elegir Modelo** — Selecciona un modelo optimizado para GPU (ej. `llama3.1:8b`) o CPU (ej. `phi3:3.8b`), o ingresa uno manualmente.
+3. **Extraer conceptos** — Un LLM local (Ollama) extrae conceptos clave, sinónimos y desglose PICO/PEO.
+4. **Construir queries** — Un módulo determinista (`query_builder.py`) genera la query óptima para cada API, sin depender de un LLM para la adaptación.
 4. **Buscar en paralelo** — Las queries se ejecutan concurrentemente contra las 9 bases de datos.
 5. **Deduplicar** — Se eliminan duplicados por DOI y título (fuzzy matching ≥85%).
 6. **Presentar** — El usuario ve los resultados en una tabla interactiva con la query enviada a cada API para transparencia.
@@ -49,11 +50,20 @@ El proyecto está separado en dos contenedores lógicos principales:
 
 Para ejecutar este proyecto en tu entorno de desarrollo, asegúrate de tener instalados **Node.js** y **Python 3.11+**. 
 
-⚠️ **Requisito Previo de IA:** Debes tener instalado y ejecutándose **Ollama** si deseas probar la generación de queries optimizadas con IA de forma local. Asegúrate de tener descargado algún modelo, por ejemplo:
-```bash
-ollama run llama3.1:8b
-```
-*(Mantén Ollama corriendo en segundo plano antes de iniciar AgriSearch).*
+⚠️ **Requisito Previo de IA:** Debes tener instalado y ejecutándose **Ollama** para que AgriSearch pueda orquestar las búsquedas y asistir en el cribado.
+
+Para la configuración detallada de los modelos, descarga y optimización (CPU vs GPU), por favor consulta primero la **[Guía de Ejecución (ejecucion.md)](ejecucion.md)**.
+
+A continuación un resumen de modelos recomendados (Ollama):
+
+| Modelo | Perfil | RAM / VRAM | Uso en AgriSearch |
+| :--- | :--- | :--- | :--- |
+| **Llama 3.1 8B** | GPU | 8GB+ | Consultas y Razonamiento (Defecto) |
+| **Aya 8B** | GPU | 8GB | Traducción y Multi-idioma |
+| **Phi-3 Mini** | CPU | 4GB+ | Generación rápida en Laptops |
+| **Gemma 2 2B** | CPU | 2GB+ | Equipos con recursos limitados |
+
+*(Mantén Ollama corriendo en segundo plano antes de iniciar la aplicación).*
 
 ### ▶️ Ejecución Rápida (Recomendado para Windows)
 Hemos incluido un script inteligente en la raíz del proyecto para facilitar el arranque y **su primera ejecución**.
@@ -70,6 +80,8 @@ Al hacer esto por primera vez, el script se encargará automáticamente de:
 ---
 
 ### Instalación Manual Paso a Paso
+
+> 💡 **Nota:** Para una guía visual y detallada paso a paso, por favor lee **[ejecucion.md](ejecucion.md)**.
 
 #### 1. Configuración del Backend
 
