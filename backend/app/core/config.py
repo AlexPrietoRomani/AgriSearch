@@ -10,6 +10,17 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+import re
+import unicodedata
+
+def sanitize_folder_name(name: str) -> str:
+    """Sanitizes strings for folder names (removes accents, spaces -> underscores)."""
+    if not name:
+        return "Desconocido"
+    name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('utf-8')
+    name = re.sub(r'[^\w\s-]', '', name)
+    return re.sub(r'[\s-]+', '_', name.strip())
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables or .env file."""
 
@@ -58,21 +69,31 @@ class Settings(BaseSettings):
     download_rate_limit: int = 10  # requests per second
     download_timeout: int = 30  # seconds per PDF
 
-    def get_project_data_dir(self, project_id: str) -> Path:
+    def get_project_data_dir(self, project_id: str, project_name: str | None = None) -> Path:
         """Return the data directory for a specific project."""
-        path = self.base_data_dir / project_id
+        if project_name:
+            path = self.base_data_dir / sanitize_folder_name(project_name)
+        else:
+            path = self.base_data_dir / project_id
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def get_project_pdfs_dir(self, project_id: str) -> Path:
+    def get_project_pdfs_dir(self, project_id: str, project_name: str | None = None, search_name: str | None = None) -> Path:
         """Return the PDFs directory for a specific project."""
-        path = self.get_project_data_dir(project_id) / "pdfs"
+        base = self.get_project_data_dir(project_id, project_name)
+        if search_name:
+            path = base / sanitize_folder_name(search_name) / "descargas"
+        else:
+            path = base / "pdfs"
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def get_project_raw_dir(self, project_id: str) -> Path:
+    def get_project_raw_dir(self, project_id: str, project_name: str | None = None) -> Path:
         """Return the raw CSV directory for a specific project."""
-        path = self.get_project_data_dir(project_id) / "raw"
+        if project_name:
+            path = self.get_project_data_dir(project_id, project_name) / "raw"
+        else:
+            path = self.get_project_data_dir(project_id) / "raw"
         path.mkdir(parents=True, exist_ok=True)
         return path
 

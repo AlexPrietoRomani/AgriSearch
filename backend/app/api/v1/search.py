@@ -77,6 +77,7 @@ async def execute_search_endpoint(
             max_results_per_source=payload.max_results_per_source,
             year_from=payload.year_from,
             year_to=payload.year_to,
+            raw_prompt=payload.raw_prompt,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -96,6 +97,7 @@ async def execute_search_endpoint(
         articles=articles,
         counts_by_source=result["counts_by_source"],
         adapted_queries=result.get("adapted_queries", {}),
+        prompt_used=payload.raw_prompt,
     )
 
 
@@ -173,7 +175,7 @@ async def upload_pdf(
 ) -> ArticleResponse:
     """Manually upload a PDF and link it to the given article ID."""
     from sqlalchemy import select
-    from app.models.project import Article, DownloadStatus
+    from app.models.project import Article, Project, SearchQuery, DownloadStatus
     from app.core.config import get_settings
     import shutil
     from pathlib import Path
@@ -187,8 +189,16 @@ async def upload_pdf(
     if not article:
         raise HTTPException(status_code=404, detail="Artículo no encontrado.")
 
+    project = await db.get(Project, article.project_id)
+    
+    sq_query = select(SearchQuery).where(SearchQuery.project_id == article.project_id).order_by(SearchQuery.created_at.asc())
+    sq_result = await db.execute(sq_query)
+    search_queries = list(sq_result.scalars().all())
+    sq_map = {sq.id: f"Busqueda_{idx}" for idx, sq in enumerate(search_queries, 1)}
+    search_name = sq_map.get(article.search_query_id, "Sin_Busqueda")
+
     settings = get_settings()
-    pdf_dir = settings.get_project_pdfs_dir(article.project_id)
+    pdf_dir = settings.get_project_pdfs_dir(article.project_id, project.name if project else None, search_name)
     pdf_dir.mkdir(parents=True, exist_ok=True)
 
     # Use the provided filename but make it somewhat safe

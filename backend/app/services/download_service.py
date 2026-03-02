@@ -122,17 +122,26 @@ async def download_articles(
             "paywall": 0,
         }
 
-    pdf_dir = settings.get_project_pdfs_dir(project_id)
-    logger.info("Starting download of %d articles to %s", len(articles), pdf_dir)
+    from app.models.project import Project, SearchQuery
+    project = await db.get(Project, project_id)
+    
+    sq_query = select(SearchQuery).where(SearchQuery.project_id == project_id).order_by(SearchQuery.created_at.asc())
+    sq_result = await db.execute(sq_query)
+    search_queries = list(sq_result.scalars().all())
+    sq_map = {sq.id: f"Busqueda_{idx}" for idx, sq in enumerate(search_queries, 1)}
+
+    logger.info("Starting download of %d articles for project %s", len(articles), project_id)
 
     # Download in parallel (bounded by semaphore)
     async with aiohttp.ClientSession(
         headers={"User-Agent": "AgriSearch/0.1 (Academic Research Tool)"}
     ) as session:
-        tasks = [
-            _download_single_pdf(session, article, pdf_dir)
-            for article in articles
-        ]
+        tasks = []
+        for article in articles:
+            search_name = sq_map.get(article.search_query_id, "Sin_Busqueda")
+            pdf_dir = settings.get_project_pdfs_dir(project_id, project.name if project else None, search_name)
+            tasks.append(_download_single_pdf(session, article, pdf_dir))
+        
         results = await asyncio.gather(*tasks)
 
     # Update DB with results
