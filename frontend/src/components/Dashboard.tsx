@@ -322,10 +322,12 @@ export default function Dashboard() {
                         </p>
 
                         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-8">
-                            <p className="text-red-400 text-sm font-medium flex gap-2">
-                                <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                Se eliminarán <strong>todas las búsquedas</strong>, registros y <strong>PDFs descargados</strong> asociados al proyecto. Esta acción no se puede deshacer.
-                            </p>
+                            <div className="text-red-400 text-sm font-medium flex items-start gap-2">
+                                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <span>
+                                    Se eliminarán <strong>todas las búsquedas</strong>, registros y <strong>PDFs descargados</strong> asociados al proyecto. Esta acción no se puede deshacer.
+                                </span>
+                            </div>
                         </div>
 
                         <div className="flex flex-col sm:flex-row gap-3 justify-end sm:items-center">
