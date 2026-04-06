@@ -6,7 +6,7 @@ Endpoints for building queries, executing searches, listing articles, and downlo
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -259,14 +259,33 @@ async def delete_search_endpoint(
 )
 async def reparse_pdfs(
     project_id: str,
-    db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks,
 ) -> dict:
-    """Forces all previously downloaded PDFs in the project to be re-parsed to MD."""
+    """Forces all previously downloaded PDFs in the project to be re-parsed to MD via Background Task."""
     from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
-    try:
-        stats = await enrich_articles_from_pdfs(db, project_id, force_reparse=True)
-        return {"status": "success", "stats": stats}
-    except Exception as e:
-        logger.error("Reparse failed: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to reparse PDFs: {str(e)}")
+    from app.api.v1.events import publish_event
+    from app.db.database import async_session_factory
+    import asyncio
+
+    async def run_reparse():
+        # Give SSE time to connect
+        await asyncio.sleep(0.5)
+        async with async_session_factory() as session:
+            try:
+                await publish_event(project_id, {"type": "reparse_start", "msg": "Iniciando proceso de conversión de PDFs a Markdown..."})
+                stats = await enrich_articles_from_pdfs(session, project_id, force_reparse=True)
+                await publish_event(project_id, {"type": "reparse_end", "msg": "¡Proceso terminado!", "stats": stats})
+            except Exception as e:
+                logger.error(f"Background reparse failed for {project_id}: {e}")
+                await publish_event(project_id, {"type": "error", "msg": f"Error en el procesamiento: {str(e)}"})
+
+    background_tasks.add_task(run_reparse)
+    return {"status": "accepted", "message": "Procesamiento iniciado en segundo plano"}
+
+@router.post("/cancel-reparse/{project_id}")
+async def cancel_reparse(project_id: str):
+    """Signals to stop any active re-parsing for this project."""
+    from app.services.pdf_enrichment_service import cancel_enrichment
+    cancel_enrichment(project_id)
+    return {"status": "cancelled"}
 

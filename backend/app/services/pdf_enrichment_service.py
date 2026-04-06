@@ -7,9 +7,24 @@ and extracts/updates bibliographic metadata for better screening and RAG.
 
 import logging
 import re
+import asyncio
 from pathlib import Path
+from typing import Set
 
-from app.services.document_parser_service import DoclingParser, ImageFilter
+# Cancellation registry: project_id -> bool
+_cancelled_projects: Set[str] = set()
+
+def cancel_enrichment(project_id: str):
+    """Mark a project enrichment task as cancelled."""
+    _cancelled_projects.add(project_id)
+
+def is_cancelled(project_id: str) -> bool:
+    """Check if project enrichment was cancelled."""
+    if project_id in _cancelled_projects:
+        _cancelled_projects.remove(project_id)
+        return True
+    return False
+
 from app.services.summarization_service import SummarizationService
 from app.services.vector_service import VectorService
 from app.models.project import Article, DownloadStatus
@@ -56,7 +71,7 @@ def scan_and_match_pdfs(pdf_dir: Path, articles: list) -> dict[str, str]:
     return matched
 
 
-async def process_and_enrich_pdf(db, article: Article, parser: DoclingParser, vector_service: VectorService, vlm: ImageFilter = None) -> bool:
+async def process_and_enrich_pdf(db, article: Article, parser, vector_service, vlm = None, publish_event = None, project_id: str = None) -> bool:
     """
     Processes a single article:
     1. Converts PDF to Markdown (via Docling).
@@ -86,6 +101,8 @@ async def process_and_enrich_pdf(db, article: Article, parser: DoclingParser, ve
         }
 
         # 1. Parse PDF using Docling
+        if publish_event:
+            await publish_event(project_id, {"type": "sub_progress", "msg": "1/3: Analizando estructura y tablas con Docling..."})
         final_md = await parser.parse_pdf(pdf_path, meta, vlm_describer=vlm)
 
         # 2. Extract abstract if missing (from the generated MD)
@@ -105,6 +122,8 @@ async def process_and_enrich_pdf(db, article: Article, parser: DoclingParser, ve
         
         # 5. Generate Enriched Summary (Optional but recommended)
         try:
+            if publish_event:
+                await publish_event(project_id, {"type": "sub_progress", "msg": "2/3: Generando resumen inteligente (LLM)..."})
             summary_json = await SummarizationService.generate_summary(final_md)
             article.enriched_summary = SummarizationService.format_summary_to_markdown(summary_json)
         except Exception as es:
@@ -112,10 +131,11 @@ async def process_and_enrich_pdf(db, article: Article, parser: DoclingParser, ve
 
         # 6. Index in Qdrant (Vector RAG)
         try:
+            if publish_event:
+                await publish_event(project_id, {"type": "sub_progress", "msg": "3/3: Vectorizando e indexando para RAG..."})
             await vector_service.index_article(
                 project_id=article.project_id,
-                article_id=article.id, 
-                title=article.title, 
+                article=article,
                 md_content=final_md
             )
         except Exception as ev:
@@ -149,6 +169,7 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
 
     # Initialize Services
     try:
+        from app.services.document_parser_service import DoclingParser, ImageFilter
         parser = DoclingParser()
         vector_service = VectorService()
         vlm = ImageFilter(model_name=project.llm_model) if project.llm_model else None
@@ -183,8 +204,29 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
         "quality_metrics": {"alta": 0, "media": 0, "baja": 0}
     }
 
-    for article in articles:
-        res = await process_and_enrich_pdf(db, article, parser, vector_service, vlm)
+    from app.api.v1.events import publish_event
+    
+    for idx, article in enumerate(articles):
+        if is_cancelled(project_id):
+            logger.info(f"Enrichment cancelled for project {project_id}")
+            await publish_event(project_id, {
+                "type": "error",
+                "msg": "Proceso detenido por el usuario."
+            })
+            break
+
+        await publish_event(project_id, {
+            "type": "progress",
+            "article": article.title,
+            "current": idx + 1,
+            "total": len(articles)
+        })
+        res = await process_and_enrich_pdf(db, article, parser, vector_service, vlm, publish_event, project_id)
+        
+        # Manual GC to free memory from large PDFs
+        import gc
+        gc.collect()
+
         if res.get("success"):
             stats["processed"] += 1
             stats["quality_metrics"][res["quality"]] += 1
