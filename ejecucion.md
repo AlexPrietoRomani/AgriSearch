@@ -19,11 +19,11 @@ AgriSearch requiere dos modelos locales de IA para funcionar correctamente: uno 
 
 Abre una consola (CMD o PowerShell) y ejecuta estos comandos uno por uno (Ollama descargará los modelos progresivamente):
 ```bash
-# 1. Descargando el modelo ligero para Generar Consultas:
-ollama pull aya:8b
+# 1. Descargando el modelo para Generar Consultas y Análisis de PDFs:
+ollama pull gemma4:e4b
 
-# 2. Descargando el modelo de inmersión vectorial (Embeddings):
-ollama pull nomic-embed-text
+# 2. Descargando el modelo de inmersión vectorial MoE (Embeddings):
+ollama pull nomic-embed-text-v2-moe:latest
 ```
 
 ### 3. Configurar tus Accesos (Credenciales de API)

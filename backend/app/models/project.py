@@ -167,7 +167,7 @@ class ScreeningSession(Base):
     # --- Configuration ---
     search_query_ids = Column(Text, nullable=False)  # JSON array of selected search query IDs
     reading_language = Column(String(10), default="es")  # Target language for abstract translation
-    translation_model = Column(String(100), default="aya:8b")  # Ollama model for translation
+    translation_model = Column(String(100), default="gemma4:e4b")  # Ollama model for translation
     total_articles = Column(Integer, default=0)  # Total articles in this session
 
     # --- Progress ---

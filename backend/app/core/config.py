@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from functools import lru_cache
 
-from pydantic import Field, model_validator
+from pydantic import Field, model_validator, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="allow"
     )
 
     # --- Application ---
@@ -70,9 +71,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:4321", "http://localhost:3000"]
 
     # --- LiteLLM / Ollama ---
-    litellm_model: str = "ollama/aya:8b"
+    litellm_model: str = "ollama/gemma4:e4b"
     litellm_api_base: str = "http://localhost:11434"
-    embedding_model: str = "ollama/nomic-embed-text"
+    embedding_model: str = "ollama/nomic-embed-text-v2-moe:latest"
 
     # --- Qdrant ---
     qdrant_host: str = "localhost"

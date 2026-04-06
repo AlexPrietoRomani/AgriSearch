@@ -59,11 +59,11 @@ A continuación el **Modelo Generalista** recomendado según tu perfil de hardwa
 | Perfil | Hardware | Modelo Ideal | Comando |
 | :--- | :--- | :--- | :--- |
 | **CPU Baja** | < 8GB RAM | `gemma2:2b` | `ollama pull gemma2:2b` |
-| **CPU Media** | 16GB RAM | `llama3.2:3b` | `ollama pull llama3.2:3b` |
-| **CPU Alta** | 32GB+ RAM | `llama3.1:8b` | `ollama pull llama3.1:8b` |
+| **CPU Media** | 16GB RAM | `phi4-mini:3.8b`| `ollama pull phi4-mini:3.8b`|
+| **CPU Alta** | 32GB+ RAM | `gemma4:e4b` | `ollama pull gemma4:e4b` |
 | **GPU Baja** | 4GB VRAM | `qwen2.5:3b` | `ollama pull qwen2.5:3b` |
 | **GPU Media** | 8GB VRAM | `llama3.1:8b` | `ollama pull llama3.1:8b` |
-| **GPU Alta** | 16GB VRAM | `mistral-nemo:12b`| `ollama pull mistral-nemo:12b` |
+| **GPU Alta** | 16GB VRAM | `gemma4:e4b` | `ollama pull gemma4:e4b` |
  
 > 📊 **Matriz de Especialidad Avanzada:** Para configuraciones optimizadas por tarea basándose en benchmarks (MMLU, Human-Eval), consulta la **[Matriz de 24 Modelos con Métricas y RAM](docs/documentation.md#2-matriz-de-especialidad-24-modelos-recomendados)**.
 
@@ -144,7 +144,7 @@ Una vez completada la búsqueda y descarga de PDFs, el módulo de **Screening** 
 - **1 sesión activa por proyecto:** Si ya existe, el usuario puede continuar o eliminarla para crear una nueva.
 - **Extracción de Abstract desde PDF:** Extrae y corrige el abstract leyendo directamente el documento PDF descargado si el proporcionado por la API es insuficiente o erróneo.
 - **Visualizador PDF integrado:** Permite ver el documento completo sin salir de la interfaz, mediante un iframe in-app, sin problemas de extensiones que forzaban descarga gracias a inline disposition headers.
-- **Traducción automática de abstracts:** Vía modelos Ollama locales configurables (`aya:8b`, `llama3.1:8b`, `qwen2.5:7b`), actualizables durante la fase iterativa de cribado o al continuar sesiones antiguas.
+- **Traducción automática de abstracts:** Vía modelos Ollama locales configurables (`gemma4:e4b`, `llama3.1:8b`, `qwen2.5:7b`), actualizables durante la fase iterativa de cribado o al continuar sesiones antiguas.
 - **Decisiones PRISMA:** Incluir / Excluir (con motivo) / Tal Vez, con atajos de teclado completos (incluye "P" para abrir/cerrar PDF).
 - **Vista dual:** Tarjeta individual o tabla completa con todos los artículos.
 

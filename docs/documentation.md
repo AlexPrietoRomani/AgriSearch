@@ -163,7 +163,8 @@ La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmu
 
 ## Dependencias Críticas
 - **PyMuPDF**: Necesario en el backend para la extracción limpia de texto de archivos PDF durante la fase pre-screening. (`pip install PyMuPDF`).
-- **Ollama**: Requiere tener en ejecución instancias de modelos LLM. Por ejemplo, `aya-expanse` como opción multilingüe óptima de 8B.
+- **Ollama**: Requiere tener en ejecución instancias de modelos LLM. Por ejemplo, `gemma4:e4b` como opción multilingüe y de razonamiento óptima.
+- **Nomic MoE**: El modelo de embeddings `nomic-embed-text-v2-moe:latest` es el estándar para la vectorización de artículos.
 
 ## Configuración de Inteligencia Artificial (Ollama)
 
@@ -176,10 +177,10 @@ Si prefieres descargar **un solo modelo** que rinda de manera sobresaliente en t
 | :--- | :--- | :--- | :--- |
 | **CPU Baja** | < 8GB RAM / Intel i3 | `qwen3:1.5b` | `ollama pull qwen3:1.5b` |
 | **CPU Media** | 16GB RAM / Intel i5-i7 | `phi4-mini:3.8b` | `ollama pull phi4-mini:3.8b` |
-| **CPU Alta** | 32GB+ RAM / Ryzen 7-9 | `llama4:8b` | `ollama pull llama4:8b` |
+| **CPU Alta** | 32GB+ RAM / Ryzen 7-9 | `gemma4:e4b` | `ollama pull gemma4:e4b` |
 | **GPU Baja** | 4-6GB VRAM (RTX 3050) | `phi4-mini:3.8b` | `ollama pull phi4-mini:3.8b` |
-| **GPU Media** | 8-12GB VRAM (RTX 4060) | `deepseek-r1:8b` | `ollama pull deepseek-r1:8b` |
-| **GPU Alta** | 16GB+ VRAM (RTX 4090) | `deepseek-r1:14b` | `ollama pull deepseek-r1:14b` |
+| **GPU Media** | 8-12GB VRAM (RTX 4060) | `llama4:8b` | `ollama pull llama4:8b` |
+| **GPU Alta** | 16GB+ VRAM (RTX 4090) | `gemma4:e4b` | `ollama pull gemma4:e4b` |
 
 > 💡 **¿Por qué estos modelos?**
 > * **`qwen3:1.5b`:** Es el rey indiscutible de los pesos pluma. Responde increíblemente rápido en CPUs antiguas y tiene un vocabulario en español mucho más natural que la generación anterior.
@@ -255,7 +256,7 @@ Para usuarios avanzados que buscan optimizar cada fase del proceso PRISMA utiliz
 ---
 
 > **Nota Crítica sobre RAG:** Independientemente del perfil, es **obligatorio** tener instalado el modelo de embeddings para que el chat funcione: 
-> `ollama pull nomic-embed-text`
+> `ollama pull nomic-embed-text-v2-moe:latest`
 
 ---
 

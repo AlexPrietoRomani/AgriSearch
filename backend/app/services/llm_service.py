@@ -146,7 +146,7 @@ async def generate_relevance_suggestion(
     abstract: str,
     history: list[dict],
     goal: str = "",
-    model: str = "aya:8b"
+    model: str = "gemma4:e4b"
 ) -> dict:
     """Generate an inclusion/exclusion suggestion based on history."""
     examples_str = ""
@@ -175,7 +175,7 @@ async def generate_relevance_suggestion(
 async def analyze_article_content(
     md_content: str,
     project_goal: str = "",
-    model: str = "aya:8b"
+    model: str = "gemma4:e4b"
 ) -> dict[str, Any]:
     """Deep analysis of article content."""
     system_prompt = f"""Analyze this agricultural article. Goal: {project_goal}.
