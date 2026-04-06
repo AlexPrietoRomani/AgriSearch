@@ -1,4 +1,4 @@
-﻿aiohappyeyeballs==2.6.1
+aiohappyeyeballs==2.6.1
 aiohttp==3.13.3
 aiosignal==1.4.0
 aiosqlite==0.22.1
@@ -80,3 +80,10 @@ watchfiles==1.1.1
 websockets==16.0
 yarl==1.22.0
 zipp==3.23.0
+docling>=2.0.0
+docling-core>=2.0.0
+scikit-learn
+qdrant-client
+rank_bm25
+numpy
+scipy

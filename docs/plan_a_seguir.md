@@ -1,4 +1,4 @@
-# AgriSearch: Plataforma de Búsqueda Sistemática y Asistente de Investigación Agrícola basada en PRISMA 2020
+﻿# AgriSearch: Plataforma de Búsqueda Sistemática y Asistente de Investigación Agrícola basada en PRISMA 2020
 
 ---
 
@@ -556,63 +556,205 @@ Para adherirse plenamente a la declaración PRISMA 2020 y minimizar el sesgo de 
 
 ### FASE 2: CRIBADO Y ELEGIBILIDAD — Screening PRISMA
 
-> Corresponde a las etapas de **"Screening"** y **"Eligibility"** del diagrama de flujo PRISMA 2020.
+> Corresponde a las etapas de **"Screening"** y **"Eligibility"** del diagrama de flujo PRISMA 2020. Esta fase es la más crítica del flujo PRISMA ya que determina qué artículos formarán la base del conocimiento del investigador. Incluye el **pre-procesamiento estructurado** de PDFs, la **generación de resúmenes**, el **screening interactivo con Active Learning**, la **indexación RAG** de los artículos definitivos, y la **asistencia predictiva** basada en las decisiones del usuario.
+
+---
+
+#### Sub-fase 2.0: Pre-procesamiento Estructurado de PDFs (PDF → Markdown Enriquecido)
+
+**Propósito:**
+Convertir cada PDF descargado en un documento Markdown estructurado de alta fidelidad que preserve la jerarquía del paper (secciones, subsecciones), las tablas, las fórmulas matemáticas y las figuras, generando un formato óptimo para chunking semántico y para el screening visual. Esta sub-fase es el **fundamento de calidad** de todo el pipeline RAG posterior.
+
+**Argumentación Científica:**
+**Docling** (Auer et al., 2024; Livathinos et al., 2025) es un toolkit open-source de IBM que utiliza modelos especializados de IA para el análisis de layout (**DocLayNet**) y el reconocimiento de estructura de tablas (**TableFormer**). A diferencia de extractores planos como `PyPDFLoader`, Docling preserva la estructura semántica del documento y convierte fórmulas matemáticas a LaTeX. Ouyang et al. (2024) demostraron con **OmniDocBench** que los métodos de parsing basados en modelos de layout superan significativamente a los extractores baseline en documentos con tablas complejas y contenido multi-columna. El pre-procesamiento PDF→MD está validado en el repositorio TFM-allucination del mismo autor, donde este pipeline redujo la tasa de alucinación del RAG en un ~15% al preservar la integridad semántica del corpus.
+
+> **Nota de experiencia previa:** Este enfoque fue implementado exitosamente en el proyecto TFM del autor (`TFM-allucination/scripts/preprocess_corpus.py` y `src/knowledge/parsers.py`), donde demostró que la conversión estructurada con Docling + TableFlattener + VLM produce chunks de calidad significativamente superior a la extracción plana.
+
+**Inputs:**
+1. PDFs descargados en la Fase 1 (campo `local_pdf_path` de la tabla `articles`).
+2. Metadatos de cada artículo (DOI, autores, año, título, journal, keywords).
+
+**Acciones a Realizar:**
+
+1. **Extracción Estructurada con Docling (`DoclingParser`):**
+   - Configurar `PdfPipelineOptions` con:
+     - `do_table_structure = True` (modo `ACCURATE` de TableFormer).
+     - `do_formula_enrichment = True` (fórmulas → LaTeX).
+     - `do_ocr = True` con `EasyOcrOptions(lang=["en", "es", "pt"])` para documentos escaneados.
+     - `generate_picture_images = True` para extraer figuras.
+   - Invocar `DocumentConverter().convert(pdf_path)` → obtener `DoclingDocument`.
+   - Exportar a Markdown: `result.document.export_to_markdown()`.
+   - El Markdown preserva: `## Secciones`, tablas nativas `| col | ...`, fórmulas `$...$`, y referencias a imágenes.
+
+2. **Inferencia Visual de Figuras (`ImageFilter` + VLM Local):**
+   - Para cada imagen extraída por Docling, enviarla a un VLM local (`llama3.2-vision` vía Ollama) configurado de forma **determinista** (temperature=0.0, penalización de repetición).
+   - **Guardrail de imágenes:** Si la imagen es un logo, barra decorativa, marca de agua o header institucional → responder `DESCARTAR` y omitirla.
+   - Si la imagen contiene datos técnicos (gráfico, diagrama, mapa, foto de campo) → generar descripción textual de 2-3 oraciones.
+   - Inyectar la descripción en el Markdown con semántica: `> **[💡 Descripción de Imagen VLM]:** "Gráfico de barras mostrando la relación entre concentración de azoxystrobin y tasa de mortalidad del patógeno..."`.
+
+3. **Aplanamiento Analítico de Tablas (`TableFlattener`):**
+   - Los LLMs y los generadores de embeddings pierden contexto al hacer chunking sobre tablas Markdown.
+   - El `TableFlattener` detecta bloques de tabla con regex y convierte cada fila en una oración descriptiva que **siempre referencia sus cabeceras**:
+   ```
+   Entrada (tabla):
+   | Cultivo | Tratamiento | Rendimiento (t/ha) |
+   |---------|-------------|-------------------|
+   | Trigo   | Fungicida A | 4.2               |
+
+   Salida (oración):
+   "Según Wang et al. (2023), Cultivo: Trigo, Tratamiento: Fungicida A,
+    Rendimiento: 4.2 t/ha."
+   ```
+   - Esto produce **Dense High-Quality Retrieval**: cada "aplanado" es una unidad atómica de información perfecta para embeddings.
+
+4. **Inyección de Metadatos como Front-matter YAML:**
+   - Prepend a cada `.md` un bloque YAML con metadatos del artículo:
+   ```yaml
+   ---
+   agrisearch_id: "a1b2c3d4-e5f6-7890"
+   doi: "10.1016/j.compag.2023.107500"
+   title: "YOLO-based crop phenology detection"
+   authors: "Wang J., Zhang H., Li M."
+   year: 2023
+   journal: "Computers and Electronics in Agriculture"
+   keywords: ["YOLO", "phenology", "precision agriculture"]
+   source_database: "openalex"
+   ---
+   ```
+   - Esto permite que el pipeline de chunking posterior inyecte automáticamente los metadatos de procedencia en cada chunk.
+
+5. **Almacenamiento del corpus procesado:**
+   - Guardar cada `.md` final en `data/projects/{project_uuid}/parsed/{doi_sanitized}.md`.
+   - Actualizar la tabla `articles` con el campo `local_md_path` apuntando al Markdown procesado.
+   - Registrar estadísticas: N tablas aplanadas, N imágenes procesadas, N fórmulas LaTeX detectadas.
+
+6. **Procesamiento en batch asíncrono:**
+   - Ejecutar con `asyncio.Semaphore(3)` para no saturar los modelos locales (Docling + VLM usan GPU/CPU intensivamente).
+   - Progress bar en frontend con `SSE` (Server-Sent Events) mostrando: "Procesando artículo 3 de 15... (20%)".
+   - Timeout de 120 segundos por PDF; skip con log de error si falla.
+
+**Stack Tecnológico:**
+| Tecnología | Versión | Propósito |
+|-----------|---------|-----------|
+| **Docling** | ≥ 2.x | Parser PDF→MD con DocLayNet + TableFormer (MIT license) |
+| **docling-core** | ≥ 2.x | Tipos de datos: `DoclingDocument`, `PictureItem`, `TableItem` |
+| `llama3.2-vision` (vía Ollama) | 11B | VLM local para descripción de figuras (determinista, CPU/GPU) |
+| `EasyOCR` | ≥ 1.7 | Motor OCR para documentos escaneados (integrado en Docling) |
+| `SQLAlchemy` | ≥ 2.x | Actualización del campo `local_md_path` en `articles` |
+
+**Outputs:**
+- Directorio `data/projects/{project_uuid}/parsed/` con un `.md` por artículo PDF.
+- Tabla `articles` actualizada con `local_md_path`.
+- Estadísticas de procesamiento (tablas, imágenes, fórmulas).
+
+**QA y Métricas:**
+| Métrica | Umbral Aceptable |
+|---------|-----------------|
+| PDFs convertidos exitosamente a Markdown | ≥ 95% |
+| Tablas detectadas y aplanadas correctamente | ≥ 90% |
+| Fórmulas LaTeX preservadas | ≥ 85% |
+| Imágenes con descripción VLM útil (no decorativas) | ≥ 80% |
+| Front-matter YAML con DOI y metadatos completos | 100% |
+| Tiempo promedio de procesamiento por PDF | < 60 s |
+
+**Tests:** `tests/unit/test_pdf_preprocessing.py`
+- Conversión PDF→MD genera archivo no vacío
+- Front-matter YAML contiene DOI y año
+- TableFlattener convierte tabla a oración con cabeceras
+- ImageFilter descarta logos (mock del VLM con respuesta `DESCARTAR`)
+- Fórmulas LaTeX preservadas en el Markdown
+
+**Flujograma:**
+```mermaid
+graph TD
+    classDef step fill:#2d3748,stroke:#4a5568,stroke-width:1.5px,color:#e2e8f0
+    classDef parser fill:#2c7a7b,stroke:#4fd1c5,stroke-width:1.5px,color:#fff
+    classDef db fill:#2b6cb0,stroke:#63b3ed,stroke-width:1.5px,color:#fff
+
+    subgraph "📄 Sub-fase 2.0: PDF → Markdown Enriquecido"
+        PDF(["📄 PDFs descargados"]):::step --> Docling["DoclingParser + TableFormer + LaTeX"]:::parser
+        Docling -->|Detecta figuras| VLM["Ollama: llama3.2-vision"]:::db
+        VLM -->|"Guardrail: DESCARTAR / Descripción"| Docling
+        Docling --> MD["Markdown Crudo + Descripciones VLM"]:::step
+        MD --> Flatten["TableFlattener: tabla → oración"]:::parser
+        META(["📋 Metadatos del artículo (BD)"]):::step --> YAML["Inyección Front-matter YAML"]:::step
+        Flatten --> YAML
+        YAML --> Parsed["📂 data/projects/{uuid}/parsed/*.md"]:::step
+        Parsed --> DB["Actualizar articles.local_md_path"]:::db
+    end
+```
 
 ---
 
 #### Sub-fase 2.1: Generación de Resúmenes Estructurados para Screening
 
 **Propósito:**
-Pre-procesar los artículos generando resúmenes estructurados mediante LLM que faciliten la toma de decisión rápida por parte del investigador, reduciendo la carga cognitiva del cribado.
+Pre-procesar los artículos generando resúmenes estructurados mediante LLM que faciliten la toma de decisión rápida por parte del investigador, reduciendo la carga cognitiva del cribado. Estos resúmenes se generan a partir del **Markdown enriquecido** de la Sub-fase 2.0 (no solo del abstract), lo que permite capturar metodología, resultados y conclusiones que el abstract podría omitir.
 
 **Argumentación Científica:**
-El uso de herramientas de aprendizaje automático para el screening de títulos y abstracts ha demostrado reducir la carga de trabajo de los investigadores en más del 50%, manteniendo alta sensibilidad en las inclusiones (Ouzzani et al., 2016). La plataforma ASReview demostró que los enfoques de Active Learning pueden reducir hasta en un 95% el esfuerzo de screening sin pérdida significativa de recall (van de Schoot et al., 2021).
+El uso de herramientas de aprendizaje automático para el screening de títulos y abstracts ha demostrado reducir la carga de trabajo de los investigadores en más del 50%, manteniendo alta sensibilidad en las inclusiones (Ouzzani et al., 2016). La plataforma ASReview demostró que los enfoques de Active Learning pueden reducir hasta en un 95% el esfuerzo de screening sin pérdida significativa de recall (van de Schoot et al., 2021). Vares (2026) introdujo **AutoDiscover**, un framework que modela la literatura como un grafo heterogéneo y usa Thompson Sampling adaptativo para el screening, demostrando mejoras significativas sobre baselines estáticos en el benchmark **SYNERGY de 26 datasets**.
 
 **Inputs:**
-1. Artículos identificados con abstract y (opcionalmente) texto completo.
+1. Artículos con Markdown procesado (Sub-fase 2.0) **o** solo abstract (para artículos sin PDF).
 2. Criterios de inclusión/exclusión definidos por el usuario en la Sub-fase 1.1.
+3. Objetivo y alcance del proyecto (campo `description` de `projects`).
 
 **Acciones a Realizar:**
-1. Para cada artículo, invocar el LLM (vía LiteLLM → Ollama) con un prompt que:
+1. Para cada artículo, construir un prompt que reciba el **abstract + primera sección del MD** (si existe) para contexto enriquecido:
    - Genere un resumen estructurado de 3-5 oraciones enfocado al tema del proyecto.
-   - Identifique la metodología principal (ensayo de campo, in vitro, modelado, etc.).
-   - Extraiga las variables de interés agrícola (cultivo, plaga, tratamiento, rendimiento).
-   - Evalúe preliminarmente la relevancia según los criterios de inclusión/exclusión.
-2. Almacenar los resúmenes en el campo `llm_summary` de la tabla `articles`.
-3. Generar una etiqueta preliminar de relevancia (`posiblemente_relevante`, `posiblemente_irrelevante`) con un score de confianza (0.0-1.0).
-4. Calcular keywords agrícolas predominantes con TF-IDF sobre los abstracts del proyecto.
-5. Crear clusters temáticos mediante embeddings para agrupar artículos similares visualmente.
-6. Procesar en batch con control de concurrencia (máx. 5 simultáneos para no saturar Ollama).
-7. Manejar artículos sin abstract (generar resumen del título + metadatos disponibles).
-8. Guardar el prompt utilizado para auditoría y reproducibilidad.
+   - Identifique la metodología principal (ensayo de campo, in vitro, modelado, meta-análisis, revisión).
+   - Extraiga las variables de interés agrícola (cultivo, plaga, tratamiento, rendimiento, región geográfica).
+   - Evalúe preliminarmente la relevancia según los criterios de inclusión/exclusión del proyecto.
+   - Genere un JSON estructurado: `{"summary": "...", "methodology": "...", "variables": {...}, "relevance_label": "posiblemente_relevante", "relevance_score": 0.85, "key_findings": "..."}`.
+2. Almacenar los resúmenes en la tabla `articles` (campos: `llm_summary`, `relevance_score`, `methodology_type`, `agri_variables_json`).
+3. Generar una etiqueta de relevancia (`posiblemente_relevante`, `posiblemente_irrelevante`, `incierto`) con score de confianza [0.0, 1.0].
+4. Calcular keywords agrícolas predominantes con **TF-IDF** sobre los abstracts del proyecto.
+5. Crear clusters temáticos mediante embeddings (`nomic-embed-text`) para agrupar artículos similares visualmente → input directo para el **Grafo Temático** de la Fase 4.
+6. Procesar en batch con control de concurrencia (`asyncio.Semaphore(5)` para no saturar Ollama).
+7. Manejar artículos sin abstract ni PDF: generar resumen del título + metadatos disponibles, marcando `confidence: low`.
+8. Guardar el prompt utilizado para auditoría y reproducibilidad (campo `generation_prompt_hash`).
 9. Calcular el tiempo promedio por resumen para estimar el tiempo total al usuario.
 10. Verificar que cada resumen generado no exceda de 200 palabras.
+11. **Nuevo:** Para artículos con PDF procesado, el resumen puede basarse en el MD completo (Introducción + Conclusiones) → resúmenes más informativos que los basados solo en abstract.
 
 **Outputs:**
-- Todos los artículos enriquecidos con `llm_summary`, `relevance_score`, y `agri_keywords`.
-- Clusters temáticos para visualización.
+- Todos los artículos enriquecidos con `llm_summary`, `relevance_score`, `methodology_type`, y `agri_variables_json`.
+- Clusters temáticos para visualización en el frontend y como semilla para el Grafo Temático (Fase 4).
 
 **QA y Métricas:**
 | Métrica | Umbral Aceptable |
 |---------|-----------------|
-| Resúmenes generados para todos los artículos con abstract | 100% |
+| Resúmenes generados para todos los artículos con abstract o MD | 100% |
 | Score de relevancia asignado a cada artículo | 100% |
-| Tiempo promedio por resumen | < 5 s |
+| Tiempo promedio por resumen (abstract only) | < 5 s |
+| Tiempo promedio por resumen (abstract + MD sections) | < 15 s |
 | Coherencia del resumen vs abstract original (evaluación manual de muestra) | ≥ 90% |
+| Variables agrícolas extraídas correctamente (muestra de 20 artículos) | ≥ 85% |
+
+**Tests:** `tests/unit/test_summary_generation.py`
+- Resumen JSON tiene campos obligatorios
+- Score de relevancia está en rango [0.0, 1.0]
+- Resumen no excede 200 palabras
+- Variables agrícolas se extraen como JSON válido
+- Artículos sin abstract generan resumen desde título
 
 **Flujograma:**
 ```mermaid
 graph TD
-    A[Artículos identificados] --> B[Batch de N artículos]
-    B --> C[LLM genera resumen estructurado]
-    C --> D[Extraer variables agrícolas]
-    D --> E[Asignar relevance_score]
-    E --> F[Calcular keywords TF-IDF]
-    F --> G[Clustering por embeddings]
-    G --> H[Almacenar en BD enriched]
-    H --> I{¿Más artículos?}
-    I -->|Sí| B
-    I -->|No| J[Artículos listos para screening manual]
+    A["Artículos con MD procesado (2.0) o solo abstract"] --> B["Batch de N artículos"]
+    B --> C{"¿Tiene Markdown procesado?"}
+    C -->|Sí| D["LLM: abstract + Introducción + Conclusiones del MD"]
+    C -->|No| E["LLM: solo abstract + título + keywords"]
+    D --> F["Generar resumen JSON estructurado"]
+    E --> F
+    F --> G["Extraer variables agrícolas"]
+    G --> H["Asignar relevance_score + label"]
+    H --> I["Calcular keywords TF-IDF"]
+    I --> J["Clustering por embeddings"]
+    J --> K["Almacenar en BD enriched"]
+    K --> L{"¿Más artículos?"}
+    L -->|Sí| B
+    L -->|No| M["Artículos listos para screening manual"]
 ```
 
 ---
@@ -620,13 +762,13 @@ graph TD
 #### Sub-fase 2.2: Screening Interactivo Asistido por Active Learning (Estilo Rayyan)
 
 **Propósito:**
-Presentar al investigador una interfaz visual de clasificación artículo-por-artículo donde pueda etiquetar la relevancia, con traducción de abstracts vía LLM local y atajos de teclado para maximizar la velocidad del cribado. El sistema aprende iterativamente de las decisiones del usuario para re-priorizar los artículos pendientes.
+Presentar al investigador una interfaz visual de clasificación artículo-por-artículo donde pueda etiquetar la relevancia, con traducción de abstracts vía LLM local y atajos de teclado para maximizar la velocidad del cribado. El sistema aprende iterativamente de las decisiones del usuario para re-priorizar los artículos pendientes (**Active Learning**), mostrando primero los de mayor incertidumbre.
 
 **Argumentación Científica:**
-Rayyan utiliza un clasificador SVM (Support Vector Machine) que aprende de las decisiones del usuario para predecir la clasificación de registros no revisados, mostrando un ahorro de tiempo del 40% en promedio (Ouzzani et al., 2016). ASReview extiende esta idea con Active Learning: tras cada decisión del usuario, el modelo recalcula las prioridades y presenta primero los artículos con mayor incertidumbre, maximizando la eficiencia del esfuerzo humano (van de Schoot et al., 2021). Miwa et al. (2014) demostraron que el screening basado en certeza puede reducir la carga de trabajo en un 30-70% sin pérdida significativa de recall.
+Rayyan utiliza un clasificador SVM (Support Vector Machine) que aprende de las decisiones del usuario para predecir la clasificación de registros no revisados, mostrando un ahorro de tiempo del 40% en promedio (Ouzzani et al., 2016). ASReview extiende esta idea con Active Learning: tras cada decisión del usuario, el modelo recalcula las prioridades y presenta primero los artículos con mayor incertidumbre, maximizando la eficiencia del esfuerzo humano (van de Schoot et al., 2021). Miwa et al. (2014) demostraron que el screening basado en certeza puede reducir la carga de trabajo en un 30-70% sin pérdida significativa de recall. Vares (2026) demostró con **AutoDiscover** que modelar la literatura como un **grafo heterogéneo** con Thompson Sampling adaptativo mitiga significativamente el problema de **cold-start** (cuando hay pocas decisiones iniciales), superando a los baselines estáticos en el benchmark SYNERGY.
 
 **Inputs:**
-1. Artículos enriquecidos de la Sub-fase 2.1 (con resúmenes LLM y scores).
+1. Artículos enriquecidos de la Sub-fase 2.1 (con resúmenes LLM, scores y clusters).
 2. Decisiones previas del usuario (si las hay).
 3. Selección de búsquedas a incluir en el screening (configurado en la página de Setup).
 4. Idioma de lectura preferido para la traducción de abstracts.
@@ -639,161 +781,305 @@ Rayyan utiliza un clasificador SVM (Support Vector Machine) que aprende de las d
 3. Mostrar el total consolidado de artículos únicos (ya desduplicados entre las búsquedas seleccionadas).
 4. Selector de idioma de lectura: español, inglés, portugués.
 5. Recomendación automática de modelo de traducción Ollama: por defecto `llama3.1:8b`, con sugerencias alternativas como `aya-23` o `madlad400` para traducción EN↔ES/PT más precisa.
-6. Botón "Iniciar Screening" que crea la sesión y navega a la interfaz de cribado.
+6. Selector de **estrategia de priorización inicial**: por `relevance_score` (default), por año descendente, por cluster temático, o aleatorio.
+7. Botón "Iniciar Screening" que crea la sesión y navega a la interfaz de cribado.
 
 **Página 2 — Sesión de Screening (`/screening?id=X&session=Y` → `ScreeningSession.tsx`):**
 
 **Acciones a Realizar:**
 1. Presentar artículos en la interfaz de screening, priorizados por `relevance_score` descendente inicialmente.
-2. Mostrar por cada artículo: título (con LaTeX), autores, año, journal, DOI (enlace), abstract completo, keywords, fuente (badge), y la sugerencia del LLM con confianza (★).
-3. **Traducción de abstracts:** Si el idioma de lectura configurado difiere del idioma original del abstract, invocar el LLM local para generar una traducción **estrictamente literal** (oración por oración, sin resumir ni parafrasear). Cachear la traducción en BD para no re-computar.
-4. El usuario clasifica con **3 estados**: **✅ Incluir** (verde), **❌ Excluir** (rojo — con motivo obligatorio), o **🟡 Tal Vez** (amarillo — revisión posterior).
-5. **Motivos de exclusión** (dropdown configurable): "Fuera de alcance", "No es artículo original", "Idioma no aceptado", "Duplicado no detectado", "Sin acceso al texto completo", "Otro" (campo libre).
-6. **Nota del revisor:** Campo de texto opcional para anotar observaciones.
-7. **Atajos de teclado:** `I` = Incluir, `E` = Excluir, `M` = Tal Vez (Maybe), `←`/`→` = Artículo anterior/siguiente, `N` = Abrir campo de nota.
-8. Tras cada bloque de N decisiones (configurable, por defecto 10), ejecutar el **re-entrenamiento del modelo de priorización**:
-   - Tomar los embeddings de artículos decididos.
-   - Entrenar un clasificador ligero (Logistic Regression o SVM lineal) con las etiquetas del usuario.
-   - Re-ordenar los artículos pendientes por score del clasificador × incertidumbre.
-9. Actualizar los puntajes de sugerencia del LLM en la interfaz en tiempo real.
-10. Registrar cada decisión con timestamp, motivo de exclusión, nota del revisor, y versión del modelo.
-11. Permitir filtros: ver solo "Tal Vez", ver solo pendientes, ver solo de mayor confianza LLM.
-12. **Panel lateral con estadísticas en tiempo real:** N revisados / N total (barra visual), N incluidos, N excluidos, N tal vez, N pendientes.
-13. **Vista alternativa tabla:** Toggle entre vista tarjeta (uno a uno) y vista tabla completa de todos los artículos con su estado.
-14. Permitir cambiar decisiones pasadas (audit trail con historial).
-15. Generar el motivo de exclusión agregado para el diagrama PRISMA.
-16. Al completar el screening (100% revisados o el usuario indica suficiente), consolidar la lista final de incluidos.
-17. Exportar el log de decisiones como CSV para transparencia.
+2. Mostrar por cada artículo: título (con LaTeX renderizado), autores, año, journal, DOI (enlace clicable), abstract completo, keywords, fuente (badge de color: OpenAlex/Semantic Scholar/arXiv), y la **sugerencia del LLM** con barra de confianza visual (★★★★☆).
+3. **Nuevo: Vista previa del Markdown procesado:** Si el artículo tiene `local_md_path`, mostrar un toggle "📄 Ver texto completo procesado" que expande las secciones del MD (Introducción, Metodología, Resultados, Conclusiones) en acordeones colapsables. Esto permite screening por texto completo cuando el abstract es insuficiente.
+4. **Traducción de abstracts:** Si el idioma de lectura configurado difiere del idioma original del abstract, invocar el LLM local para generar una traducción **estrictamente literal** (oración por oración, sin resumir ni parafrasear). Cachear la traducción en BD para no re-computar.
+5. El usuario clasifica con **3 estados**: **✅ Incluir** (verde), **❌ Excluir** (rojo — con motivo obligatorio), o **🟡 Tal Vez** (amarillo — revisión posterior).
+6. **Motivos de exclusión** (dropdown configurable): "Fuera de alcance", "No es artículo original (revisión/editorial)", "Idioma no aceptado", "Duplicado no detectado", "Sin acceso al texto completo", "Metodología inadecuada", "Otro" (campo libre).
+7. **Nota del revisor:** Campo de texto opcional para anotar observaciones.
+8. **Atajos de teclado:** `I` = Incluir, `E` = Excluir, `M` = Tal Vez (Maybe), `←`/`→` = Artículo anterior/siguiente, `N` = Abrir campo de nota, `T` = Toggle texto completo.
+9. Tras cada bloque de N decisiones (configurable, por defecto 10), ejecutar el **re-entrenamiento del modelo de priorización**:
+   - Tomar los embeddings de artículos decididos (ya calculados en Sub-fase 2.1).
+   - Entrenar un clasificador ligero (`LogisticRegression` de scikit-learn o `SGDClassifier` para eficiencia) con las etiquetas del usuario.
+   - Re-ordenar los artículos pendientes por: `P(incluir|embeddings) × incertidumbre`.
+   - **Estrategia de Active Learning:** Presentar primero los artículos con mayor incertidumbre (`uncertainty sampling: |P(include) - 0.5| < ε`), lo que maximiza la información ganada por cada decisión humana.
+10. Actualizar los puntajes de sugerencia del LLM en la interfaz en tiempo real.
+11. Registrar cada decisión con timestamp, motivo de exclusión, nota del revisor, y versión del modelo.
+12. Permitir filtros: ver solo "Tal Vez", ver solo pendientes, ver solo de mayor confianza LLM, filtrar por cluster temático.
+13. **Panel lateral con estadísticas en tiempo real:** N revisados / N total (barra visual animada), N incluidos, N excluidos, N tal vez, N pendientes, gráfico de evolución temporal.
+14. **Vista alternativa tabla:** Toggle entre vista tarjeta (uno a uno) y vista tabla completa de todos los artículos con su estado.
+15. Permitir cambiar decisiones pasadas (audit trail con historial de cambios).
+16. Generar el motivo de exclusión agregado para el diagrama PRISMA.
+17. Al completar el screening (100% revisados o el usuario indica suficiente), consolidar la lista final de incluidos.
+18. Exportar el log de decisiones como CSV para transparencia.
+19. **Nuevo:** Alerta de potencial sesgo de exclusión: si el modelo detecta que el usuario está excluyendo artículos que el clasificador predice como relevantes, mostrar un warning sutil sugiriendo reconsideración.
 
 **Sub-componentes Frontend:**
 
 | Componente | Responsabilidad |
 |-----------|----------------|
-| `ScreeningSetup.tsx` | Selección de búsquedas, configuración idioma/modelo, inicio sesión |
+| `ScreeningSetup.tsx` | Selección de búsquedas, configuración idioma/modelo/estrategia, inicio sesión |
 | `ScreeningSession.tsx` | Orquestador de sesión (carga artículos, gestión estado, event listeners teclado) |
-| `ScreeningArticleCard.tsx` | Tarjeta individual: metadata + abstract original + abstract traducido |
-| `ScreeningStats.tsx` | Panel lateral: barra de progreso, contadores, filtros rápidos |
+| `ScreeningArticleCard.tsx` | Tarjeta individual: metadata + abstract original + abstract traducido + toggle MD |
+| `ScreeningMarkdownPreview.tsx` | **Nuevo:** Acordeones con secciones del MD procesado (Intro, Método, Resultados) |
+| `ScreeningStats.tsx` | Panel lateral: barra de progreso, contadores, filtros rápidos, gráfico temporal |
 | `ScreeningListView.tsx` | Vista tabla alternativa con todos los artículos y estados de decisión |
 
 **Outputs:**
 - Artículos clasificados en: Incluidos vs Excluidos (con motivo) vs Tal Vez.
 - Abstracts traducidos cacheados en BD.
 - Log de decisiones exportable con justificaciones y timestamps.
-- Modelo entrenado de priorización persistido.
+- Modelo entrenado de priorización persistido (serializado a `joblib` por sesión).
 - Estadísticas de screening para el diagrama PRISMA.
 
 **QA y Métricas:**
 | Métrica | Umbral Aceptable |
 |---------|-----------------|
 | Recall del modelo de priorización (artículos relevantes en top 50%) | ≥ 90% |
-| F1-score del clasificador vs decisiones humanas | ≥ 0.80 |
+| F1-score del clasificador vs decisiones humanas (tras ≥30 decisiones) | ≥ 0.80 |
 | Latencia de la interfaz al pasar de artículo en artículo | < 500 ms |
 | Calidad de traducción (evaluación manual de muestra de 20 abstracts) | ≥ 90% fidelidad |
 | Completitud del log de auditoría | 100% |
 | Reducción de tiempo de screening vs screening manual puro | ≥ 40% |
+| Tiempo de re-entrenamiento Active Learning (tras N=10 decisiones) | < 2 s |
+
+**Tests:** `tests/unit/test_screening_session.py`
+- Clasificador entrenado con ≥10 samples predice correctamente (F1 > 0.6)
+- Uncertainty sampling selecciona artículos con P(include) ≈ 0.5
+- Log de auditoría registra timestamp + decisión + motivo
+- Atajos de teclado mapean correctamente a decisiones
+- Cambio de decisión mantiene historial previo
 
 **Flujograma:**
 ```mermaid
 graph TD
     A0["Página 1: ScreeningSetup"] --> A0a["Seleccionar búsquedas"]
-    A0a --> A0b["Configurar idioma de lectura"]
+    A0a --> A0b["Configurar idioma + estrategia de priorización"]
     A0b --> A0c["Iniciar sesión de screening"]
     A0c --> A["Artículos enriquecidos priorizados"]
     A --> T{"¿Idioma ≠ original?"}
     T -->|Sí| T1["LLM traduce abstract literal"]
     T -->|No| B
     T1 --> B["Presentar artículo en Frontend"]
-    B --> C{"Decisión del usuario o atajo de teclado"}
-    C -->|"✅ Incluir (I)"| D["Pool de incluidos"]
-    C -->|"❌ Excluir (E)"| F["Registrar motivo de exclusión"]
-    C -->|"🟡 Tal Vez (M)"| G["Revisión posterior"]
-    D & F & G --> H{"¿N decisiones alcanzadas?"}
-    H -->|Sí| I["Re-entrenar modelo Active Learning"]
-    I --> J["Re-priorizar artículos pendientes"]
+    B --> MD{"¿Tiene Markdown procesado?"}
+    MD -->|Sí| MD1["Mostrar toggle '📄 Ver texto completo'"]
+    MD -->|No| C
+    MD1 --> C
+    C --> D{"Decisión del usuario o atajo de teclado"}
+    D -->|"✅ Incluir (I)"| E["Pool de incluidos"]
+    D -->|"❌ Excluir (E)"| F["Registrar motivo de exclusión"]
+    D -->|"🟡 Tal Vez (M)"| G["Revisión posterior"]
+    E & F & G --> H{"¿N=10 decisiones alcanzadas?"}
+    H -->|Sí| I["Re-entrenar clasificador (Active Learning)"]
+    I --> J["Re-priorizar pendientes (uncertainty sampling)"]
     J --> B
     H -->|No| B
     I --> K["Actualizar estadísticas PRISMA en vivo"]
+    I --> BIAS{"¿Alerta de sesgo potencial?"}
+    BIAS -->|Sí| WARN["⚠️ Mostrar warning de reconsideración"]
 ```
 
 ---
 
-#### Sub-fase 2.3: Indexación RAG de Artículos Incluidos (Vectorización)
+#### Sub-fase 2.3: Indexación RAG de Artículos Incluidos (Chunking Semántico sobre Markdown)
 
 **Propósito:**
-Fragmentar, vectorizar e indexar los textos completos de los artículos incluidos para habilitar la recuperación semántica precisa necesaria para el chat RAG y la asistencia de redacción, combatiendo directamente la alucinación de los LLMs.
+Fragmentar, vectorizar e indexar los **Markdown enriquecidos** (generados en Sub-fase 2.0) de los artículos incluidos para habilitar la recuperación semántica precisa necesaria para el chat RAG y la asistencia de redacción, combatiendo directamente la alucinación de los LLMs.
 
 **Argumentación Científica:**
-La Generación Aumentada por Recuperación (RAG) previene la "confabulación" heurística de los LLMs anclando sus respuestas exclusivamente al corpus provisto (Lewis et al., 2020). Gao et al. (2024) realizaron un survey comprensivo de las técnicas RAG, destacando que la calidad del chunking y la preservación de metadatos son factores críticos para la precisión del retrieval. Paper-qa (Future-House) demostró que la inclusión de metadatos de procedencia (DOI, autores, página) en cada chunk mejora sustancialmente la trazabilidad de las citas generadas.
+La Generación Aumentada por Recuperación (RAG) previene la "confabulación" heurística de los LLMs anclando sus respuestas exclusivamente al corpus provisto (Lewis et al., 2020). Gao et al. (2024) realizaron un survey comprensivo de las técnicas RAG, destacando que **la calidad del chunking y la preservación de metadatos son factores críticos** para la precisión del retrieval. Paper-qa (Future-House) demostró que la inclusión de metadatos de procedencia (DOI, autores, página) en cada chunk mejora sustancialmente la trazabilidad de las citas generadas.
+
+**Avances clave del chunking semántico reciente:**
+- Jimeno Yepes et al. (2024) demostraron que el **chunking basado en tipo de elemento estructural** (sección, tabla, figura) supera al chunking de tamaño fijo tradicional, ya que preserva la unidades semánticas completas del documento.
+- Mortezaagha & Rahgozar (2026) introdujeron **GraLC-RAG**, un framework que combina late chunking con estructura de grafo, demostrando que el chunking structure-aware logra 15.6× más diversidad de secciones recuperadas que los métodos basados solo en similitud de contenido.
+- Taiwo & Yusoff (2026) evaluaron empíricamente 4 estrategias de chunking y concluyeron que el **structure-aware chunking** ofrece el mejor rendimiento general en retrieval con significativamente menores costos computacionales.
+
+**Diferencia crítica vs. plan anterior:** En lugar de parsear los PDFs directamente con `pymupdf4llm` durante el chunking, esta sub-fase **opera sobre los Markdown ya procesados por Docling en la Sub-fase 2.0**, aprovechando la estructura semántica preservada (secciones, tablas aplanadas, fórmulas LaTeX, descripciones de imágenes).
 
 **Inputs:**
-1. PDFs de artículos marcados como "Incluidos" (Relevantes + Necesarios) del screening.
-2. Metadatos completos de cada artículo (DOI, autores, año, título).
+1. Archivos Markdown procesados de artículos marcados como "Incluidos" (`data/projects/{uuid}/parsed/*.md`).
+2. Metadatos completos de cada artículo (DOI, autores, año, título) — ya disponibles en el front-matter YAML del MD.
 
 **Acciones a Realizar:**
-1. Parsear cada PDF con una librería robusta (`pymupdf4llm` o `unstructured`) preservando:
-   - Estructura del documento (secciones: Introducción, Metodología, Resultados, Discusión).
-   - Tablas como texto estructurado.
-   - Figuras con sus leyendas como texto.
-2. Ejecutar chunking semántico (no por tamaño fijo) basado en secciones del documento:
-   - Chunks de 500-800 tokens con overlap de 100 tokens.
-   - Cada chunk incluye metadatos: `{doi, authors, year, title, section, page_number, chunk_id}`.
-3. Generar embeddings locales con `nomic-embed-text` vía Ollama (768 dimensiones).
-4. Almacenar en Qdrant en una **colección aislada por proyecto**: `project_{uuid}`.
-5. Crear un índice invertido complementario para búsquedas exactas (BM25 con `rank_bm25`).
-6. Implementar un híbrido retriever (vector + BM25) con re-ranking.
-7. Verificar la integridad: para cada artículo, contar N chunks generados y validar que todos estén en Qdrant.
-8. Generar un mapeo `chunk_id → {doi, page, section}` para la trazabilidad de citas.
-9. Manejar artículos sin PDF: indexar solo el abstract + metadatos.
-10. Ejecutar un test de sanidad: query de prueba con un término del artículo → debe retornar chunks de ese artículo.
-11. Logging de todo el proceso de indexación (N artículos procesados, N chunks, errores).
-12. Permitir re-indexación si el usuario agrega/quita artículos del pool incluido.
+1. **Leer cada `.md` procesado** y parsear el front-matter YAML para obtener metadatos automáticamente.
+2. **Chunking semántico por estructura del Markdown:**
+   - Detectar secciones por headers (`##`, `###`) del Markdown.
+   - Cada sección es una unidad de chunking natural; si excede 800 tokens, subdividir por párrafos con overlap de 100 tokens.
+   - **Las tablas aplanadas** (generadas por TableFlattener) son chunks individuales completos — nunca se cortan a mitad.
+   - **Las descripciones VLM** de imágenes se adjuntan al chunk de la sección donde aparecen.
+   - Las fórmulas LaTeX se mantienen intactas dentro de su chunk.
+   - Chunks de 300-800 tokens (rango dinámico según tipo de contenido).
+3. **Enriquecer cada chunk con metadatos de procedencia:**
+   ```json
+   {
+     "chunk_id": "chunk_001",
+     "doi": "10.1016/j.compag.2023.107500",
+     "authors": "Wang J., Zhang H.",
+     "year": 2023,
+     "title": "YOLO-based crop phenology detection",
+     "section": "3. Results",
+     "element_type": "paragraph|table_flat|image_description|formula",
+     "page_range": "5-6",
+     "project_id": "proj-uuid-001"
+   }
+   ```
+4. Generar embeddings locales con `nomic-embed-text` vía Ollama (768 dimensiones).
+5. Almacenar en **Qdrant** en una **colección aislada por proyecto**: `project_{uuid}`.
+6. Crear un índice invertido complementario para búsquedas exactas (**BM25** con `rank_bm25`).
+7. Implementar un **híbrido retriever (vector + BM25)** con re-ranking por score fusionado (Reciprocal Rank Fusion).
+8. Verificar la integridad: para cada artículo, contar N chunks generados y validar que todos estén en Qdrant.
+9. Generar un mapeo `chunk_id → {doi, page, section, element_type}` para la **trazabilidad de citas** (citación automática en el chat RAG).
+10. Manejar artículos sin PDF/MD: indexar solo el abstract + metadatos como un chunk único.
+11. Ejecutar un **test de sanidad**: query de prueba con un término clave del artículo → debe retornar ≥1 chunk de ese artículo en top-5.
+12. Logging de todo el proceso de indexación (N artículos, N chunks, N chunks por tipo, errores).
+13. Permitir re-indexación si el usuario agrega/quita artículos del pool incluido.
+
+**Stack Tecnológico:**
+| Tecnología | Propósito |
+|-----------|-----------| 
+| `nomic-embed-text` (vía Ollama) | Embeddings de 768 dimensiones |
+| `Qdrant` (local, persistido) | Vector database con colecciones aisladas por proyecto |
+| `rank_bm25` | Índice BM25 complementario para retrieval léxico |
+| `scikit-learn` | Re-ranking (Reciprocal Rank Fusion) |
+| `PyYAML` | Parsing del front-matter YAML de cada MD |
 
 **Outputs:**
 - Colección Qdrant `project_{uuid}` poblada y consultable.
 - Índice BM25 complementario.
-- Mapeo de trazabilidad `chunk_id → source_metadata`.
+- Mapeo de trazabilidad `chunk_id → source_metadata` (JSON).
 
 **QA y Métricas:**
 | Métrica | Umbral Aceptable |
 |---------|-----------------|
 | Recall@10 en queries de prueba por artículo | ≥ 0.85 |
-| Cada chunk tiene DOI y page_number trazable | 100% |
+| Cada chunk tiene DOI y section trazable | 100% |
 | Dimensión de embeddings consistente (768) | 100% |
-| Tiempo de indexación por artículo (promedio) | < 30 s |
-| Test de sanidad exitoso | 100% |
+| Tablas aplanadas indexadas como chunks atómicos (no cortadas) | 100% |
+| Tiempo de indexación por artículo (promedio, desde MD) | < 15 s |
+| Test de sanidad exitoso (artículo en top-5) | 100% |
+
+**Tests:** `tests/unit/test_rag_indexing.py`
+- Chunking por secciones Markdown genera chunks con headers
+- Tablas aplanadas son chunks atómicos (no subdivididos)
+- Front-matter YAML se inyecta en metadatos de cada chunk
+- Chunks no exceden 800 tokens
+- Test de sanidad: query → chunk del artículo correcto
 
 **Flujograma:**
 ```mermaid
 graph TD
-    A[PDFs de artículos incluidos] --> B[Parseo con pymupdf4llm / unstructured]
-    B --> C[Chunking semántico por secciones]
-    C --> D[Agregar metadatos a cada chunk]
-    D --> E[Generar embeddings con nomic-embed-text]
-    E --> F[Almacenar en Qdrant: project_uuid collection]
-    F --> G[Crear índice BM25 complementario]
-    G --> H[Verificación de integridad]
-    H --> I[Test de sanidad con query de prueba]
-    I --> J[Pipeline RAG listo para Chat]
+    A["📂 Markdown procesados (Sub-fase 2.0)"] --> B["Leer MD + parsear front-matter YAML"]
+    B --> C["Detectar secciones por headers ##/###"]
+    C --> D{"¿Sección > 800 tokens?"}
+    D -->|Sí| E["Subdividir por párrafos con overlap 100"]
+    D -->|No| F["Chunk = sección completa"]
+    E --> G["Inyectar metadatos (DOI, section, element_type)"]
+    F --> G
+    G --> H["Generar embeddings con nomic-embed-text"]
+    H --> I["Almacenar en Qdrant: project_{uuid}"]
+    I --> J["Crear índice BM25 complementario"]
+    J --> K["Configurar Hybrid Retriever (RRF)"]
+    K --> L["Verificación de integridad"]
+    L --> M["Test de sanidad con query de prueba"]
+    M --> N["Pipeline RAG listo para Chat (Fase 3)"]
 ```
 
 ---
 
-#### Sub-fase 2.4: Asistencia Inteligente (AI Suggestions) durante el Screening - *NUEVO*
+#### Sub-fase 2.4: Asistencia Inteligente Predictiva (AI Suggestions) durante el Screening
 
 **Propósito:**
-Ayudar al investigador a mantener la consistencia en los criterios de inclusión y exclusión durante sesiones muy largas de screening. Mediante el análisis del historial reciente, el LLM detecta patrones y recomienda activamente el destino del próximo artículo.
+Ayudar al investigador a mantener la consistencia en los criterios de inclusión y exclusión durante sesiones muy largas de screening. Mediante el análisis del historial de decisiones, el sistema genera predicciones **Few-Shot** basadas en el patrón de inclusión/exclusión del usuario, reduciendo la fatiga cognitiva y actuando como un "segundo revisor automatizado" que no reemplaza la decisión humana pero la informa.
 
 **Argumentación Científica:**
-Reducir la fatiga cognitiva es crítico en la fase de screening (O’Mara-Eves et al., 2015). Usar un motor de sugerencias tipo "Active Learning / Few-Shot" no reemplaza la decisión humana pero acelera enormemente el triaje al priorizar el texto clave, reduciendo la discrepancia en lecturas repetitivas y aportando un "segundo revisor automatizado".
+Reducir la fatiga cognitiva es crítico en la fase de screening: O'Mara-Eves et al. (2015) demostraron que la consistencia inter-revisor disminuye significativamente después de las primeras ~50 decisiones. Usar un motor de sugerencias tipo "Active Learning / Few-Shot" que presenta evidencia contextual reduce la discrepancia en lecturas repetitivas. Vares (2026) formalizó este concepto con AutoDiscover, usando un agente adaptativo que gestiona un portfolio de estrategias de query dinámicamente, incluyendo un dashboard visual para interpretar y diagnosticar las decisiones del agente (TS-Insight).
+
+**Inputs:**
+1. Historial de decisiones del usuario en la sesión actual (≥10 decisiones).
+2. Abstracts y embeddings de los artículos decididos.
+3. Abstract del artículo actual a evaluar.
+4. Criterios de inclusión/exclusión del proyecto.
 
 **Acciones a Realizar:**
-1. Contar las decisiones manuales (`reviewed_count`); el asistente se activa para el artículo 11 en adelante.
-2. Recuperar en BD las últimas 10 decisiones (Incluido/Excluido) más significativas con su Abstract.
-3. El frontend consulta al endpoint `GET /sessions/{id}/articles/{id}/suggestion` que compila el historial en formato *Few-Shot*.
-4. El LLM (Ej. `aya:8b`) recibe la query evaluativa y emite el json: `{"suggested_status": "include", "justification": "...", "confidence": 0.90}`.
-5. El Frontend renderiza un banner visual ("Sugerencia: Incluir") sobre el Abstract, indicando el motivo y % de confianza.
+1. **Activación:** El asistente se activa automáticamente a partir del artículo 11 (tras 10 decisiones manuales, suficientes para un Few-Shot de calidad).
+2. **Compilación del contexto Few-Shot:**
+   - Recuperar las últimas 10 decisiones más recientes (5 incluidos + 5 excluidos, balanceados) con su abstract.
+   - Incluir los motivos de exclusión como contexto adicional.
+   - Construir un prompt Few-Shot:
+     ```
+     Eres un asistente de cribado PRISMA. Basándote en las decisiones previas
+     del investigador, predice si el siguiente artículo debería ser incluido
+     o excluido.
+
+     --- Decisiones previas (ejemplos) ---
+     [Incluido]: "YOLO-based crop phenology..." → Incluido
+     [Excluido]: "Survey of blockchain in supply chain..." → Excluido (Fuera de alcance)
+     ...
+
+     --- Artículo a evaluar ---
+     Título: "..."
+     Abstract: "..."
+
+     Responde en JSON: {"suggested_status": "include|exclude|uncertain",
+                         "justification": "...",
+                         "confidence": 0.0-1.0,
+                         "key_match_reasons": ["..."]}
+     ```
+3. El backend endpoint `GET /api/v1/sessions/{session_id}/articles/{article_id}/suggestion` compila y ejecuta la query.
+4. El LLM (Ej. `llama3.1:8b` o `aya:8b`) emite el JSON de sugerencia.
+5. **Frontend renderiza:**
+   - Banner visual sobre el abstract: "🤖 Sugerencia: **Incluir** (87% confianza)" con color verde/rojo/amarillo.
+   - Tooltip con la justificación del motivo.
+   - Indicador de los `key_match_reasons` resaltados en el abstract (highlighting de frases clave).
+6. **Refinamiento continuo:** Cada nueva decisión del usuario actualiza el pool de ejemplos Few-Shot.
+7. **Métricas de precisión del asistente:** Comparar suggestion vs decisión final del usuario para Track el accuracy acumulado del asistente (visible en el panel de estadísticas).
+8. **Opción de desactivar:** Toggle en la UI para que el usuario pueda ocultar las sugerencias si lo desea.
+
+**Stack Tecnológico:**
+| Tecnología | Propósito |
+|-----------|-----------| 
+| LLM local (vía LiteLLM → Ollama) | Generación de sugerencias Few-Shot |
+| FastAPI endpoint | `GET /sessions/{id}/articles/{id}/suggestion` |
+| `Pydantic` v2 | Validación del JSON de respuesta |
+| `scikit-learn` | Clasificador complementario (usado en Sub-fase 2.2) |
+
+**Outputs:**
+- Sugerencias JSON por artículo con status, justificación y confianza.
+- Métricas de accuracy del asistente (suggestion vs decisión real).
+- Log de sugerencias para análisis post-hoc.
+
+**QA y Métricas:**
+| Métrica | Umbral Aceptable |
+|---------|-----------------|
+| Accuracy de la sugerencia vs decisión final del usuario | ≥ 75% (tras ≥30 decisiones) |
+| Latencia de generación de la sugerencia | < 3 s |
+| Formato JSON de sugerencia válido | 100% |
+| Sugerencia activada solo tras ≥10 decisiones | 100% |
+| Confianza de la sugerencia correlaciona con accuracy real | ≥ 0.60 (Spearman) |
+
+**Tests:** `tests/unit/test_ai_suggestions.py`
+- Sugerencia no se activa con < 10 decisiones
+- JSON de respuesta tiene campos obligatorios
+- Confianza está en rango [0.0, 1.0]
+- Balance del contexto Few-Shot (≈50% include / ≈50% exclude)
+- Accuracy tracking se actualiza correctamente
+
+**Flujograma:**
+```mermaid
+graph TD
+    A{"¿reviewed_count ≥ 10?"} -->|No| B["Sin sugerencia: screening manual puro"]
+    A -->|Sí| C["Recuperar últimas 10 decisiones (balanceadas)"]
+    C --> D["Construir prompt Few-Shot con contexto"]
+    D --> E["LLM genera sugerencia JSON"]
+    E --> F{"¿JSON válido?"}
+    F -->|Sí| G["Frontend: banner visual con sugerencia"]
+    F -->|No| H["Fallback: sin sugerencia para este artículo"]
+    G --> I["Usuario decide (posiblemente influenciado)"]
+    I --> J["Comparar sugerencia vs decisión real"]
+    J --> K["Actualizar accuracy tracking del asistente"]
+    K --> L["Añadir decisión al pool Few-Shot"]
+    L --> A
+```
 
 ---
+
 
 ### FASE 3: INCLUSIÓN Y SÍNTESIS — Asistente de Redacción
 
@@ -928,6 +1214,406 @@ Los modelos de lenguaje actuales operan no solo como motores de recuperación si
 
 ---
 
+### FASE 4: EXPLORACIÓN BIBLIOGRÁFICA — Grafos de Citación y Relación Temática (Estilo ResearchRabbit)
+
+> Esta fase añade una capa de **exploración y descubrimiento visual** que permite al investigador navegar las conexiones entre los artículos incluidos y el universo de literatura relacionada, siguiendo el paradigma de herramientas como **ResearchRabbit** (nodos verdes = artículos en colección, azules = citados pero no descargados). Se construyen **dos bases de datos de grafos** complementarias por proyecto: una basada en **citas bibliográficas** y otra en **relación temática semántica**.
+
+---
+
+#### Sub-fase 4.1: Extracción de Referencias Bibliográficas de Artículos Incluidos
+
+**Propósito:**
+Recopilar la lista completa de referencias bibliográficas de cada artículo incluido en el screening, normalizando los DOIs y metadatos para alimentar el grafo de citaciones.
+
+**Argumentación Científica:**
+El análisis de redes de citación es fundamental para comprender la estructura intelectual de un campo de investigación y descubrir artículos seminales que podrían haberse omitido en la búsqueda inicial (Brack et al., 2021). Las herramientas como ResearchRabbit operan precisamente sobre esta lógica: a partir de un conjunto semilla de artículos ("seed papers"), se expande la red citacional para descubrir trabajos relacionados no evidentes mediante búsqueda por keywords (Jia & Saule, 2018).
+
+**Inputs:**
+1. Lista de artículos marcados como "Incluidos" en la Fase 2 (screening).
+2. DOIs y external_ids de cada artículo.
+3. PDFs descargados (para extracción con GROBID como fallback).
+
+**Acciones a Realizar:**
+1. Para cada artículo incluido, consultar las APIs existentes para obtener sus referencias:
+   - **OpenAlex API:** Campo `referenced_works` — retorna una lista de IDs de todos los artículos citados. Resolución vía `GET /works/{id}` para obtener DOI + metadatos de cada referencia.
+   - **Semantic Scholar API:** Campo `references` — retorna paperId, DOI, título, autores y año de cada referencia.
+2. Normalizar los DOIs extraídos (remover prefijos `https://doi.org/`, `http://dx.doi.org/`, etc.).
+3. Para artículos sin datos en APIs externas, utilizar **GROBID** (parser de PDFs) como fallback para extraer la sección de bibliografía del PDF y parsear las entradas.
+4. Crear registros en la nueva tabla `article_references` de SQLite con:
+   - `source_article_id` (FK al artículo que cita)
+   - `cited_doi`, `cited_title`, `cited_authors`, `cited_year`
+   - `extraction_source` (openalex | semantic_scholar | grobid | manual)
+   - `is_in_project` (booleano: True si el DOI citado ya existe entre los artículos del proyecto)
+5. Deduplicar las referencias entre múltiples fuentes (mismo DOI extraído de OpenAlex y Semantic Scholar).
+6. Calcular estadísticas: total de referencias únicas, % de cobertura por fuente, artículos más citados entre los incluidos.
+7. Marcar con `is_in_project = True` las referencias cuyo DOI coincida con algún artículo ya presente en el proyecto.
+8. Ejecutar en batch asíncrono con rate-limiting para no saturar las APIs.
+
+**Stack Tecnológico:**
+| Tecnología | Propósito |
+|-----------|-----------|
+| `aiohttp` | Consultas asíncronas a OpenAlex y Semantic Scholar |
+| `pymupdf4llm` | Parsing de bibliografía de PDFs (fallback) |
+| GROBID (Docker, opcional) | Parser especializado de referencias en PDFs |
+| `SQLAlchemy` | ORM para la nueva tabla `article_references` |
+
+**Outputs:**
+- Tabla `article_references` poblada con todas las citas de cada artículo incluido.
+- Estadísticas de cobertura de extracción.
+
+**QA y Métricas:**
+| Métrica | Umbral Aceptable |
+|---------|-----------------|
+| Artículos incluidos con referencias extraídas | ≥ 90% |
+| DOIs normalizados correctamente (formato `10.XXXX/...`) | 100% |
+| Deduplicación de referencias entre fuentes | 100% |
+| Tiempo de extracción por artículo | < 5 s |
+
+**Tests:** `tests/unit/test_reference_extraction.py` (13 tests)
+- Parsing de `referenced_works` de OpenAlex
+- Parsing de `references` de Semantic Scholar
+- Normalización de DOIs (variantes URL, prefijo DOI:, etc.)
+- Modelo `article_references` con campos requeridos
+- Flag `is_in_project`
+
+**Flujograma:**
+```mermaid
+graph TD
+    A["Artículos incluidos (screening)"] --> B{"¿Tiene DOI?"}
+    B -->|Sí| C["Consultar OpenAlex: referenced_works"]
+    B -->|Sí| D["Consultar Semantic Scholar: references"]
+    B -->|No / Fallo| E["GROBID: parsear PDF bibliografía"]
+    C --> F["Normalizar DOIs"]
+    D --> F
+    E --> F
+    F --> G["Deduplicar entre fuentes"]
+    G --> H["Marcar is_in_project"]
+    H --> I["Almacenar en article_references"]
+    I --> J["Estadísticas de cobertura"]
+```
+
+---
+
+#### Sub-fase 4.2: Construcción del Grafo de Citaciones
+
+**Propósito:**
+Construir un grafo dirigido donde cada nodo es un artículo y cada arista representa una relación de cita bibliográfica. Los artículos incluidos se visualizan en **verde** y los citados pero no descargados en **azul**, permitiendo al investigador identificar inmediatamente qué literatura adicional podría ser relevante para descargar.
+
+**Argumentación Científica:**
+Los grafos de citación permiten identificar artículos seminales (altamente citados), clusters temáticos y potenciales lagunas en la cobertura de la revisión. Jia & Saule (2018) demostraron que la distribución de grados de los artículos citados en el subgrafo de proyección sigue una ley de potencia, lo que permite identificar tanto los trabajos canónicos (hub) como artículos relevantes poco conectados ("non-obvious papers") que los métodos convencionales no encuentran. La combinación de múltiples tipos de información (autor, venue, keywords) mejora significativamente la recomendación de citas (Brack et al., 2021).
+
+**Inputs:**
+1. Tabla `article_references` poblada en la Sub-fase 4.1.
+2. Tabla `articles` del proyecto (para obtener metadatos de los incluidos).
+
+**Acciones a Realizar:**
+1. **Crear nodos de artículos incluidos** (status: `included`, color: `#22c55e` verde):
+   - Propiedades: `doi`, `title`, `authors`, `year`, `journal`, `agrisearch_article_id`.
+2. **Crear nodos de artículos citados externos** (status: `cited_external`, color: `#3b82f6` azul):
+   - Propiedades: `doi`, `title`, `authors`, `year` (extraídos de `article_references`).
+   - Estos nodos representan artículos que aparecen en las bibliografías pero **no están descargados** en el proyecto.
+3. **Crear aristas dirigidas** `CITES`: desde el artículo que cita hacia el artículo citado.
+   - Propiedades: `extraction_source` (de dónde se obtuvo la relación).
+4. Calcular métricas del grafo:
+   - **In-degree** de cada nodo: artículos más citados.
+   - **Artículos puente**: nodos externos (azules) citados por ≥2 artículos incluidos (candidatos prioritarios para descargar).
+   - **Citas compartidas**: pares de artículos incluidos que citan los mismos artículos externos (indicador de similitud bibliométrica).
+5. Almacenar el grafo usando **NetworkX** (en memoria, serializado a JSON por proyecto) o **Neo4j** (si se prefiere una base de datos dedicada).
+6. Proveer endpoint API: `GET /api/v1/graphs/{project_id}/citation` que retorne el grafo en formato compatible con **vis-network** (nodos + aristas con colores).
+7. Soportar filtros: rango de años, status (solo incluidos, solo externos), profundidad de expansión.
+
+**Stack Tecnológico:**
+| Tecnología | Propósito |
+|-----------|-----------|
+| `NetworkX` ≥ 3.x | Biblioteca Python para grafos en memoria (dirigidos/no-dirigidos) |
+| **Neo4j Community** (Docker, opcional) | Base de datos de grafos con Cypher para queries complejas |
+| `neo4j-python-driver` ≥ 5.x | Conector Python → Neo4j (si se usa Neo4j) |
+| `vis-network` (vis.js) | Visualización frontend interactiva de grafos force-directed |
+
+**Outputs:**
+- Grafo de citaciones almacenado (JSON o Neo4j) por proyecto.
+- API endpoint que retorna nodos y aristas con colores para frontend.
+- Métricas de centralidad: artículos más citados, artículos puente.
+
+**QA y Métricas:**
+| Métrica | Umbral Aceptable |
+|---------|-----------------|
+| Nodos del grafo == artículos incluidos + citas externas únicas | 100% |
+| Aristas dirigidas correctamente (A→B = A cita a B) | 100% |
+| Colores verde (incluido) y azul (externo) asignados correctamente | 100% |
+| Tiempo de construcción del grafo para 100 artículos | < 10 s |
+
+**Tests:** `tests/unit/test_citation_graph.py` (11 tests)
+- Construcción del grafo dirigido con NetworkX
+- Colores verde para incluidos, azul para externos
+- Dirección de aristas (A cita B ≠ B cita A)
+- Nodo más citado (in-degree)
+- Serialización a JSON compatible con vis-network
+
+**Flujograma:**
+```mermaid
+graph TD
+    A["article_references"] --> B["Crear nodos INCLUDED (verde)"]
+    A --> C["Crear nodos CITED_EXTERNAL (azul)"]
+    B --> D["Crear aristas CITES dirigidas"]
+    C --> D
+    D --> E["Calcular in-degree por nodo"]
+    E --> F["Identificar artículos puente"]
+    F --> G["Serializar a JSON"]
+    G --> H["API: GET /graphs/{id}/citation"]
+    H --> I["Frontend: vis-network renderiza"]
+```
+
+---
+
+#### Sub-fase 4.3: Construcción del Grafo de Relación Temática (Similitud Semántica)
+
+**Propósito:**
+Construir un segundo grafo **no-dirigido** basado en la **similitud semántica** entre artículos incluidos, usando embeddings de sus abstracts y títulos. A diferencia del grafo de citaciones (que refleja relaciones explícitas entre bibliografías), este grafo modela relaciones **implícitas**: artículos que tratan temas similares, usan metodologías comparables o estudian los mismos cultivos/plagas, incluso si no se citan mutuamente.
+
+**Argumentación Científica:**
+La combinación de grafos de citación con grafos de similitud semántica proporciona una visión holística del campo de investigación, capturando tanto las relaciones explícitas (citas) como las implícitas (proximidad temática). Brack et al. (2021) demostraron que la combinación de information retrieval textual con knowledge graphs científicos mejora significativamente la recomendación de citas (+0.8% MAP@50). Maharjan (2024) propuso un benchmark estandarizado para evaluar modelos de recomendación de citas, enfatizando la necesidad de considerar múltiples features del contexto citacional.
+
+**Inputs:**
+1. Artículos incluidos con abstract y título.
+2. Embeddings generados por `nomic-embed-text` (768 dimensiones, ya disponibles en Qdrant de la Sub-fase 2.3).
+
+**Acciones a Realizar:**
+1. Para cada artículo incluido, obtener o generar su vector de embedding del abstract + título.
+2. Calcular la **matriz de similitud coseno** entre todos los pares de artículos incluidos.
+3. Aplicar un **umbral configurable** (default: 0.75) para crear aristas solo entre artículos suficientemente similares.
+4. Para cada arista, enriquecer con:
+   - `cosine_similarity`: score de similitud [0.0, 1.0].
+   - `shared_keywords`: keywords que comparten ambos artículos (intersección de sus listas de keywords/topics).
+   - `relationship_type`: categoría de la relación inferida por LLM (`same_methodology`, `same_crop`, `same_technology`, `complementary`, `general`).
+5. Extraer 5 keywords/topics por artículo mediante LLM (si no se extrajeron previamente) para enriquecer las etiquetas de los nodos.
+6. Detectar **clusters temáticos** automáticamente (artículos fuertemente conectados entre sí) usando algoritmos de community detection (Louvain o Girvan-Newman).
+7. Almacenar el grafo usando NetworkX (serializado a JSON) o Neo4j.
+8. Proveer endpoint API: `GET /api/v1/graphs/{project_id}/thematic` con el mismo formato vis-network.
+9. El **grosor de las aristas** es proporcional al score de similitud.
+10. Soportar que el usuario ajuste el umbral en la UI mediante un slider.
+
+**Stack Tecnológico:**
+| Tecnología | Propósito |
+|-----------|-----------|
+| `nomic-embed-text` (vía Ollama) | Embeddings de 768 dimensiones (ya en el stack) |
+| `scikit-learn` | `cosine_similarity` para la matriz de distancias |
+| `NetworkX` ≥ 3.x | Grafo no-dirigido + algoritmos de community detection |
+| LLM local (vía LiteLLM) | Extracción de keywords y clasificación de tipo de relación |
+| `vis-network` (vis.js) | Visualización frontend con aristas de grosor variable |
+
+**Outputs:**
+- Grafo temático no-dirigido almacenado por proyecto.
+- Clusters temáticos auto-detectados.
+- API endpoint con nodos y aristas (similitud como atributo).
+
+**QA y Métricas:**
+| Métrica | Umbral Aceptable |
+|---------|-----------------|
+| Artículos del mismo dominio agrícola con similarity > 0.7 | ≥ 80% |
+| Artículos de dominios distintos con similarity < 0.5 | ≥ 70% |
+| Clusters temáticos coherentes (evaluación manual de muestra) | ≥ 85% |
+| Tiempo de cálculo de la matriz de similitud para 100 artículos | < 5 s |
+
+**Tests:** `tests/unit/test_thematic_graph.py` (15 tests)
+- Similitud coseno (vectores idénticos, ortogonales, nulos)
+- Umbral de filtrado (default 0.75, estricto 0.95, relajado 0.0)
+- Extracción de keywords compartidas
+- Construcción del grafo no-dirigido
+- Aristas con score y keywords
+
+**Flujograma:**
+```mermaid
+graph TD
+    A["Artículos incluidos"] --> B["Obtener embeddings (nomic-embed-text)"]
+    B --> C["Calcular matriz cosine_similarity"]
+    C --> D{"¿similarity >= umbral?"}
+    D -->|Sí| E["Crear arista RELATED_BY_TOPIC"]
+    D -->|No| F["Descartar par"]
+    E --> G["Enriquecer: shared_keywords"]
+    G --> H["LLM: classificar relationship_type"]
+    H --> I["Detectar clusters (Louvain)"]
+    I --> J["Serializar a JSON"]
+    J --> K["API: GET /graphs/{id}/thematic"]
+    K --> L["Frontend: vis-network con grosor variable"]
+```
+
+---
+
+#### Sub-fase 4.4: API REST para Consulta y Exploración de Grafos
+
+**Propósito:**
+Exponer endpoints REST que permitan al frontend solicitar los datos de los grafos en formato JSON compatible con vis-network, con filtros de búsqueda, expansión de vecindad y estadísticas.
+
+**Inputs:**
+1. Grafos de citación y temático construidos en las Sub-fases 4.2 y 4.3.
+2. Parámetros de consulta del frontend (project_id, filtros, profundidad).
+
+**Acciones a Realizar:**
+1. Implementar los siguientes endpoints en `backend/app/api/v1/graphs.py`:
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/api/v1/graphs/{project_id}/citation` | Grafo de citaciones completo (nodos + aristas) |
+| `GET` | `/api/v1/graphs/{project_id}/thematic` | Grafo temático completo |
+| `GET` | `/api/v1/graphs/{project_id}/article/{doi}/neighbors` | Vecinos de un artículo específico |
+| `POST` | `/api/v1/graphs/{project_id}/build` | Disparar la construcción/actualización de ambos grafos |
+| `GET` | `/api/v1/graphs/{project_id}/stats` | Estadísticas: nodos/aristas, artículos puente, clusters |
+
+2. Formato de respuesta JSON compatible con vis-network:
+```json
+{
+  "graph_type": "citation|thematic",
+  "project_id": "uuid",
+  "nodes": [
+    {"id": "doi", "label": "Autor (Año)", "title": "...", "color": {"background": "#22c55e"}, "size": 20, "status": "included"}
+  ],
+  "edges": [
+    {"from": "doi1", "to": "doi2", "arrows": "to", "color": "..."}
+  ],
+  "metadata": {"total_included": 15, "total_external": 42, "total_edges": 87}
+}
+```
+3. Soportar filtros de query params: `?year_min=2020&year_max=2024&status=included&depth=1`.
+4. Implementar paginación para grafos muy grandes (>500 nodos).
+
+**Stack Tecnológico:**
+| Tecnología | Propósito |
+|-----------|-----------|
+| `FastAPI` | Framework web para los endpoints REST |
+| `Pydantic` v2 | Validación de schemas de respuesta |
+| `NetworkX` / `Neo4j` | Backend de datos del grafo |
+
+**Outputs:**
+- Endpoints REST funcionales y documentados (OpenAPI/Swagger).
+- Respuestas JSON listas para vis-network.
+
+**QA y Métricas:**
+| Métrica | Umbral Aceptable |
+|---------|-----------------|
+| Endpoints retornan 200 OK con datos válidos | 100% |
+| Formato de respuesta compatible con vis-network | 100% |
+| Latencia de respuesta para grafo de 200 nodos | < 2 s |
+| Filtros por año y status funcionan correctamente | 100% |
+
+**Tests:** `tests/integration/test_graph_api.py` (18 tests)
+- Formato de respuesta del endpoint de citación
+- Formato de respuesta del endpoint temático
+- Colores verde/azul en nodos
+- Aristas dirigidas (citación) vs no-dirigidas (temático)
+- Filtros de query params
+
+---
+
+#### Sub-fase 4.5: Visualización Interactiva de Grafos en Frontend
+
+**Propósito:**
+Proveer una interfaz visual interactiva donde el investigador pueda explorar los dos grafos (citación y temático), hacer click en nodos para ver detalles, navegar a artículos externos (azules) para decidir si descargarlos, e identificar visualmente clusters y artículos puente.
+
+**Argumentación Científica:**
+La visualización interactiva de redes bibliográficas mejora la comprensión del panorama investigativo y permite identificar rápidamente artículos clave, tendencias emergentes y lagunas en la cobertura de la revisión. ResearchRabbit popularizó este paradigma demostrando que la exploración visual de grafos es significativamente más intuitiva que la búsqueda por keywords para descubrir literatura relacionada.
+
+**Inputs:**
+1. JSON de nodos y aristas del endpoint API (Sub-fase 4.4).
+2. Selección del usuario: grafo de citación o grafo temático.
+
+**Acciones a Realizar:**
+1. Crear nueva página `/graphs?id=X` → `graphs.astro` → `GraphExplorer.tsx`.
+2. Implementar **selector de tipo de grafo** (tabs o toggle): "🔗 Citaciones" vs "🧠 Temático".
+3. Renderizar el grafo con **vis-network** (vis.js):
+   - Layout force-directed (Barnes-Hut) con estabilización automática.
+   - Nodos verdes (#22c55e) para artículos incluidos, azules (#3b82f6) para externos.
+   - En el grafo temático: aristas punteadas con grosor proporcional a `cosine_similarity`.
+   - En el grafo de citación: aristas con flecha direccional.
+4. **Interacciones de usuario:**
+   - **Click en nodo**: panel lateral desplegable con título completo, autores, año, DOI (clicable), abstract, y lista de conexiones.
+   - **Click en nodo azul (externo)**: botón "📥 Buscar y descargar este artículo" que invoca las APIs de búsqueda.
+   - **Hover**: tooltip con título abreviado + año.
+   - **Zoom/Pan**: navegación libre con scroll y drag.
+   - **Búsqueda**: campo para filtrar/resaltar nodos por keyword o autor.
+5. **Panel de estadísticas** (sidebar o footer):
+   - Total de nodos incluidos vs externos.
+   - Top 5 artículos más citados (in-degree).
+   - Clusters detectados (grafo temático).
+   - Umbral de similitud ajustable (slider, solo en vista temática).
+6. Botón de exportar el grafo como imagen (PNG/SVG).
+7. Acceso desde el Dashboard del proyecto: nuevo botón "🕸️ Explorar Grafos".
+
+**Sub-componentes Frontend:**
+
+| Componente | Responsabilidad |
+|-----------|----------------|
+| `GraphExplorer.tsx` | Orquestador: tabs de selección, carga de datos, gestión de estado |
+| `GraphVisualization.tsx` | Wrapper de vis-network: renderizado, events, physics |
+| `GraphNodePanel.tsx` | Panel lateral con detalles del nodo seleccionado |
+| `GraphStatsBar.tsx` | Barra de estadísticas, slider de umbral, top citados |
+| `GraphToolbar.tsx` | Botones de exportar, buscar, zoom reset |
+
+**Stack Tecnológico:**
+| Tecnología | Propósito |
+|-----------|-----------|
+| `vis-network` (npm: `vis-network`) | Librería de grafos interactivos con force-layout |
+| `vis-data` (npm: `vis-data`) | DataSets reactivos para nodos y aristas |
+| React ≥ 19.x | Componentes cliente con estado |
+| TailwindCSS | Estilos del panel lateral y toolbar |
+
+**vis-network configuración de colores:**
+```javascript
+// Nodo incluido (VERDE)
+{ color: { background: "#22c55e", border: "#16a34a",
+           highlight: { background: "#4ade80", border: "#15803d" } },
+  shape: "dot", size: 20 }
+
+// Nodo externo (AZUL)
+{ color: { background: "#3b82f6", border: "#2563eb",
+           highlight: { background: "#60a5fa", border: "#1d4ed8" } },
+  shape: "dot", size: 12 }
+
+// Arista de citación (dirigida)
+{ arrows: { to: { enabled: true, scaleFactor: 0.8 } },
+  color: { color: "#94a3b8", highlight: "#f59e0b" }, width: 1.5 }
+
+// Arista temática (no-dirigida, punteada)
+{ arrows: { to: { enabled: false } },
+  color: { color: "#a78bfa", highlight: "#8b5cf6" },
+  width: /* proporcional a cosine_similarity */, dashes: [5, 5] }
+```
+
+**Outputs:**
+- Página `/graphs?id=X` funcional con dos vistas de grafo.
+- Panel lateral de detalles del nodo.
+- Estadísticas y filtros interactivos.
+
+**QA y Métricas:**
+| Métrica | Umbral Aceptable |
+|---------|-----------------|
+| Grafo renderiza correctamente con ≤ 500 nodos | 100% |
+| Click en nodo muestra panel lateral con datos correctos | 100% |
+| Cambio de vista (citación ↔ temático) sin recarga de página | 100% |
+| Slider de umbral actualiza el grafo en < 1 s | ≥ 95% |
+| Exportar imagen funcional (PNG o SVG) | 100% |
+
+**Flujograma:**
+```mermaid
+graph TD
+    A["Botón 'Explorar Grafos' en ProjectDashboard"] --> B["/graphs?id=X"]
+    B --> C{"Seleccionar tipo de grafo"}
+    C -->|"🔗 Citaciones"| D["API: GET /graphs/{id}/citation"]
+    C -->|"🧠 Temático"| E["API: GET /graphs/{id}/thematic"]
+    D --> F["vis-network renderiza grafo dirigido"]
+    E --> G["vis-network renderiza grafo no-dirigido"]
+    F --> H{"Interacción del usuario"}
+    G --> H
+    H -->|Click nodo verde| I["Panel: detalles del artículo incluido"]
+    H -->|Click nodo azul| J["Panel: detalles + botón descargar"]
+    H -->|Hover| K["Tooltip: título + año"]
+    H -->|Slider umbral| L["Recalcular aristas temáticas"]
+```
+
+**Esquema de datos de ejemplo:** Documentado en detalle con datos ficticios de 5 artículos agrícolas y sus relaciones en `docs/graph_database_schema.json`.
+
+---
+
 ## 5. Stack Tecnológico y Requisitos del Proyecto
 
 ### 5.1 Frontend
@@ -967,7 +1653,18 @@ Los modelos de lenguaje actuales operan no solo como motores de recuperación si
 | `arxiv-mcp-server` | Búsqueda en ArXiv |
 | `browsermcp` | Búsqueda web de respaldo (Google Scholar, manuales) |
 
-### 5.5 Calidad y Seguridad (Clean Code)
+### 5.5 Grafos y Visualización (Fase 4)
+| Tecnología | Versión | Propósito |
+|-----------|---------|-----------|
+| **NetworkX** | ≥ 3.x | Biblioteca Python para grafos en memoria (cita + temático) |
+| **Neo4j Community** (opcional) | ≥ 5.x | Base de datos de grafos con Cypher para queries complejas |
+| **neo4j-python-driver** (opcional) | ≥ 5.x | Conector Python → Neo4j (si se usa Neo4j) |
+| **vis-network** (npm) | ≥ 9.x | Visualización frontend interactiva de grafos force-directed |
+| **vis-data** (npm) | ≥ 7.x | DataSets reactivos para nodos y aristas |
+| **scikit-learn** | ≥ 1.x | Cálculo de `cosine_similarity` para el grafo temático |
+| **GROBID** (Docker, opcional) | ≥ 0.8 | Parser de bibliografías de PDFs científicos |
+
+### 5.6 Calidad y Seguridad (Clean Code)
 | Herramienta | Propósito |
 |------------|-----------|
 | **Ruff** | Linter + formatter ultrarrápido para Python |
@@ -977,7 +1674,7 @@ Los modelos de lenguaje actuales operan no solo como motores de recuperación si
 | **Safety** | Auditoría de dependencias vulnerables |
 | **Pre-commit hooks** | Ejecutar linting/typing/security antes de cada commit |
 
-### 5.6 Requisitos del Sistema del Usuario
+### 5.7 Requisitos del Sistema del Usuario
 - **RAM:** ≥ 16 GB (recomendado 32 GB para modelos LLM grandes)
 - **GPU:** Opcional pero recomendada (NVIDIA con ≥ 8 GB VRAM para Ollama)
 - **Disco:** ≥ 50 GB libres para PDFs, vectores y modelos
@@ -1022,7 +1719,13 @@ Los modelos de lenguaje actuales operan no solo como motores de recuperación si
 
 - Skidmore, B., & Greyson, D. (2023). CADTH Search Methods for Literature Reviews. *CADTH Methods and Guidelines*. https://doi.org/10.51731/cjht.2023.702
 
+- Brack, A., Hoppe, A., & Ewerth, R. (2021). Citation Recommendation for Research Papers via Knowledge Graphs. *Lecture Notes in Computer Science*, vol 12656. Springer. https://doi.org/10.48550/arXiv.2106.05633
+
+- Jia, H., & Saule, E. (2018). Towards Finding Non-obvious Papers: An Analysis of Citation Recommender Systems. *arXiv preprint*. https://doi.org/10.48550/arXiv.1812.11252
+
+- Maharjan, P. (2024). Benchmark for Evaluation and Analysis of Citation Recommendation Models. *arXiv preprint*. https://doi.org/10.48550/arXiv.2412.07713
+
 ---
 
-*Documento generado el 22 de febrero de 2026. Última actualización: 26 de febrero de 2026. Versión 3.0.*
+*Documento generado el 22 de febrero de 2026. Última actualización: 5 de abril de 2026. Versión 4.0.*
 *Proyecto: AgriSearch — Chat Búsqueda Sistemática*

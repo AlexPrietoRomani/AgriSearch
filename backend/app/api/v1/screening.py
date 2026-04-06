@@ -32,6 +32,7 @@ from app.models.schemas import (
     ScreeningSuggestionResponse,
     ScreeningEligibilityResponse,
 )
+from app.services.active_learning_service import ActiveLearningService
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +312,13 @@ async def list_screening_articles(
             search_query_name=sq_name,
             download_status=article.download_status.value if article.download_status else "pending",
             local_pdf_path=article.local_pdf_path,
+            local_md_path=article.local_md_path,
+            llm_summary=article.llm_summary,
+            parsed_status=article.parsed_status,
+            relevance_score=article.relevance_score,
+            methodology_type=article.methodology_type,
+            agri_variables_json=article.agri_variables_json,
+            # Decision fields
             decision_id=decision.id,
             decision=decision.decision.value if decision.decision else "pending",
             exclusion_reason=decision.exclusion_reason,
@@ -321,6 +329,145 @@ async def list_screening_articles(
         ))
 
     return response
+
+
+@router.get("/sessions/{session_id}/articles/{article_id}/suggestion", response_model=ScreeningSuggestionResponse)
+async def get_article_suggestion(
+    session_id: str,
+    article_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate an AI suggestion based on Active Learning (decision patterns)."""
+    # 1. Get Session for Goal
+    res_session = await db.execute(select(ScreeningSession).where(ScreeningSession.id == session_id))
+    session = res_session.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+
+    # 2. Get Labeled Articles for Training (limit to project)
+    # We take articles that have a decision in ANY session of this project
+    # to maximize training data for the model.
+    stmt_labeled = (
+        select(Article.title, Article.abstract, Article.keywords, ScreeningDecision.decision)
+        .join(ScreeningDecision, Article.id == ScreeningDecision.article_id)
+        .where(
+            Article.project_id == session.project_id,
+            ScreeningDecision.decision.in_([ScreeningDecisionStatus.INCLUDE, ScreeningDecisionStatus.EXCLUDE])
+        )
+    )
+    res_labeled = await db.execute(stmt_labeled)
+    labeled_data = [
+        {"title": r.title, "abstract": r.abstract, "keywords": r.keywords, "decision": r.decision}
+        for r in res_labeled.all()
+    ]
+
+    # 3. Get Target Article
+    res_target = await db.execute(select(Article).where(Article.id == article_id))
+    target = res_target.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Artículo no encontrado.")
+
+    # 4. Use ActiveLearningService
+    al_service = ActiveLearningService()
+    if al_service.train(labeled_data):
+        pool = [{"title": target.title, "abstract": target.abstract, "keywords": target.keywords}]
+        predictions = al_service.predict_relevance(pool)
+        pred = predictions[0]
+        
+        score = pred.get("suggestion_score", 0.5)
+        status = "include" if score >= 0.5 else "exclude"
+        # Calculate a rough justification based on score
+        confidence = float(pred.get("uncertainty", 0))
+        # High uncertainty means score near 0.5. 
+        # Re-map uncertainty to actual confidence (1.0 = score 1 or 0, 0.0 = score 0.5)
+        display_confidence = 1.0 - confidence 
+        
+        return ScreeningSuggestionResponse(
+            decision_id=article_id, # Reused id field
+            suggested_status=status,
+            justification=f"Personalizado según tus {len(labeled_data)} decisiones previas (Relevancia: {score:.2f})",
+            confidence=display_confidence
+        )
+    else:
+        # Fallback to LLM few-shot if ML training failed (not enough diversity)
+        from app.services.llm_service import generate_relevance_suggestion
+        # Take last 5 decisions as context
+        history = labeled_data[-5:] if labeled_data else []
+        suggestion = await generate_relevance_suggestion(
+            title=target.title,
+            abstract=target.abstract or "",
+            history=history,
+            goal=session.goal
+        )
+        return ScreeningSuggestionResponse(
+            decision_id=article_id,
+            **suggestion
+        )
+
+
+@router.post("/sessions/{session_id}/rerank")
+async def rerank_session_articles(
+    session_id: str,
+    mode: str = Query("uncertainty", pattern="^(uncertainty|most_relevant|balanced)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rerank all pending articles in the session using Active Learning."""
+    res_session = await db.execute(select(ScreeningSession).where(ScreeningSession.id == session_id))
+    session = res_session.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+
+    # 1. Get Labeled
+    stmt_labeled = (
+        select(Article.title, Article.abstract, Article.keywords, ScreeningDecision.decision)
+        .join(ScreeningDecision, Article.id == ScreeningDecision.article_id)
+        .where(
+            Article.project_id == session.project_id,
+            ScreeningDecision.decision.in_([ScreeningDecisionStatus.INCLUDE, ScreeningDecisionStatus.EXCLUDE])
+        )
+    )
+    res_labeled = await db.execute(stmt_labeled)
+    labeled_data = [
+        {"title": r.title, "abstract": r.abstract, "keywords": r.keywords, "decision": r.decision}
+        for r in res_labeled.all()
+    ]
+
+    al_service = ActiveLearningService()
+    if not al_service.train(labeled_data):
+        raise HTTPException(status_code=400, detail="Se necesitan al menos decisiones de 'incluir' y 'excluir' para entrenar el modelo.")
+
+    # 2. Get Pending Decisions + Articles
+    stmt_pending = (
+        select(ScreeningDecision, Article)
+        .join(Article, ScreeningDecision.article_id == Article.id)
+        .where(ScreeningDecision.session_id == session_id, ScreeningDecision.decision == ScreeningDecisionStatus.PENDING)
+    )
+    res_pending = await db.execute(stmt_pending)
+    pending_rows = res_pending.all()
+    
+    if not pending_rows:
+        return {"status": "ok", "message": "No hay artículos pendientes para re-rankear."}
+
+    pool = []
+    id_map = {}
+    for decision, article in pending_rows:
+        pool.append({"id": decision.id, "title": article.title, "abstract": article.abstract, "keywords": article.keywords})
+        id_map[decision.id] = decision
+
+    # 3. Predict and Rank
+    scored_pool = al_service.predict_relevance(pool)
+    ranked_pool = al_service.rank_for_screening(scored_pool, mode=mode)
+
+    # 4. Update display_order
+    # We find the current minimum display_order of pending to maintain consistency
+    min_order = min([r[0].display_order for r in pending_rows])
+    for i, item in enumerate(ranked_pool):
+        decision = id_map[item['id']]
+        decision.display_order = min_order + i
+
+    await db.commit()
+    logger.info("Session %s re-ranked using %s mode", session_id, mode)
+    return {"status": "ok", "message": f"Session re-ordenada por {mode}."}
 
 
 # ── Decision Updates ──
@@ -547,78 +694,76 @@ async def translate_abstract(
         raise HTTPException(status_code=500, detail=f"Error de traducción: {str(e)}")
 
 
-@router.get("/sessions/{session_id}/articles/{article_id}/suggestion", response_model=ScreeningSuggestionResponse)
-async def get_relevance_suggestion(
-    session_id: str,
-    article_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get an AI suggestion for an article's relevance based on session context (Few-shot).
-    """
-    # 1. Fetch Session and target Article
-    sess_res = await db.execute(select(ScreeningSession).where(ScreeningSession.id == session_id))
-    session = sess_res.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
-    art_res = await db.execute(select(Article).where(Article.id == article_id))
-    target_article = art_res.scalar_one_or_none()
-    if not target_article:
-        raise HTTPException(status_code=404, detail="Artículo no encontrado")
 
-    # 2. Fetch history (last 10 non-pending decisions)
-    history_stmt = (
-        select(ScreeningDecision, Article)
-        .join(Article, ScreeningDecision.article_id == Article.id)
-        .where(
-            ScreeningDecision.session_id == session_id,
-            ScreeningDecision.decision != ScreeningDecisionStatus.PENDING
-        )
-        .order_by(ScreeningDecision.decided_at.desc())
-        .limit(10)
-    )
-    history_res = await db.execute(history_stmt)
-    rows = history_res.all()
-    
-    # Format history for LLM
-    history_data = []
-    for dec, art in rows:
-        history_data.append({
-            "title": art.title,
-            "abstract": art.abstract or "",
-            "decision": dec.decision.value
-        })
-
-    # 3. Call LLM service
-    from app.services.llm_service import generate_relevance_suggestion
-    
-    suggestion = await generate_relevance_suggestion(
-        title=target_article.title,
-        abstract=target_article.abstract or "",
-        history=history_data,
-        goal=session.goal or "",
-        model=session.translation_model
-    )
-
-    return ScreeningSuggestionResponse(
-        decision_id=article_id,  # Using article_id as identifier in the suggestion
-        suggested_status=suggestion.get("suggested_status", "include"),
-        justification=suggestion.get("justification", "Sin justificación."),
-        confidence=suggestion.get("confidence")
-    )
-
-@router.delete("/session/{session_id}", summary="Delete a screening session")
-async def delete_screening_session(
+@router.post("/sessions/{session_id}/analyze")
+async def analyze_session_articles(
     session_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a screening session and all its associated screening decisions. PDFs are unaffected."""
-    session = await db.get(ScreeningSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Screening session not found")
+    """
+    Trigger deep analysis for all articles in a session.
+    Parses PDF -> MD and runs LLM extraction/scoring.
+    """
+    from app.services.pdf_parser import pdf_parser
+    from app.services.llm_service import analyze_article_content
 
-    await db.delete(session)
-    await db.commit()
-    logger.info("Deleted screening session: %s", session_id)
-    return {"status": "success", "message": "Screening session deleted"}
+    # 1. Get Session
+    session_res = await db.execute(select(ScreeningSession).where(ScreeningSession.id == session_id))
+    session = session_res.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+
+    # 2. Get Articles in Session
+    stmt = (
+        select(Article)
+        .join(ScreeningDecision, Article.id == ScreeningDecision.article_id)
+        .where(ScreeningDecision.session_id == session_id)
+    )
+    res_articles = await db.execute(stmt)
+    articles = res_articles.scalars().all()
+
+    stats = {"processed": 0, "parsed": 0, "analyzed": 0, "failed": 0}
+
+    # Use sync session wrapper for services
+    import sqlalchemy.orm
+    sync_session_factory = sqlalchemy.orm.sessionmaker(bind=db.bind, sync_session_class=sqlalchemy.orm.Session)
+    
+    for article in articles:
+        try:
+            # A. Parse to MD if needed
+            if not article.local_md_path or article.parsed_status != "success":
+                # We need to bridge to sync session or adapt service
+                # For this task, I'll just use the article object and commit later
+                success = await pdf_parser.parse_article(article, db)
+                if success:
+                    stats["parsed"] += 1
+                else:
+                    stats["failed"] += 1
+                    continue
+
+            # B. Analyze with LLM if parsed
+            if article.local_md_path and (not article.llm_summary or article.relevance_score == 0.0):
+                with open(article.local_md_path, "r", encoding="utf-8") as f:
+                    md_text = f.read()
+                
+                analysis = await analyze_article_content(
+                    md_content=md_text,
+                    project_goal=session.goal
+                )
+                
+                article.llm_summary = analysis.get("llm_summary")
+                article.relevance_score = analysis.get("relevance_score", 0.0)
+                article.methodology_type = analysis.get("methodology_type")
+                article.agri_variables_json = json.dumps(analysis.get("agri_variables", {}))
+                
+                stats["analyzed"] += 1
+            
+            stats["processed"] += 1
+            await db.commit() # Persistent update per article to show progress
+
+        except Exception as e:
+            logger.error(f"Analysis failed for article {article.id}: {e}")
+            stats["failed"] += 1
+
+    return stats

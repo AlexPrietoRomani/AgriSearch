@@ -10,6 +10,9 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import get_settings
 
 settings = get_settings()
+print(f"DEBUG: Using database URL: {settings.database_url}")
+import os
+print(f"DEBUG: Current CWD: {os.getcwd()}")
 
 engine = create_async_engine(
     settings.database_url,

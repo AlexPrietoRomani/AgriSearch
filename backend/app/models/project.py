@@ -130,9 +130,17 @@ class Article(Base):
     is_duplicate = Column(Boolean, default=False)
     duplicate_of_id = Column(String, nullable=True)
 
-    # --- Download status ---
+    # --- Download and Parsing status ---
     download_status = Column(Enum(DownloadStatus), default=DownloadStatus.PENDING)
     local_pdf_path = Column(String(1000), nullable=True)
+    local_md_path = Column(String(1000), nullable=True)
+    parsed_status = Column(String(20), default="pending")  # pending, success, failed
+    
+    # --- Phase 2 Enrichment ---
+    llm_summary = Column(Text, nullable=True)
+    relevance_score = Column(Float, default=0.0)
+    methodology_type = Column(String(100), nullable=True)
+    agri_variables_json = Column(Text, nullable=True)  # Store variables extracted by LLM
     open_access_url = Column(String(1000), nullable=True)
 
     # --- Timestamps ---

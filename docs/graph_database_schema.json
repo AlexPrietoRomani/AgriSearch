@@ -1,0 +1,363 @@
+{
+    "document": "Esquema de Bases de Datos de Grafos - AgriSearch Fase 4",
+    "description": "Define la estructura de los dos grafos complementarios: Grafo de Citaciones y Grafo de Relación Temática. Incluye datos ficticios de ejemplo para validación.",
+    "version": "1.0",
+
+    "citation_graph": {
+        "description": "Grafo dirigido que modela las relaciones de cita bibliográfica. Nodo A → Nodo B significa 'A cita a B'. Los artículos incluidos en el screening se marcan en verde; los citados pero no descargados en azul.",
+        "node_model": {
+            "label": "Article",
+            "properties": {
+                "doi": { "type": "VARCHAR(255)", "description": "Identificador Digital Persistente único", "required": true },
+                "title": { "type": "TEXT", "description": "Título original de la publicación", "required": true },
+                "authors": { "type": "TEXT", "description": "Autores separados por comas", "required": false },
+                "year": { "type": "INTEGER", "description": "Año de publicación", "required": false },
+                "journal": { "type": "VARCHAR(500)", "description": "Nombre del journal o revista", "required": false },
+                "status": {
+                    "type": "ENUM",
+                    "values": ["included", "cited_external"],
+                    "description": "included = artículo elegido en el cribado (VERDE), cited_external = solo aparece como referencia (AZUL)",
+                    "required": true
+                },
+                "abstract": { "type": "TEXT", "description": "Resumen del artículo (solo para included)", "required": false },
+                "agrisearch_article_id": { "type": "VARCHAR/UUIDv4", "description": "FK opcional a la tabla articles de AgriSearch (solo para included)", "required": false }
+            }
+        },
+        "edge_model": {
+            "label": "CITES",
+            "direction": "directed",
+            "description": "source_node CITES target_node — indica que el artículo fuente contiene al artículo destino en su bibliografía",
+            "properties": {
+                "source_doi": { "type": "VARCHAR(255)", "description": "DOI del artículo que cita" },
+                "target_doi": { "type": "VARCHAR(255)", "description": "DOI del artículo citado" },
+                "extraction_source": {
+                    "type": "ENUM",
+                    "values": ["openalex", "semantic_scholar", "grobid", "manual"],
+                    "description": "Cómo se descubrió esta relación de cita"
+                }
+            }
+        },
+        "example_cypher_queries": {
+            "create_included_article": "CREATE (a:Article {doi: '10.1016/j.compag.2023.107500', title: 'YOLO-based crop phenology detection in agricultural fields', authors: 'Wang J., Zhang H., Li M.', year: 2023, journal: 'Computers and Electronics in Agriculture', status: 'included', agrisearch_article_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'})",
+            "create_external_article": "CREATE (b:Article {doi: '10.1109/CVPR.2016.91', title: 'Deep Residual Learning for Image Recognition', authors: 'He K., Zhang X., Ren S., Sun J.', year: 2016, journal: 'CVPR', status: 'cited_external'})",
+            "create_citation_edge": "MATCH (a:Article {doi: '10.1016/j.compag.2023.107500'}), (b:Article {doi: '10.1109/CVPR.2016.91'}) CREATE (a)-[:CITES {extraction_source: 'openalex'}]->(b)",
+            "find_all_citations_of_included": "MATCH (a:Article {status: 'included'})-[:CITES]->(b:Article) RETURN a.doi, a.title, b.doi, b.title, b.status",
+            "find_most_cited_external": "MATCH (a:Article)-[:CITES]->(b:Article {status: 'cited_external'}) RETURN b.doi, b.title, COUNT(a) AS citation_count ORDER BY citation_count DESC LIMIT 10",
+            "find_shared_citations": "MATCH (a1:Article {status: 'included'})-[:CITES]->(shared:Article)<-[:CITES]-(a2:Article {status: 'included'}) WHERE a1 <> a2 RETURN a1.title, a2.title, shared.title, shared.doi"
+        },
+        "example_data": {
+            "nodes": [
+                {
+                    "doi": "10.1016/j.compag.2023.107500",
+                    "title": "YOLO-based crop phenology detection in precision agriculture",
+                    "authors": "Wang J., Zhang H., Li M.",
+                    "year": 2023,
+                    "journal": "Computers and Electronics in Agriculture",
+                    "status": "included",
+                    "color": "#22c55e"
+                },
+                {
+                    "doi": "10.1007/s11119-022-09876-5",
+                    "title": "UAV-based multispectral imaging for wheat disease detection using deep learning",
+                    "authors": "García-Martínez A., López R., Torres P.",
+                    "year": 2022,
+                    "journal": "Precision Agriculture",
+                    "status": "included",
+                    "color": "#22c55e"
+                },
+                {
+                    "doi": "10.3390/rs14153690",
+                    "title": "Remote sensing and machine learning for crop monitoring: A review",
+                    "authors": "Chen Y., Kim S., Patel D.",
+                    "year": 2022,
+                    "journal": "Remote Sensing",
+                    "status": "included",
+                    "color": "#22c55e"
+                },
+                {
+                    "doi": "10.1016/j.biosystemseng.2021.04.012",
+                    "title": "Transfer learning for plant disease identification using CNNs",
+                    "authors": "Mohanty S., Hughes D., Salathé M.",
+                    "year": 2021,
+                    "journal": "Biosystems Engineering",
+                    "status": "included",
+                    "color": "#22c55e"
+                },
+                {
+                    "doi": "10.1016/j.fcr.2020.107852",
+                    "title": "Automated phenotyping of field crops through drone imagery",
+                    "authors": "Singh A., Jones B., Kumar V.",
+                    "year": 2020,
+                    "journal": "Field Crops Research",
+                    "status": "included",
+                    "color": "#22c55e"
+                },
+                {
+                    "doi": "10.1109/CVPR.2016.91",
+                    "title": "Deep Residual Learning for Image Recognition",
+                    "authors": "He K., Zhang X., Ren S., Sun J.",
+                    "year": 2016,
+                    "journal": "CVPR",
+                    "status": "cited_external",
+                    "color": "#3b82f6"
+                },
+                {
+                    "doi": "10.48550/arXiv.1506.02640",
+                    "title": "You Only Look Once: Unified, Real-Time Object Detection",
+                    "authors": "Redmon J., Divvala S., Girshick R., Farhadi A.",
+                    "year": 2016,
+                    "journal": "CVPR",
+                    "status": "cited_external",
+                    "color": "#3b82f6"
+                },
+                {
+                    "doi": "10.1038/s41586-019-1923-7",
+                    "title": "A survey on deep learning in medical image analysis",
+                    "authors": "Litjens G., Kooi T., Bejnordi B.E.",
+                    "year": 2017,
+                    "journal": "Nature",
+                    "status": "cited_external",
+                    "color": "#3b82f6"
+                },
+                {
+                    "doi": "10.1016/j.compag.2018.02.016",
+                    "title": "Deep learning frameworks for plant disease detection",
+                    "authors": "Ferentinos K.P.",
+                    "year": 2018,
+                    "journal": "Computers and Electronics in Agriculture",
+                    "status": "cited_external",
+                    "color": "#3b82f6"
+                },
+                {
+                    "doi": "10.1109/TGRS.2019.2899924",
+                    "title": "Spectral-spatial classification of hyperspectral imagery with CNNs",
+                    "authors": "Li Y., Zhang H., Shen Q.",
+                    "year": 2019,
+                    "journal": "IEEE Trans. Geoscience and Remote Sensing",
+                    "status": "cited_external",
+                    "color": "#3b82f6"
+                }
+            ],
+            "edges": [
+                { "from": "10.1016/j.compag.2023.107500", "to": "10.48550/arXiv.1506.02640", "extraction_source": "openalex" },
+                { "from": "10.1016/j.compag.2023.107500", "to": "10.1109/CVPR.2016.91", "extraction_source": "openalex" },
+                { "from": "10.1016/j.compag.2023.107500", "to": "10.3390/rs14153690", "extraction_source": "openalex" },
+                { "from": "10.1007/s11119-022-09876-5", "to": "10.1109/CVPR.2016.91", "extraction_source": "semantic_scholar" },
+                { "from": "10.1007/s11119-022-09876-5", "to": "10.1016/j.compag.2018.02.016", "extraction_source": "semantic_scholar" },
+                { "from": "10.1007/s11119-022-09876-5", "to": "10.1038/s41586-019-1923-7", "extraction_source": "openalex" },
+                { "from": "10.3390/rs14153690", "to": "10.1109/TGRS.2019.2899924", "extraction_source": "openalex" },
+                { "from": "10.3390/rs14153690", "to": "10.1109/CVPR.2016.91", "extraction_source": "openalex" },
+                { "from": "10.1016/j.biosystemseng.2021.04.012", "to": "10.1016/j.compag.2018.02.016", "extraction_source": "grobid" },
+                { "from": "10.1016/j.biosystemseng.2021.04.012", "to": "10.1109/CVPR.2016.91", "extraction_source": "openalex" },
+                { "from": "10.1016/j.fcr.2020.107852", "to": "10.48550/arXiv.1506.02640", "extraction_source": "semantic_scholar" },
+                { "from": "10.1016/j.fcr.2020.107852", "to": "10.1109/TGRS.2019.2899924", "extraction_source": "openalex" }
+            ]
+        }
+    },
+
+    "thematic_graph": {
+        "description": "Grafo no-dirigido que modela relaciones de similitud temática entre artículos basadas en embeddings semánticos. Cada arista indica que dos artículos comparten temática, contexto metodológico o dominio de aplicación. A diferencia del grafo de citaciones, este grafo es computado internamente y no depende de las referencias explícitas.",
+        "node_model": {
+            "label": "Article",
+            "properties": {
+                "doi": { "type": "VARCHAR(255)", "description": "DOI del artículo", "required": true },
+                "title": { "type": "TEXT", "description": "Título", "required": true },
+                "authors": { "type": "TEXT", "description": "Autores", "required": false },
+                "year": { "type": "INTEGER", "description": "Año", "required": false },
+                "status": { "type": "ENUM", "values": ["included"], "description": "Solo artículos incluidos participan en este grafo" },
+                "embedding_vector": { "type": "FLOAT[]", "description": "Vector de embedding de 768 dimensiones (no almacenado en Neo4j, calculado en Python)" },
+                "extracted_topics": { "type": "TEXT[]", "description": "Lista de 5 keywords/temas extraídos por LLM", "required": false },
+                "agri_domain": { "type": "VARCHAR(100)", "description": "Dominio agrícola principal (entomología, fitopatología, etc.)" }
+            }
+        },
+        "edge_model": {
+            "label": "RELATED_BY_TOPIC",
+            "direction": "undirected",
+            "description": "Indica que dos artículos son temáticamente similares según su embedding semántico",
+            "properties": {
+                "cosine_similarity": { "type": "FLOAT", "description": "Score de similitud coseno [0.0, 1.0]", "threshold": 0.75 },
+                "shared_keywords": { "type": "TEXT[]", "description": "Keywords que comparten ambos artículos" },
+                "relationship_type": {
+                    "type": "ENUM",
+                    "values": ["same_methodology", "same_crop", "same_technology", "complementary", "general"],
+                    "description": "Categoría de la relación temática (inferida por LLM)"
+                }
+            }
+        },
+        "example_cypher_queries": {
+            "create_thematic_edge": "MATCH (a:Article {doi: '10.1016/j.compag.2023.107500'}), (b:Article {doi: '10.3390/rs14153690'}) CREATE (a)-[:RELATED_BY_TOPIC {cosine_similarity: 0.89, shared_keywords: ['YOLO', 'crop monitoring', 'deep learning'], relationship_type: 'same_technology'}]-(b)",
+            "find_most_related": "MATCH (a:Article {doi: $doi})-[r:RELATED_BY_TOPIC]-(b:Article) RETURN b.doi, b.title, r.cosine_similarity, r.shared_keywords ORDER BY r.cosine_similarity DESC LIMIT 5",
+            "find_topic_clusters": "MATCH (a:Article)-[r:RELATED_BY_TOPIC]-(b:Article) WHERE r.cosine_similarity > 0.85 RETURN a.title, b.title, r.cosine_similarity, r.relationship_type",
+            "find_isolated_articles": "MATCH (a:Article) WHERE NOT (a)-[:RELATED_BY_TOPIC]-() RETURN a.doi, a.title"
+        },
+        "example_data": {
+            "nodes": [
+                {
+                    "doi": "10.1016/j.compag.2023.107500",
+                    "title": "YOLO-based crop phenology detection in precision agriculture",
+                    "extracted_topics": ["YOLO", "fenología", "detección de objetos", "agricultura de precisión", "drones"],
+                    "agri_domain": "agricultura_precision"
+                },
+                {
+                    "doi": "10.1007/s11119-022-09876-5",
+                    "title": "UAV-based multispectral imaging for wheat disease detection using deep learning",
+                    "extracted_topics": ["UAV", "multiespectral", "trigo", "enfermedades", "deep learning"],
+                    "agri_domain": "fitopatologia"
+                },
+                {
+                    "doi": "10.3390/rs14153690",
+                    "title": "Remote sensing and machine learning for crop monitoring: A review",
+                    "extracted_topics": ["teledetección", "machine learning", "monitoreo cultivos", "revisión", "clasificación"],
+                    "agri_domain": "agricultura_precision"
+                },
+                {
+                    "doi": "10.1016/j.biosystemseng.2021.04.012",
+                    "title": "Transfer learning for plant disease identification using CNNs",
+                    "extracted_topics": ["transfer learning", "CNN", "enfermedades vegetales", "identificación", "clasificación"],
+                    "agri_domain": "fitopatologia"
+                },
+                {
+                    "doi": "10.1016/j.fcr.2020.107852",
+                    "title": "Automated phenotyping of field crops through drone imagery",
+                    "extracted_topics": ["fenotipado", "drones", "cultivos campo", "automatización", "imágenes aéreas"],
+                    "agri_domain": "agricultura_precision"
+                }
+            ],
+            "edges": [
+                {
+                    "source": "10.1016/j.compag.2023.107500",
+                    "target": "10.3390/rs14153690",
+                    "cosine_similarity": 0.89,
+                    "shared_keywords": ["deep learning", "crop monitoring", "agricultura de precisión"],
+                    "relationship_type": "same_technology"
+                },
+                {
+                    "source": "10.1016/j.compag.2023.107500",
+                    "target": "10.1016/j.fcr.2020.107852",
+                    "cosine_similarity": 0.92,
+                    "shared_keywords": ["fenología", "drones", "detección automática"],
+                    "relationship_type": "same_methodology"
+                },
+                {
+                    "source": "10.1007/s11119-022-09876-5",
+                    "target": "10.1016/j.biosystemseng.2021.04.012",
+                    "cosine_similarity": 0.86,
+                    "shared_keywords": ["enfermedades", "deep learning", "clasificación"],
+                    "relationship_type": "same_crop"
+                },
+                {
+                    "source": "10.1007/s11119-022-09876-5",
+                    "target": "10.3390/rs14153690",
+                    "cosine_similarity": 0.78,
+                    "shared_keywords": ["UAV", "monitoreo", "machine learning"],
+                    "relationship_type": "complementary"
+                },
+                {
+                    "source": "10.1016/j.biosystemseng.2021.04.012",
+                    "target": "10.3390/rs14153690",
+                    "cosine_similarity": 0.76,
+                    "shared_keywords": ["machine learning", "clasificación", "cultivos"],
+                    "relationship_type": "general"
+                }
+            ]
+        }
+    },
+
+    "sqlite_extension": {
+        "description": "Nueva tabla en la base de datos relacional SQLite existente para almacenar las referencias extraídas de cada artículo antes de insertarlas en el grafo.",
+        "table": "article_references",
+        "columns": [
+            {
+                "name": "id",
+                "type": "VARCHAR/UUIDv4",
+                "description": "PK única para esta referencia."
+            },
+            {
+                "name": "source_article_id",
+                "type": "VARCHAR/UUIDv4",
+                "description": "FK a articles.id — el artículo que contiene esta referencia en su bibliografía."
+            },
+            {
+                "name": "cited_doi",
+                "type": "VARCHAR(255)",
+                "description": "DOI del artículo citado. Puede no existir en nuestra tabla articles."
+            },
+            {
+                "name": "cited_title",
+                "type": "TEXT",
+                "description": "Título del artículo citado (para mostrar en el grafo)."
+            },
+            {
+                "name": "cited_authors",
+                "type": "TEXT",
+                "description": "Autores del artículo citado."
+            },
+            {
+                "name": "cited_year",
+                "type": "INTEGER",
+                "description": "Año de publicación del artículo citado."
+            },
+            {
+                "name": "extraction_source",
+                "type": "VARCHAR(50)",
+                "description": "Fuente de extracción: openalex, semantic_scholar, grobid, manual."
+            },
+            {
+                "name": "is_in_project",
+                "type": "BOOLEAN",
+                "description": "True si el cited_doi corresponde a un artículo ya descargado en el proyecto (para colorear en VERDE). False = AZUL.",
+                "default": false
+            },
+            {
+                "name": "created_at",
+                "type": "DATETIME",
+                "description": "Timestamp de extracción."
+            }
+        ]
+    },
+
+    "frontend_visualization": {
+        "library": "vis-network (vis.js)",
+        "description": "Configuración de ejemplo para la visualización interactiva de grafos en el frontend.",
+        "vis_network_config_example": {
+            "nodes_config": {
+                "included_article": {
+                    "color": { "background": "#22c55e", "border": "#16a34a", "highlight": { "background": "#4ade80", "border": "#15803d" } },
+                    "shape": "dot",
+                    "size": 20,
+                    "font": { "color": "#ffffff", "size": 12 }
+                },
+                "cited_external": {
+                    "color": { "background": "#3b82f6", "border": "#2563eb", "highlight": { "background": "#60a5fa", "border": "#1d4ed8" } },
+                    "shape": "dot",
+                    "size": 12,
+                    "font": { "color": "#ffffff", "size": 10 }
+                }
+            },
+            "edges_config": {
+                "citation_edge": {
+                    "arrows": { "to": { "enabled": true, "scaleFactor": 0.8 } },
+                    "color": { "color": "#94a3b8", "highlight": "#f59e0b" },
+                    "width": 1.5
+                },
+                "thematic_edge": {
+                    "arrows": { "to": { "enabled": false } },
+                    "color": { "color": "#a78bfa", "highlight": "#8b5cf6" },
+                    "width": "dynamic_based_on_similarity",
+                    "dashes": [5, 5]
+                }
+            },
+            "physics_config": {
+                "barnesHut": { "gravitationalConstant": -3000, "springLength": 150, "springConstant": 0.04 },
+                "stabilization": { "iterations": 200 }
+            },
+            "interaction_config": {
+                "hover": true,
+                "tooltipDelay": 200,
+                "navigationButtons": true,
+                "keyboard": true,
+                "zoomView": true
+            }
+        }
+    }
+}

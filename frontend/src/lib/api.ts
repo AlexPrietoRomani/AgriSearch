@@ -129,6 +129,9 @@ export interface Article {
   source_database: string;
   download_status: string;
   local_pdf_path: string | null;
+  local_md_path: string | null;
+  enriched_summary: string | null;
+  parsed_status: boolean;
   is_duplicate: boolean;
   created_at: string;
 }
@@ -242,6 +245,9 @@ export interface ScreeningArticle {
   search_query_name?: string;
   download_status: string;
   local_pdf_path: string | null;
+  local_md_path: string | null;
+  enriched_summary: string | null;
+  parsed_status: boolean;
   decision_id: string;
   decision: "pending" | "include" | "exclude" | "maybe";
   exclusion_reason: string | null;
@@ -291,7 +297,7 @@ export async function createScreeningSession(data: {
 }
 
 export async function deleteScreeningSession(sessionId: string): Promise<void> {
-  return request(`/screening/session/${sessionId}`, { method: "DELETE" });
+  return request(`/screening/sessions/${sessionId}`, { method: "DELETE" });
 }
 
 export async function updateScreeningSession(sessionId: string, data: {
@@ -358,5 +364,9 @@ export async function enrichArticles(projectId: string): Promise<EnrichmentStats
 
 export async function getArticleSuggestion(sessionId: string, articleId: string): Promise<ScreeningSuggestion> {
   return request(`/screening/sessions/${sessionId}/articles/${articleId}/suggestion`);
+}
+
+export async function rerankSession(sessionId: string, mode: string): Promise<{ status: string; message: string }> {
+  return request(`/screening/sessions/${sessionId}/rerank?mode=${mode}`, { method: "POST" });
 }
 

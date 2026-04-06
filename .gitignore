@@ -19,6 +19,7 @@ desktop.ini
 !/vector_db/.gitkeep
 *.sqlite3
 *.db
+.pytest_cache/
 
 # Backend Specific
 backend/venv/

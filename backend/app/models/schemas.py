@@ -120,8 +120,11 @@ class ArticleResponse(BaseModel):
     download_status: str
     local_pdf_path: str | None = None
     local_md_path: str | None = None
-    enriched_summary: str | None = None
+    llm_summary: str | None = None
     parsed_status: str = "pending"
+    relevance_score: float = 0.0
+    methodology_type: str | None = None
+    agri_variables_json: str | None = None
     is_duplicate: bool
     created_at: datetime
 
@@ -238,8 +241,11 @@ class ScreeningArticleResponse(BaseModel):
     download_status: str
     local_pdf_path: str | None
     local_md_path: str | None = None
-    enriched_summary: str | None = None
-    parsed_status: bool = False
+    llm_summary: str | None = None
+    parsed_status: str = "pending"
+    relevance_score: float = 0.0
+    methodology_type: str | None = None
+    agri_variables_json: str | None = None
     # Decision fields
     decision_id: str
     decision: str = "pending"

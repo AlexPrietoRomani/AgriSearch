@@ -111,10 +111,13 @@ class Settings(BaseSettings):
 
     def get_project_raw_dir(self, project_id: str, project_name: str | None = None) -> Path:
         """Return the raw CSV directory for a specific project."""
-        if project_name:
-            path = self.get_project_data_dir(project_id, project_name) / "raw"
-        else:
-            path = self.get_project_data_dir(project_id) / "raw"
+        path = self.get_project_data_dir(project_id, project_name) / "raw"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_project_parsed_dir(self, project_id: str, project_name: str | None = None) -> Path:
+        """Return the parsed Markdown directory for a specific project."""
+        path = self.get_project_data_dir(project_id, project_name) / "parsed"
         path.mkdir(parents=True, exist_ok=True)
         return path
 
