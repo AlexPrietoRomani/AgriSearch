@@ -5,8 +5,10 @@ Centralized settings using Pydantic Settings for type-safe environment variable 
 """
 
 from pathlib import Path
+from typing import Any
 from functools import lru_cache
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,7 +42,26 @@ class Settings(BaseSettings):
     vector_db_dir: Path = Path("vector_db")
 
     # --- Database ---
-    database_url: str = "sqlite+aiosqlite:///./agrisearch.db"
+    database_url: str = Field(
+        default="sqlite+aiosqlite:///../agrisearch.db",
+        description="SQLAlchemy DB URL."
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def force_root_db(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Force use of root database with absolute path."""
+        # El archivo config.py está en backend/app/core/config.py
+        # La raíz está 3 niveles arriba: core -> app -> backend -> root
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        db_path = project_root / "agrisearch.db"
+        
+        # En Windows, una ruta absoluta con letra de unidad necesita 3 slashes iniciales
+        # seguidos de la ruta absoluta. Si la ruta absoluta empieza con C:/,
+        # la URI final queda como sqlite+aiosqlite:///C:/...
+        # Sin embargo, a veces se prefiere //// para mayor claridad.
+        data["database_url"] = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+        return data
 
     # --- CORS ---
     cors_origins: list[str] = ["http://localhost:4321", "http://localhost:3000"]

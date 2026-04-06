@@ -119,6 +119,9 @@ class ArticleResponse(BaseModel):
     source_database: str
     download_status: str
     local_pdf_path: str | None = None
+    local_md_path: str | None = None
+    enriched_summary: str | None = None
+    parsed_status: str = "pending"
     is_duplicate: bool
     created_at: datetime
 
@@ -234,6 +237,9 @@ class ScreeningArticleResponse(BaseModel):
     search_query_name: str | None = None
     download_status: str
     local_pdf_path: str | None
+    local_md_path: str | None = None
+    enriched_summary: str | None = None
+    parsed_status: bool = False
     # Decision fields
     decision_id: str
     decision: str = "pending"

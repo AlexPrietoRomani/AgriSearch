@@ -186,10 +186,12 @@ async def execute_search(
 
     for (source_name, _), result in zip(tasks, results):
         if isinstance(result, Exception):
-            logger.error("Search failed for %s: %s", source_name, str(result))
+            logger.error("Search failed for %s using query '%s': %s", source_name, adapted_queries.get(source_name), str(result))
             counts_by_source[source_name] = 0
             continue
+        
         counts_by_source[source_name] = len(result)
+        logger.info("[search] %s yielded %d raw results", source_name, len(result))
         for article_data in result:
             article_data["source_database"] = source_name
             all_articles.append(article_data)

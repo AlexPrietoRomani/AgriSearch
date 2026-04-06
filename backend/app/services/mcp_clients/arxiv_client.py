@@ -106,7 +106,11 @@ async def search_arxiv(
                 xml_text = await resp.text()
                 root = ET.fromstring(xml_text)
 
-                for entry in root.findall("atom:entry", NS):
+                entries = root.findall("atom:entry", NS)
+                if not entries:
+                    logger.warning("ArXiv: No entries found for search_query: %s. ResponseStatus: %d. Body: %s", search_query, resp.status, xml_text[:500])
+                
+                for entry in entries:
                     parsed = _parse_arxiv_entry(entry)
 
                     # Year filter

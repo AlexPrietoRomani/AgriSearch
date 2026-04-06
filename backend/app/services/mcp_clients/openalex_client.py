@@ -98,20 +98,22 @@ async def search_openalex(
                     "per_page": per_page,
                     "page": page,
                     "mailto": MAILTO,
-                    "select": "id,doi,title,authorships,publication_year,abstract_inverted_index,primary_location,keywords,best_oa_location,abstract",
                 }
                 if filters:
                     params["filter"] = ",".join(filters)
 
                 async with session.get(f"{OPENALEX_API}/works", params=params) as resp:
+                    logger.info("OpenAlex Request URL: %s", resp.url)
                     if resp.status != 200:
                         logger.warning("OpenAlex API returned %d on page %d", resp.status, page)
                         break
 
                     data = await resp.json()
+                    logger.info("OpenAlex Response Page %d: %d results, metadata: %s", page, len(data.get("results", [])), data.get("meta", {}))
                     works = data.get("results", [])
 
                     if not works:
+                        logger.warning("OpenAlex: No works found in response for query '%s' on page %d", query, page)
                         break
 
                     for work in works:

@@ -73,16 +73,20 @@ async def search_semantic_scholar(
     try:
         async with aiohttp.ClientSession() as session:
             while len(articles) < max_results:
-                url = (
-                    f"{SS_API}/paper/search"
-                    f"?query={query}"
-                    f"&limit={limit}"
-                    f"&offset={offset}"
-                    f"&fields={SS_FIELDS}"
-                    f"{year_filter}"
-                )
+                params = {
+                    "query": query,
+                    "limit": limit,
+                    "offset": offset,
+                    "fields": SS_FIELDS,
+                }
+                if year_from and year_to:
+                    params["year"] = f"{year_from}-{year_to}"
+                elif year_from:
+                    params["year"] = f"{year_from}-"
+                elif year_to:
+                    params["year"] = f"-{year_to}"
 
-                async with session.get(url) as resp:
+                async with session.get(f"{SS_API}/paper/search", params=params) as resp:
                     if resp.status == 429:
                         logger.warning("Semantic Scholar rate limited. Stopping pagination.")
                         break
