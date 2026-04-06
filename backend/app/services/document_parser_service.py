@@ -170,9 +170,9 @@ class DoclingParser:
             do_cell_matching=True,
             mode=TableFormerMode.FAST # Changed from ACCURATE to FAST to save memory
         )
-        options.do_formula_enrichment = True
-        options.generate_picture_images = True # Enable so VLM can analyze images
-        options.images_scale = 1.0 # Limit resolution to prevent OOM
+        options.do_formula_enrichment = False # Disabling formulas to save VRAM
+        options.generate_picture_images = True 
+        options.images_scale = 0.8 # Lowering scale further for stability
         options.generate_page_images = False
         
         # Limit memory buffer queues during processing of huge PDFs
