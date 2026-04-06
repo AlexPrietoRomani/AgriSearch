@@ -100,10 +100,7 @@ async def process_and_enrich_pdf(db, article: Article, parser, vector_service, v
             "source_database": article.source_database
         }
 
-        # 1. Parse PDF using Docling (which now also invokes VLM for pictures)
-        if publish_event:
-            await publish_event(project_id, {"type": "sub_progress", "msg": "1/2: Analizando PDF (Textos, Tablas e Imágenes VLM)..."})
-        final_md = await parser.parse_pdf(pdf_path, meta, vlm_describer=vlm)
+        final_md = await parser.parse_pdf(pdf_path, meta, vlm_describer=vlm, publish_event=publish_event, project_id=project_id)
 
         # 2. Extract abstract if missing (from the generated MD)
         # Simple extraction: look for # Abstract or similar

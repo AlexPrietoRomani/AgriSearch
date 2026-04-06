@@ -190,7 +190,7 @@ class DoclingParser:
         )
         logger.info(f"Docling initialized using {device} (Memory Optimized Mode)")
 
-    async def parse_pdf(self, pdf_path: Path, article_meta: Dict[str, Any], vlm_describer: Optional[ImageFilter] = None) -> str:
+    async def parse_pdf(self, pdf_path: Path, article_meta: Dict[str, Any], vlm_describer: Optional[ImageFilter] = None, publish_event = None, project_id: str = None) -> str:
         """
         Converts PDF to enriched Markdown.
         1. Docling conversion (Structural MD)
@@ -223,6 +223,11 @@ class DoclingParser:
             try:
                 # 1. Run Docling for the current page chunk
                 if total_pages != 9999:
+                    if publish_event:
+                        await publish_event(project_id, {
+                            "type": "sub_progress", 
+                            "msg": f"Analizando páginas {start_page}-{end_page} de {total_pages}..."
+                        })
                     result = await loop.run_in_executor(
                         None, 
                         lambda: self.converter.convert(str(pdf_path), page_range=(start_page, end_page))
@@ -261,7 +266,13 @@ class DoclingParser:
         # 4. VLM Integration: Sequentially describe collected images
         image_map = {}
         if vlm_describer and all_images:
+            total_imgs = len(all_images)
             for i, img_bytes in enumerate(all_images):
+                if publish_event:
+                    await publish_event(project_id, {
+                        "type": "sub_progress", 
+                        "msg": f"Describiendo imagen {i+1}/{total_imgs} con VLM..."
+                    })
                 try:
                     desc = await vlm_describer.analyze_image_bytes(img_bytes)
                     if desc:
