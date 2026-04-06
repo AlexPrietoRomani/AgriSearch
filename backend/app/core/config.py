@@ -50,17 +50,20 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def force_root_db(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Force use of root database with absolute path."""
+        """Force use of root database with absolute path or respect provided URL."""
+        # Si se pasó una URL explícita (desde .env), la respetamos
+        if data.get("database_url") and not data["database_url"].endswith("agrisearch.db"):
+             return data
+
         # El archivo config.py está en backend/app/core/config.py
         # La raíz está 3 niveles arriba: core -> app -> backend -> root
         project_root = Path(__file__).resolve().parent.parent.parent.parent
         db_path = project_root / "agrisearch.db"
         
-        # En Windows, una ruta absoluta con letra de unidad necesita 3 slashes iniciales
-        # seguidos de la ruta absoluta. Si la ruta absoluta empieza con C:/,
-        # la URI final queda como sqlite+aiosqlite:///C:/...
-        # Sin embargo, a veces se prefiere //// para mayor claridad.
-        data["database_url"] = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+        # Fallback a la raíz si no hay configuración especial
+        if not data.get("database_url") or "agrisearch.db" in data.get("database_url", ""):
+            data["database_url"] = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+            
         return data
 
     # --- CORS ---

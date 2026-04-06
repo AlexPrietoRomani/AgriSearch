@@ -144,30 +144,30 @@ async def download_articles(
         
         results = await asyncio.gather(*tasks)
 
-    # Update DB with results
-    status_counts = {"downloaded": 0, "failed": 0, "paywall": 0, "not_found": 0}
-    article_map = {a.id: a for a in articles}
+    # FINAL STEP: Automatically Parse to MD and Analyze
+    from app.services.pdf_parser import pdf_parser
+    from app.services.llm_service import analyze_article_content
+    import json
 
-    for article_id, status in results:
-        article = article_map.get(article_id)
-        if not article:
-            continue
-
-        article.download_status = status
-        if status == DownloadStatus.SUCCESS.value:
-            first_author = (article.authors or "unknown").split(",")[0].strip().split()[-1]
-            year = article.year or "nd"
-            title_slug = _sanitize_filename(article.title)[:50]
-            article.local_pdf_path = str(pdf_dir / f"{year}_{first_author}_{title_slug}.pdf")
-            status_counts["downloaded"] += 1
-        elif status == DownloadStatus.PAYWALL.value:
-            status_counts["paywall"] += 1
-        elif status == DownloadStatus.NOT_FOUND.value:
-            status_counts["not_found"] += 1
-        else:
-            status_counts["failed"] += 1
-
-    await db.flush()
+    for article in articles:
+        if article.download_status == DownloadStatus.SUCCESS.value:
+            try:
+                # 1. PDF -> MD
+                parsed = await pdf_parser.parse_article(article, db)
+                if parsed and article.local_md_path:
+                    # 2. MD -> LLM Analysis
+                    with open(article.local_md_path, "r", encoding="utf-8") as f:
+                        md_text = f.read()
+                    
+                    analysis = await analyze_article_content(md_text, project_goal=project.goal if project else "")
+                    article.llm_summary = analysis.get("llm_summary")
+                    article.relevance_score = analysis.get("relevance_score", 0.0)
+                    article.methodology_type = analysis.get("methodology_type")
+                    article.agri_variables_json = json.dumps(analysis.get("agri_variables", {}))
+                    
+                    await db.commit()
+            except Exception as e:
+                logger.error(f"Post-download auto-processing failed for {article.id}: {e}")
 
     return {
         "total": len(articles),

@@ -131,6 +131,10 @@ export interface Article {
   local_pdf_path: string | null;
   local_md_path: string | null;
   enriched_summary: string | null;
+  llm_summary: string | null;
+  methodology_type: string | null;
+  agri_variables_json: string | null;
+  relevance_score: number | null;
   parsed_status: boolean;
   is_duplicate: boolean;
   created_at: string;
