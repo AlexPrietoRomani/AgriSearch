@@ -16,6 +16,7 @@ desktop.ini
 # Local data and DBs
 /data/
 !/data/.gitkeep
+backend/data/
 /vector_db/
 !/vector_db/.gitkeep
 *.sqlite3

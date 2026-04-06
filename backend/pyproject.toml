@@ -3,7 +3,7 @@ name = "agrisearch-backend"
 version = "0.1.0"
 description = "Backend para el sistema de búsqueda y screening de artículos agrícolas (AgriSearch)"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = "==3.11.*"
 dependencies = [
     "aiohttp==3.13.5",
     "aiosqlite==0.22.1",
@@ -46,6 +46,8 @@ dependencies = [
     "torch",
     "torchvision",
     "torchaudio",
+    "pypdfium2",
+    "pypdf",
 ]
 
 [tool.hatch.build.targets.wheel]
