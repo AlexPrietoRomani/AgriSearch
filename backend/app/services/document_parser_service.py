@@ -163,15 +163,21 @@ class DoclingParser:
         if not DOCLING_AVAILABLE:
             raise ImportError("Docling is not installed. Please check requirements.txt.")
         
-        # Configure Pipeline
+        # Configure Pipeline (Optimized for Memory)
         options = PdfPipelineOptions()
         options.do_table_structure = True
         options.table_structure_options = TableStructureOptions(
             do_cell_matching=True,
-            mode=TableFormerMode.ACCURATE
+            mode=TableFormerMode.FAST # Changed from ACCURATE to FAST to save memory
         )
         options.do_formula_enrichment = True
-        options.generate_picture_images = True
+        options.generate_picture_images = True # Enable so VLM can analyze images
+        options.images_scale = 1.0 # Limit resolution to prevent OOM
+        options.generate_page_images = False
+        
+        # Limit memory buffer queues during processing of huge PDFs
+        if hasattr(options, 'queue_max_size'):
+            options.queue_max_size = 5
         
         # Hardware acceleration
         device = AcceleratorDevice.CUDA if torch.cuda.is_available() else AcceleratorDevice.CPU
@@ -182,7 +188,7 @@ class DoclingParser:
                 InputFormat.PDF: PdfFormatOption(pipeline_options=options)
             }
         )
-        logger.info(f"Docling initialized using {device}")
+        logger.info(f"Docling initialized using {device} (Memory Optimized Mode)")
 
     async def parse_pdf(self, pdf_path: Path, article_meta: Dict[str, Any], vlm_describer: Optional[ImageFilter] = None) -> str:
         """

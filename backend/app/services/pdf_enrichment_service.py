@@ -100,9 +100,9 @@ async def process_and_enrich_pdf(db, article: Article, parser, vector_service, v
             "source_database": article.source_database
         }
 
-        # 1. Parse PDF using Docling
+        # 1. Parse PDF using Docling (which now also invokes VLM for pictures)
         if publish_event:
-            await publish_event(project_id, {"type": "sub_progress", "msg": "1/3: Analizando estructura y tablas con Docling..."})
+            await publish_event(project_id, {"type": "sub_progress", "msg": "1/2: Analizando PDF (Textos, Tablas e Imágenes VLM)..."})
         final_md = await parser.parse_pdf(pdf_path, meta, vlm_describer=vlm)
 
         # 2. Extract abstract if missing (from the generated MD)
@@ -120,19 +120,17 @@ async def process_and_enrich_pdf(db, article: Article, parser, vector_service, v
         article.local_md_path = str(md_path)
         article.parsed_status = 'success'
         
-        # 5. Generate Enriched Summary (Optional but recommended)
+        # 5. Generate Enriched Summary (Disabled by user: "con el LLM solo las imagenes")
         try:
-            if publish_event:
-                await publish_event(project_id, {"type": "sub_progress", "msg": "2/3: Generando resumen inteligente (LLM)..."})
-            summary_json = await SummarizationService.generate_summary(final_md)
-            article.enriched_summary = SummarizationService.format_summary_to_markdown(summary_json)
+            # We skip the heavy summarization of the entire document text.
+            article.enriched_summary = None 
         except Exception as es:
-            logger.warning(f"Summarization failed for {article.id[:8]}: {es}")
+            logger.warning(f"Summarization block skipped/failed: {es}")
 
         # 6. Index in Qdrant (Vector RAG)
         try:
             if publish_event:
-                await publish_event(project_id, {"type": "sub_progress", "msg": "3/3: Vectorizando e indexando para RAG..."})
+                await publish_event(project_id, {"type": "sub_progress", "msg": "2/2: Vectorizando e indexando para Búsqueda Semántica..."})
             await vector_service.index_article(
                 project_id=article.project_id,
                 article=article,
