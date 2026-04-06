@@ -233,6 +233,10 @@ export async function reparsePdfs(projectId: string): Promise<{ status: string; 
   return request(`/search/reparse/${projectId}`, { method: "POST" });
 }
 
+export async function cancelReparse(projectId: string): Promise<{ status: string }> {
+  return request(`/search/cancel-reparse/${projectId}`, { method: "POST" });
+}
+
 // ── Screening ──
 
 export interface ScreeningSession {
