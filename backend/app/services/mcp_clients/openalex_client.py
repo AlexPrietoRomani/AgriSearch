@@ -34,13 +34,18 @@ def _parse_openalex_work(work: dict) -> dict[str, Any]:
     if best_oa:
         oa_url = best_oa.get("pdf_url") or best_oa.get("landing_page_url")
 
-    # Extract keywords
+    # Extract keywords/concepts safely (might be missing if not in select)
     keywords_list = []
-    for kw in work.get("keywords", []):
+    for kw in work.get("keywords", []) or []:
         if isinstance(kw, dict):
             keywords_list.append(kw.get("display_name", ""))
         elif isinstance(kw, str):
             keywords_list.append(kw)
+    
+    # Fallback to concepts if keywords not present
+    if not keywords_list:
+        for concept in work.get("concepts", []) or []:
+            keywords_list.append(concept.get("display_name", ""))
 
     return {
         "doi": work.get("doi", "").replace("https://doi.org/", "") if work.get("doi") else None,
@@ -48,7 +53,7 @@ def _parse_openalex_work(work: dict) -> dict[str, Any]:
         "authors": _parse_authors(work.get("authorships", [])),
         "year": work.get("publication_year"),
         "abstract": work.get("abstract") or _reconstruct_abstract(work.get("abstract_inverted_index")),
-        "journal": work.get("primary_location", {}).get("source", {}).get("display_name") if work.get("primary_location") else None,
+        "journal": work.get("primary_location", {}).get("source", {}).get("display_name") if work.get("primary_location") and work.get("primary_location").get("source") else "Unknown Journal",
         "url": work.get("doi") or work.get("id"),
         "keywords": ", ".join(keywords_list[:10]),
         "external_id": work.get("id"),
@@ -83,8 +88,11 @@ async def search_openalex(
     per_page = min(max_results, 50)
     pages_needed = (max_results + per_page - 1) // per_page
 
-    # Build filter
-    filters = []
+    # Build filters (alex-mcp style: focus on quality articles)
+    filters = [
+        "type:article|journal-article",
+        "has_doi:true"
+    ]
     if year_from:
         filters.append(f"from_publication_date:{year_from}-01-01")
     if year_to:
@@ -98,9 +106,10 @@ async def search_openalex(
                     "per_page": per_page,
                     "page": page,
                     "mailto": MAILTO,
+                    "filter": ",".join(filters),
+                    # Optimization from alex-mcp: limit data transferred
+                    "select": "id,doi,title,authorships,publication_year,abstract_inverted_index,primary_location,type,best_oa_location",
                 }
-                if filters:
-                    params["filter"] = ",".join(filters)
 
                 async with session.get(f"{OPENALEX_API}/works", params=params) as resp:
                     logger.info("OpenAlex Request URL: %s", resp.url)

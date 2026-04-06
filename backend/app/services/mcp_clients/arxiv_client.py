@@ -81,24 +81,26 @@ async def search_arxiv(
     """
     articles: list[dict[str, Any]] = []
 
-    # Fetch more results than needed if year-filtering is active
-    fetch_limit = max_results * 3 if (year_from or year_to) else max_results
+    # ArXiv supports native date filtering in the search_query:
+    # submittedDate:[YYYYMMDDHHMM TO YYYYMMDDHHMM]
+    # We use +TO+ instead of TO to match URL-encoded spaces correctly if needed,
+    # but the API is very picky about literal '+' for date ranges.
+    date_filter = ""
+    if year_from or year_to:
+        start_date = f"{year_from or 1991}01010000"
+        end_date = f"{year_to or 2026}12312359"
+        date_filter = f" AND submittedDate:[{start_date}+TO+{end_date}]"
 
     try:
         async with aiohttp.ClientSession() as session:
-            # The query arrives pre-formatted from query_builder with proper
-            # field prefixes like: all:"concept1" AND all:"concept2"
-            # Do NOT add another "all:" prefix here — it would break the query.
             search_query = query if ("all:" in query or "ti:" in query or "au:" in query) else f"all:{query}"
-            params = {
-                "search_query": search_query,
-                "start": 0,
-                "max_results": min(fetch_limit, 300),
-                "sortBy": "relevance",
-                "sortOrder": "descending",
-            }
+            if date_filter:
+                search_query += date_filter
 
-            async with session.get(ARXIV_API, params=params) as resp:
+            # We build the URL manually to avoid aiohttp double-encoding the '+' in the date filter
+            url = f"{ARXIV_API}?search_query={search_query}&start=0&max_results={max_results}&sortBy=relevance&sortOrder=descending"
+            
+            async with session.get(url) as resp:
                 if resp.status != 200:
                     logger.warning("ArXiv API returned %d", resp.status)
                     return []
