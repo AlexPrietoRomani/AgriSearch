@@ -180,57 +180,39 @@ sequenceDiagram
     FE->>User: Renderiza Panel con Tabla de Artículos
 ```
 
-### 4.3 Flujo del Sistema de "Revisiones" (Screening & Eligibility)
+### 4.3 Flujo del Sistema de "Revisiones" y Enriquecimiento (Screening & Docling Parsing)
 
-Flujo para la Fase 2 (Cribado PRISMA). Subraya la comprobación de **artículos elegibles** y la arquitectura de **enriquecimiento local del PDF**.
+Flujo para la Fase 2 (Cribado PRISMA y Extracción). Destaca la arquitectura automatizada de parseo estructural con **Docling** y la inyección modal de **VLMs**.
 
 ```mermaid
 sequenceDiagram
     actor User as Revisor
     participant FE as Project Dashboard
     participant API as FastAPI Backend
-    participant DB as SQLite
-    participant PyMu as Motor PDF (PyMuPDF)
-    participant LLM as Ollama Local
+    participant Docling as Docling Service
+    participant LLM as Ollama Local (VLM/LLM)
+    participant DB as SQLite / Qdrant
 
-    User->>FE: Click en botón "Revisiones"
-    FE->>API: GET /screening/eligibility (Valida seguridad)
-    API->>DB: Cuenta (Descargas Totales) vs (Artículos ya asignados a otra sesión)
-    DB-->>API: {elegibles, asignados}
-    API-->>FE: Devuelve Conteo
+    User->>FE: Inicia creación de revisión o fuerza re-parseo
+    FE->>API: GET /system/ollama-models
+    API->>LLM: Pollea tags directamente de Ollama
+    LLM-->>API: Lista de modelos locales
+    API-->>FE: Asigna modelos (Distingue y etiqueta VLMs como Gemma4 y Embedders)
     
-    alt elegibles == 0
-        FE->>User: Bloqueo: "⚠️ No hay artículos libres para evaluar."
-    else elegibles > 0
-        FE->>User: Muestra Modal de Configuración (Nueva Sesión)
-        User->>FE: Define Modelo IA, Idioma de Lectura y Búsquedas Origen
-        FE->>API: POST /screening/sessions
-        
-        Note over API,PyMu: Fase 1: Enriquecimiento Offline Inteligente
-        API->>PyMu: Extrae textos de archivos PDF .pdf en disco
-        PyMu-->>API: Regex Parsing (Abstracts y Keywords perdidas de APIs abiertas)
-        API->>DB: Guarda nuevos hallazgos en Metadata de Artículos
-        
-        Note over API,DB: Fase 2: Configurando Sesión Concurrentes
-        API->>DB: Crea Objeto `ScreeningSession`
-        API->>DB: Crea fila `ScreeningDecision` (SÓLO para artículos NO asignados en otras sesiones)
-        DB-->>API: ID de la Sesión
-        API-->>FE: Redirecciona al Panel de Cribado interactivo
-        
-        FE->>User: Interfaz estilo Rayyan (Left: Artículos, Right: Detalles)
-        
-        loop Por cada lectura / evaluación
-            User->>FE: Click (Incluir ✅ / Excluir ❌)
-            FE->>API: PUT /decisions/{id} (Guarda estado)
-            
-            opt Abstract Ilegible
-                User->>FE: Click "Traducir Abstract"
-                FE->>API: POST /screening/translate
-                API->>LLM: Prompt estricto de traducción literal
-                LLM-->>API: Abstract traducido
-                API->>DB: Persiste texto en ScreeningDecision
-                API-->>FE: Refleja nuevo texto al investigador
-            end
-        end
+    User->>FE: Confirma configuración y selecciona "Rehacer MD" o "Crear Proyecto"
+    FE->>API: POST /search/reparse (o flujos background)
+    
+    Note over API,Docling: Procesamiento Estructural Alta Fidelidad (Off-Loop)
+    API->>Docling: Envía PDFs Open Access descargados
+    Docling-->>API: Devuelve Estructura MD y Recortes de Imágenes/Tablas
+    
+    alt Hay Imágenes/Gráficas presentes
+        API->>LLM: Inyecta Imagen a ImageFilter (VLM como Gemma4-Vision)
+        LLM-->>API: Devuelve Descripción Textual de la métrica
     end
+    
+    API->>API: Flattens Tables (Aplica TableFlattener a MD)
+    API->>DB: Qdrant Indexa `final_md` (Generación embebida Nomic)
+    API->>DB: SQLite califica `parsed_status` y guarda rutas
+    API-->>FE: Métricas de calidad MD actualizadas
 ```

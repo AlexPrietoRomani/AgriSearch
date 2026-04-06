@@ -23,12 +23,9 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 - **Subida Manual (Upload):** Endpoint `POST /search/upload-pdf/{article_id}`. Para los artículos que están bloqueados por un paywall, el usuario puede subir localmente su archivo PDF desde el dashboard de resultados. El archivo se enlaza directamente a su base de datos.
 - **Eliminación de Búsquedas Segura:** Los usuarios pueden eliminar consultas del historial preventivamente. Esta acción ejecuta un Cascade Delete en la base de datos (eliminando `SearchQuery` y sus `Article`s) e intercepta el almacenamiento local, eliminando automáticamente los archivos PDF asociados a tales IDs para liberar espacio en disco. En la UI, el botón de eliminación está correctamente posicionado por encima del bloque redireccionador (con `z-index` y `stopPropagation`) para evitar colisiones de clics.
 - **Transparencia Total de Queries:** `ArticleResponse` incluye `local_pdf_path` para que el frontend pueda mostrar el nombre del archivo local en la tabla de resultados. `SearchResultsResponse` incluye la propiedad `prompt_used` y `adapted_queries` con precisión literal. Además se ha modificado la tabla `SearchQuery` en SQLite (añadiendo la columna en texto plano `adapted_queries_json`) para preservar perennemente qué le fue enviado a cada API. En la Interfaz de Resultados, un Acordeón desplegable de "Depuración" expone ambos parámetros al investigador.
-- **Selección Flexible de Modelos LLM:** Los usuarios pueden elegir qué modelo de Ollama utilizar para la generación de queries. 
-  - **Preferencia por Proyecto:** Se puede definir un modelo por defecto al crear o editar un proyecto.
-  - **Selección en Caliente:** Durante la fase de "Descripción", el usuario puede cambiar el modelo recomendado (GPU o CPU) o ingresar manualmente cualquier nombre de modelo de Ollama.
-  - **Modelos Recomendados:**
-    - **GPU (Alto rendimiento):** `llama3.1:8b` (defecto), `qwen2.5:7b`, `mistral-nemo:12b`, `gpt-oss20b`.
-    - **CPU (Bajos recursos):** `phi3:3.8b`, `gemma2:2b`.
+- **Selección Flexible y Dinámica de Modelos (Ollama Auto-Discovery):** Los usuarios pueden elegir qué modelo de Ollama utilizar al iniciar un proyecto.
+  - El sistema integra un endpoint (`GET /system/ollama-models`) que pollea en tiempo real la propia API de tu máquina local.
+  - En la interfaz gráfica del modal de creación de proyectos, se autocompleta la lista de modelos separándolos según sus "Familias", e identificando proactivamente si un modelo tiene facultades **Multimodales** (VLM - ej. `gemma4:e4b`) las cuales son altamente requeridas para extraer información desde imágenes presentes en los PDFs descargados.
 - **Dashboard Integrado:** La portada de cada proyecto (`ProjectDashboard.tsx`) amalgama eficientemente tanto el **Historial de Búsquedas** como el **Historial de Revisiones (Screening)**, creando un ecosistema completo para monitorear el progreso del cribado PRISMA en una sola vista central. Asimismo se han refactorizado las asignaciones de estado (`useState`) iniciales en base a parámetros URl para eliminar destellos visuales o pestañeos transaccionales del renderizado (Flicker Fixes).
 
 #### Flujo de Búsqueda (Diagrama de Secuencia)
@@ -125,10 +122,10 @@ sequenceDiagram
 3. **Si no hay:** Formulario de creación con nombre, objetivo, selección de búsquedas, idioma y modelo.
 4. Al crear, ejecuta enriquecimiento automático (PyMuPDF) y luego crea la sesión (filtrada solo PDFs).
 
-#### Pantalla Previa `ScreeningSetup`
+#### Pantalla Previa `ScreeningSetup` y Parseo de PDFs
 - Permite elegir qué consultas integrar en el proceso actual y con qué modelo traducir los resúmenes.
--    *   **Enriquecimiento Automático:** Se mejoró sustancialmente la extracción de abstracts desde PDFs en `pdf_enrichment_service.py`. En caso de no hallar formalmente el *Abstract* con regex debido a PDFs sin un formato estándar (proceedings, revistas antiguas), se extrae inteligentemente el primer bloque extenso o un pasaje limpio inicial, reemplazando con éxito textos previos demasiado breves, resolviendo fallas con algunos archivos MCP.
-    *   **Traducción de Abstracts**: Se llama a LLMs en tiempo real para traducir la versión enriquecida del abstract del PDF, sin depender de datos faltantes iniciales. Es posible elegir el modelo de LLM al crear **o continuar** una sesión de screening.
+-    *   **Enriquecimiento Automático / Docling:** Al iniciarse el cribado o forzar un repreoceso desde los resultados (`POST /search/reparse/{project_id}`), se invoca al motor de procesamiento asíncrono para PDFs basado en Docling. Si Docling extrae imágenes de los papers y el proyecto posee un modelo VLM parametrizado (`gemma4:e4b`), se usa para extraer explicaciones descriptivas en Markdown profundo.
+    *   **Traducción de Abstracts**: Se llama a LLMs en tiempo real para traducir la versión enriquecida del abstract, sin depender de metadatos frágiles. Se puede invocar traducción de apoyo desde el screening interactivo.
 #### Proceso Interactivo (`ScreeningSession`)
 Interfaz interactiva para screening:
 - **Botones de decisión**: "Incluir", "Excluir" (con sub-razones), "Tal vez".
@@ -162,9 +159,9 @@ La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmu
 ---
 
 ## Dependencias Críticas
-- **PyMuPDF**: Necesario en el backend para la extracción limpia de texto de archivos PDF durante la fase pre-screening. (`pip install PyMuPDF`).
-- **Ollama**: Requiere tener en ejecución instancias de modelos LLM. Por ejemplo, `gemma4:e4b` como opción multilingüe y de razonamiento óptima.
-- **Nomic MoE**: El modelo de embeddings `nomic-embed-text-v2-moe:latest` es el estándar para la vectorización de artículos.
+- **Docling Core**: Imprescindible para el motor de backend. Desencadena la lectura profunda, preservación de tablas (flattener) y extracción de figuras (bounding boxes) con calidad insuperable frente a PyMuPDF o motores legacy.
+- **Ollama**: Requiere tener en ejecución instancias de modelos LLM. Por ejemplo, `gemma4:e4b` como opción multilingüe y VLM de razonamiento visual óptima.
+- **Nomic MoE**: El modelo de embeddings `nomic-embed-text-v2-moe:latest` es el estándar para la vectorización de fragmentos extraídos para indexación RAG en Qdrant.
 
 ## Configuración de Inteligencia Artificial (Ollama)
 

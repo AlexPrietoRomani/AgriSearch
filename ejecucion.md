@@ -19,12 +19,14 @@ AgriSearch requiere dos modelos locales de IA para funcionar correctamente: uno 
 
 Abre una consola (CMD o PowerShell) y ejecuta estos comandos uno por uno (Ollama descargará los modelos progresivamente):
 ```bash
-# 1. Descargando el modelo para Generar Consultas y Análisis de PDFs:
+# 1. Descargando el modelo recomendado (Multimodal) para extraer imágenes/gráficos de los PDFs:
 ollama pull gemma4:e4b
 
-# 2. Descargando el modelo de inmersión vectorial MoE (Embeddings):
+# 2. Descargando el modelo de inmersión vectorial MoE (Embeddings, OBLIGATORIO):
 ollama pull nomic-embed-text-v2-moe:latest
 ```
+
+*Nota: Durante la creación del proyecto, el sistema autodetectará qué modelos tienes instalados en tu Ollama. Puedes tener otros alternativos como `llava`.*
 
 ### 3. Configurar tus Accesos (Credenciales de API)
 Varias bases de datos científicas integradas (como **CORE** y **Redalyc**) exigen permisos gratuitos para proveer resultados. 
@@ -48,15 +50,9 @@ cd backend
 uv sync
 ```
 
-#### 4.2 Instalación clásica con `pip`
+#### 4.2 Instalación Legacy / Extra
 
-Si prefieres usar el método tradicional:
-```powershell
-cd backend
-python -m venv venv
-.\venv\Scripts\activate
-pip install -r requirements.txt
-```
+Usamos exclusivamente `uv` debido a su inmensa velocidad y estabilización de versiones en `pyproject.toml`. El antiguo `requirements.txt` ha sido eliminado del repositorio oficial.
 
 ### 5. Lanzar AgriSearch
 Desde la raíz principal del proyecto, debes instalar las dependencias de ambas carpetas (`backend` y `frontend`). Puedes hacerlo automáticamente haciendo **doble clic** en:

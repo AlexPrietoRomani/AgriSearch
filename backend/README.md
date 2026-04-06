@@ -1,45 +1,57 @@
 # AgriSearch Backend 🌾🤖
 
-Backend de alto rendimiento para el sistema de Revisiones Sistemáticas AgriSearch. Construido con **FastAPI**, **SQLAlchemy** y **Ollama**.
+Backend de alto rendimiento para el sistema de Revisiones Sistemáticas AgriSearch. Construido con **FastAPI**, **SQLAlchemy**, **Docling** y RAG Vectorial indexado por **Qdrant**. Integración modular de **Ollama** para LLMs y VLMs locales.
 
-## 🏗️ Arquitectura del Sistema
+## 🏗️ Arquitectura del Sistema (Actualizado Fase 2)
 
 El backend sigue una arquitectura de servicios desacoplados para el procesamiento científico:
 
 ```mermaid
 graph TD
-    API[FastAPI v1] --> Search[Search Service]
+    API[FastAPI v1] --> System[System Service]
+    API --> Search[Search Service]
     API --> Screening[Screening Service]
     API --> Project[Project Management]
     
+    System --> OllamaAPI[Ollama Local API: /api/tags]
+    Project --> SQL[(SQLite: agrisearch.db)]
+    
     Search --> DB_Ext[External APIs: ArXiv, OpenAlex, Semantic Scholar]
+    Search --> Download[Download Service: PDF Async]
     
     Screening --> PDF_Parser[PDFParserService: Docling + Vision]
-    PDF_Parser --> LLM[LLM Service: Gemma 4]
-    LLM --> Vector[VectorService: Qdrant]
+    Search --> PDF_Parser
+    
+    PDF_Parser --> VLM[Gemma 4 Vision: Análisis de Imágenes]
+    PDF_Parser --> LLM[LLM Service: Generador de Resúmenes y Features]
+    PDF_Parser --> Vector[VectorService: Qdrant Indexing]
     
     Screening --> AL[Active Learning Service]
     
     subgraph Storage
-        SQL[(SQLite: agrisearch.db)]
+        SQL
         VecDB[(Qdrant: Vector Store)]
         Files[(Markdown & PDF Storage)]
     end
     
-    Project --> SQL
     Screening --> SQL
     Vector --> VecDB
+    Download --> Files
 ```
+
+### Funcionalidades Dinámicas Implementadas
+*   **Auto-descubrimiento de Ollama**: El endpoint `/system/ollama-models` lista todos los modelos locales disponibles automáticamente mediante comunicación directa con la API de Ollama y clasifica según capacidades (Multimodal, Embedding).
+*   **Re-parsing Forzado (MD)**: Endpoint dinámico en `/search/reparse` para iterar, reprocesar y mejorar métricas de los PDFs descargados, regenerando los documentos Markdown y su indexación vectorial RAG bajo demanda de forma asíncrona.
+*   **Métricas de Calidad Automatizadas**: Clasifica la extracción Markdown como `alta`, `media` o `baja` en base a parámetros del formato exportado por Docling.
 
 ## 🛠️ Tecnologías Clave
 
-- **FastAPI**: Framwork web asíncrono de alto rendimiento.
+- **FastAPI**: Framework web asíncrono de alto rendimiento.
 - **SQLAlchemy + aiosqlite**: ORM asíncrono para persistencia de metadatos bibliográficos.
-- **Docling**: Motor de IBM para conversión de PDF a Markdown estructurado.
-- **Gemma 4 (e4b)**: Modelo de lenguaje y visión local para análisis profundo y descripción de diagramas.
-- **Nomic Embed MoE**: Modelo de embeddings para recuperación semántica (RAG).
-- **Qdrant**: Base de datos vectorial para búsqueda semántica.
-- **UV**: Gestor de paquetes y entorno virtual ultrarrápido.
+- **Docling**: Motor avanzado de conversión de PDF a Markdown estructurado con preservación de tablas (IBM).
+- **Gemma 4 (e4b)**: Modelo visual sugerido para la interpretación estructural y descripción de diagramas científicos.
+- **Qdrant**: Base de datos vectorial embebida.
+- **UV**: Gestor de paquetes ultrarrápido (Reemplaza a pip).
 
 ## 📁 Estructura del Proyecto
 
@@ -47,36 +59,41 @@ graph TD
 backend/
 ├── app/
 │   ├── api/          # Endpoints de la API (v1)
-│   ├── core/         # Configuración y seguridad
-│   ├── db/           # Conexión a la base de datos
-│   ├── models/       # Modelos SQLAlchemy y esquemas Pydantic
-│   └── services/     # Lógica de negocio (Search, PDF, LLM, Vector)
-├── data/             # Almacenamiento local de proyectos y PDFs
-├── tests/            # Suite de pruebas automatizadas
-├── pyproject.toml    # Configuración de UV y dependencias
-└── agrisearch.db     # Base de datos centralizada
+│   │   ├── system.py    # Auto-descubrimiento de infraestructura
+│   │   ├── search.py    # Buscador y re-parseo MD
+│   │   └── screening.py # Lógica iterativa PRISMA
+│   ├── core/         # Configuración general y de seguridad
+│   ├── db/           # Conexión a la base de datos local SQLite
+│   ├── models/       # Entidades SQLAlchemy (Project, Article, SearchQuery, etc.)
+│   └── services/     # Casos de uso de negocio (Search, PDF, LLM, Vector)
+├── data/             # Root de almacenamiento local de proyectos
+├── pyproject.toml    # Definición centralizada del entorno (UV compatible)
+├── requirements.txt  # Exportación legacy para compatibilidad
+└── agrisearch.db     # Base de datos local
 ```
 
 ## 🚀 Flujo de Procesamiento
 
-1. **Búsqueda**: Traduce consultas de lenguaje natural a booleanas y consulta APIs científicas.
-2. **Descarga**: Recupera PDFs de acceso abierto.
-3. **Parsing**: Utiliza Docling para generar Markdown y Gemma 4 Vision para describir figuras.
-4. **Enriquecimiento**: Extrae variables agrícolas, metodologías y puntúa la relevancia.
-5. **RAG**: Indexa fragmentos en Qdrant para permitir consultas semánticas durante el screening.
-6. **Active Learning**: Sugiere inclusiones/exclusiones basándose en decisiones previas del usuario.
+1. **Definición Dinámica**: Creación de proyecto consumiendo modelos disponibles localmente (VLM recomendado).
+2. **Búsqueda**: Conversión de Lenguaje Natural a booleano complejo validando términos AGROVOC.
+3. **Descarga**: Obtención P2P asíncrona de PDF Open Access.
+4. **Parsing y Enriquecimiento**: Generación generativa MD vía Docling. Las imágenes y gráficos son transcritas empleando modelos Multimodales (ej. `gemma4:e4b`).
+5. **Generación RAG Vectorial**: Qdrant vectoriza embeddings para ser analizados posteriormente en el Screening interactivo.
+6. **Active Learning (Experimental)**: Sugerencias booleanas predictivas basadas en iteración de decisiones.
 
-## 🛠️ Instalación y Desarrollo
+## 🛠️ Instalación y Desarrollo (Con UV)
 
-Para instalar dependencias y sincronizar el entorno:
+uv es el manejador de proyectos estándar. Reemplaza pip y poetry siendo magnitudes más rápido.
+
+Para instalar dependencias y crear el entorno:
 ```bash
 uv sync
 ```
 
-Para arrancar el servidor de desarrollo:
+Para arrancar el servidor asíncrono en modo desarrollo (Hot-Reloading activo):
 ```bash
 uv run uvicorn app.main:app --reload
 ```
 
 ---
-*Desarrollado para la optimización de revisiones sistemáticas en agricultura.*
+*Backend preparado para análisis semántico intensivo en el ámbito agrícola.*
