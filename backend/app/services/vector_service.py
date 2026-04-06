@@ -66,57 +66,95 @@ class VectorService:
                     )
                 )
 
-    def chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
-        """Simple recursive-style chunking for Markdown."""
-        # For now, just split by length with overlap. 
-        # A more sophisticated splitter would use headers.
+    def chunk_text(self, text: str, chunk_size: int = 1500, overlap: int = 300) -> List[Dict[str, Any]]:
+        """
+        Structure-aware chunking for Markdown.
+        Splits by headers first, then by size if a section is too long.
+        """
         chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunks.append(text[start:end])
-            start += chunk_size - overlap
-            if start >= len(text) - overlap:
-                break
+        
+        # 1. Split by headers (## or ###)
+        sections = re.split(r'(^##\s+.*$|^###\s+.*$)', text, flags=re.MULTILINE)
+        
+        current_section_title = "Intro"
+        
+        for i in range(1, len(sections), 2):
+            # sections[i] is the title, sections[i+1] is the content
+            title = sections[i].strip("# ").strip()
+            content = sections[i+1] if i+1 < len(sections) else ""
+            
+            # If content is too large, split by paragraphs
+            if len(content) > chunk_size:
+                paragraphs = content.split("\n\n")
+                current_chunk = ""
+                for p in paragraphs:
+                    if len(current_chunk) + len(p) < chunk_size:
+                        current_chunk += p + "\n\n"
+                    else:
+                        if current_chunk:
+                            chunks.append({"content": current_chunk.strip(), "section": title})
+                        current_chunk = p + "\n\n"
+                if current_chunk:
+                    chunks.append({"content": current_chunk.strip(), "section": title})
+            else:
+                chunks.append({"content": content.strip(), "section": title})
+                
+        # If no sections found, fallback to simple splitting
+        if not chunks:
+            start = 0
+            while start < len(text):
+                end = start + chunk_size
+                chunks.append({"content": text[start:end], "section": "General"})
+                start += chunk_size - overlap
+                if start >= len(text) - overlap:
+                    break
         return chunks
 
-    async def index_article(self, project_id: str, article_id: str, title: str, md_content: str):
-        """Chunks and indexes an article's Markdown content."""
+    async def index_article(self, project_id: str, article: Any, md_content: str):
+        """Chunks and indexes an article's Markdown content with full metadata."""
         collection_name = self._get_collection_name(project_id)
         
-        # 1. Chunking
+        # 1. Chunking (Structure-aware)
         chunks = self.chunk_text(md_content)
         if not chunks:
             return
 
-        # 2. Get embeddings for each chunk
+        # 2. Vectorize and prepare points
         points = []
-        for i, chunk in enumerate(chunks):
-            vector = await self._get_embedding(chunk)
+        for i, chunk_data in enumerate(chunks):
+            content = chunk_data["content"]
+            section = chunk_data["section"]
+            
+            # Skip empty chunks
+            if not content.strip():
+                continue
+                
+            vector = await self._get_embedding(content)
             
             points.append(models.PointStruct(
                 id=str(uuid.uuid4()),
                 vector=vector,
                 payload={
-                    "article_id": article_id,
-                    "title": title,
+                    "article_id": article.id,
+                    "doi": article.doi,
+                    "title": article.title,
+                    "authors": article.authors,
+                    "year": article.year,
+                    "section": section,
                     "chunk_idx": i,
-                    "content": chunk
+                    "content": content
                 }
             ))
         
-        # 3. Ensure collection and Upsert
-        # Nomics-embed-text/Nomic is 768. 
-        # We'll detect from the first vector
-        print(f"DEBUG: Upserting {len(points)} points to {collection_name}")
-        await self.ensure_collection(project_id, vector_size=len(points[0].vector))
-        
-        self.client.upsert(
-            collection_name=collection_name,
-            points=points,
-            wait=True
-        )
-        logger.info(f"Indexed {len(points)} chunks for article {article_id}")
+        # 3. Batch Upsert (split points if too many)
+        if points:
+            await self.ensure_collection(project_id, vector_size=len(points[0].vector))
+            self.client.upsert(
+                collection_name=collection_name,
+                points=points,
+                wait=True
+            )
+            logger.info(f"Indexed {len(points)} chunks for article {article.id} in {collection_name}")
 
     async def search(self, project_id: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Semantic search within a project's collection."""

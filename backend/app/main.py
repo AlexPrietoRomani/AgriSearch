@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.db.database import init_db
-from app.api.v1 import projects, search, screening
+from app.api.v1 import projects, search, screening, system
 
 settings = get_settings()
 
@@ -50,15 +50,18 @@ app = FastAPI(
 )
 
 # ── CORS ──
+# En desarrollo permitimos todo para evitar bloqueos entre Astro y FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # settings.cors_origins (especificado en config.py) o "*"
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ── Routes ──
+app.include_router(system.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(screening.router, prefix="/api/v1")

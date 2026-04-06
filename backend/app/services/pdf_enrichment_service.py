@@ -112,9 +112,8 @@ async def process_and_enrich_pdf(db, article: Article, parser: DoclingParser, ve
 
         # 6. Index in Qdrant (Vector RAG)
         try:
-            vector_service = vector_service  # Use the passed instance
             await vector_service.index_article(
-                project_id=article.project_id, 
+                project_id=article.project_id,
                 article_id=article.id, 
                 title=article.title, 
                 md_content=final_md
@@ -122,29 +121,37 @@ async def process_and_enrich_pdf(db, article: Article, parser: DoclingParser, ve
         except Exception as ev:
             logger.warning(f"Vector indexing failed for {article.id[:8]}: {ev}")
 
+        quality = "alta" if len(final_md) > 10000 else "media" if len(final_md) > 2000 else "baja"
+        article.parsed_status = f"success_{quality}"
+
         logger.info(f"Processed, Summarized and Indexed article {article.id[:8]} -> {md_path.name}")
-        return True
+        return {"success": True, "quality": quality, "md_len": len(final_md)}
 
     except Exception as e:
         logger.error(f"Failed to process PDF for {article.id[:8]}: {e}")
-        return False
+        return {"success": False, "error": str(e)}
 
 
-async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] | None = None) -> dict:
+async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] | None = None, force_reparse: bool = False) -> dict:
     """
     High-fidelity enrichment using Docling.
     """
     from sqlalchemy import select
     from app.core.config import get_settings
+    from app.models.project import Project
 
     settings = get_settings()
     pdf_dir = settings.get_project_pdfs_dir(project_id)
     
+    project = await db.get(Project, project_id)
+    if not project:
+        return {"error": "Proyecto no encontrado"}
+
     # Initialize Services
     try:
         parser = DoclingParser()
         vector_service = VectorService()
-        vlm = None 
+        vlm = ImageFilter(model_name=project.llm_model) if project.llm_model else None
     except Exception as e:
         logger.error(f"Could not initialize Services: {e}")
         return {"error": str(e)}
@@ -157,8 +164,11 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
     if article_ids:
         stmt = stmt.where(Article.id.in_(article_ids))
     else:
-        # Only process those that have a PDF but aren't parsed yet
-        stmt = stmt.where(Article.local_pdf_path.isnot(None), Article.parsed_status == 'pending')
+        # Only process those that have a PDF
+        stmt = stmt.where(Article.local_pdf_path.isnot(None))
+        if not force_reparse:
+            # If not forcing, only process pending ones
+            stmt = stmt.where(Article.parsed_status == 'pending')
 
     result = await db.execute(stmt)
     articles = list(result.scalars().all())
@@ -169,13 +179,15 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
     stats = {
         "total": len(articles),
         "processed": 0,
-        "failed": 0
+        "failed": 0,
+        "quality_metrics": {"alta": 0, "media": 0, "baja": 0}
     }
 
     for article in articles:
-        success = await process_and_enrich_pdf(db, article, parser, vector_service, vlm)
-        if success:
+        res = await process_and_enrich_pdf(db, article, parser, vector_service, vlm)
+        if res.get("success"):
             stats["processed"] += 1
+            stats["quality_metrics"][res["quality"]] += 1
         else:
             stats["failed"] += 1
     

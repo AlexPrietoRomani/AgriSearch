@@ -25,6 +25,19 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+// ── System ──
+
+export interface OllamaModel {
+  name: string;
+  size: number;
+  is_multimodal: boolean;
+  is_embedding: boolean;
+}
+
+export async function getOllamaModels(): Promise<OllamaModel[]> {
+  return request("/system/ollama-models");
+}
+
 // ── Projects ──
 
 export interface Project {
@@ -214,6 +227,10 @@ export async function uploadPdf(articleId: string, file: File): Promise<Article>
   }
 
   return res.json();
+}
+
+export async function reparsePdfs(projectId: string): Promise<{ status: string; stats: any }> {
+  return request(`/search/reparse/${projectId}`, { method: "POST" });
 }
 
 // ── Screening ──

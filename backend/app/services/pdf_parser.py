@@ -99,12 +99,52 @@ class PDFParserService:
                 raise
         return self._converter
 
+    async def _convert_to_md_with_vision(self, pdf_path: str, context: str = "") -> str:
+        """Helper to convert PDF and enrich images with vision analysis."""
+        from docling.document_converter import DocumentConverter
+        import base64
+        from io import BytesIO
+        from PIL import Image
+        from app.services.llm_service import describe_image_content
+        
+        converter = self._get_converter()
+        result = converter.convert(pdf_path)
+        
+        # 1. Base Markdown from Docling
+        md_text = result.document.export_to_markdown()
+        
+        # 2. Extract Pictures and Describe with Gemma 4 Vision
+        # Docling stores pictures in result.document.pictures
+        if hasattr(result.document, 'pictures') and result.document.pictures:
+            logger.info(f"Analyzing {len(result.document.pictures)} images in {pdf_path}")
+            
+            for i, picture in enumerate(result.document.pictures):
+                try:
+                    # In Docling, picture.image might be a PIL Image or similar
+                    img = picture.image
+                    if img:
+                        # Convert PIL to base64
+                        buffered = BytesIO()
+                        img.save(buffered, format="JPEG")
+                        img_str = base64.b64encode(buffered.getvalue()).decode()
+                        
+                        description = await describe_image_content(img_str, context=context)
+                        
+                        # Replace image placeholder in MD with description
+                        # Usually Docling marks images as <!-- [picture or figure] --> or similar
+                        # We append descriptions to a list or inject them
+                        md_text += f"\n\n### Figure Analysis {i+1}\n{description}\n"
+                except Exception as e:
+                    logger.warning(f"Failed to process image {i} in {pdf_path}: {e}")
+        
+        return md_text
+
     async def parse_article(self, article: Article, db: Session) -> bool:
         """Parses an article PDF to enriched Markdown and updates the DB."""
         if not article.local_pdf_path or not os.path.exists(article.local_pdf_path):
             logger.warning(f"No PDF found for article {article.id}")
             article.parsed_status = "failed"
-            db.commit()
+            await db.commit()
             return False
 
         try:
@@ -117,9 +157,9 @@ class PDFParserService:
             sanitize_title = re.sub(r'[^\w\s-]', '', article.title[:50]).strip().replace(' ', '_')
             output_path = parsed_dir / f"{article.id}_{sanitize_title}.md"
 
-            # 2. Convert PDF to Markdown (Offload to thread to avoid blocking)
-            loop = asyncio.get_event_loop()
-            md_content = await loop.run_in_executor(None, self._convert_to_md, str(pdf_path))
+            # 2. Convert PDF to Markdown WITH VISION (Offload to thread for Docling part)
+            # Since Vision is async, we call it directly
+            md_content = await self._convert_to_md_with_vision(str(pdf_path), context=article.title)
 
             # 3. Apply Table Flattening
             meta = {"title": article.title, "year": article.year}
@@ -146,8 +186,6 @@ class PDFParserService:
             # 6. Update Article record
             article.local_md_path = str(output_path)
             article.parsed_status = "success"
-            db.commit()
-            
             logger.info(f"Successfully parsed article {article.id} to {output_path}")
             return True
 
@@ -157,10 +195,6 @@ class PDFParserService:
             db.commit()
             return False
 
-    def _convert_to_md(self, pdf_path: str) -> str:
-        converter = self._get_converter()
-        result = converter.convert(pdf_path)
-        return result.document.export_to_markdown()
 
 # Global instance
 pdf_parser = PDFParserService()

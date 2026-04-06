@@ -33,36 +33,28 @@ Varias bases de datos científicas integradas (como **CORE** y **Redalyc**) exig
 3. Ábrelo con cualquier editor de texto. Adentro verás enlaces para registrarte gratuitamente en CORE, Redalyc y otras bases. Rellena los tokens generados tras los signos de igual (`=`). 
 > **Nota:** Si omites este paso, al buscar con CORE o Redalyc activados obtendrás siempre 0 resultados.
 
-### 4. Crear entorno virtual y instalar dependencias
+### 4. Preparar el Entorno y Dependencias (Recomendado: uv)
 
-#### 4.1 Con uv
+#### 4.1 Instalación con `uv` (Más rápido y confiable)
 
-Primero instalamos uv si no lo tienes:
-```bash
+Si no tienes `uv` instalado, ejecútalo primero:
+```powershell
 pip install uv
 ```
 
-Luego creamos el proyecto virtual y activamoslo:
-```bash
-uv venv
-venv\Scripts\activate
+Luego, instala las dependencias y prepara el entorno desde la carpeta `backend`:
+```powershell
+cd backend
+uv sync
 ```
 
-Finalmente instalamos las dependencias:
-```bash
-uv pip install -r requirements.txt
-```
+#### 4.2 Instalación clásica con `pip`
 
-#### 4.2 Con pip
-
-Primero creamos el proyecto virtual y activamoslo:
-```bash
+Si prefieres usar el método tradicional:
+```powershell
+cd backend
 python -m venv venv
-venv\Scripts\activate
-```
-
-Finalmente instalamos las dependencias:
-```bash
+.\venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -75,13 +67,9 @@ Desde la raíz principal del proyecto, debes instalar las dependencias de ambas 
 > Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **dos ventanas separadas**:
 > 
 > **Ventana 1 (Backend):** 
-> ```bash
-> cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
+> ```powershell
 > cd backend
-> python -m venv venv
-> venv\Scripts\activate
-> pip install -r requirements.txt
-> uvicorn app.main:app --port 8000
+> uv run uvicorn app.main:app --port 8000 --reload
 > ```
 > 
 > **Ventana 2 (Frontend):**
@@ -118,16 +106,14 @@ El CMD levantará el servidor backend y el visor frontend automáticamente, y en
 > Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **dos ventanas separadas**:
 > 
 > **Ventana 1 (Backend):** 
-> ```bash
-> cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
+> ```powershell
 > cd backend
-> venv\Scripts\activate
-> uvicorn app.main:app --port 8000
+> uv run uvicorn app.main:app --port 8000 --reload
 > ```
 > 
 > **Ventana 2 (Frontend):**
 > ```bash
-> cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
+> cd C:\ruta\donde\clonaste\AgriSearch
 > cd frontend
 > npm run dev
 > ```

@@ -12,6 +12,7 @@ desktop.ini
 # Environment Variables
 .env
 
+
 # Local data and DBs
 /data/
 !/data/.gitkeep
@@ -24,6 +25,7 @@ desktop.ini
 # Backend Specific
 backend/venv/
 backend/env/
+backend/.venv/
 backend/.pytest_cache/
 backend/htmlcov/
 backend/.coverage

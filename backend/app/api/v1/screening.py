@@ -707,6 +707,7 @@ async def analyze_session_articles(
     """
     from app.services.pdf_parser import pdf_parser
     from app.services.llm_service import analyze_article_content
+    from app.services.vector_service import VectorService
 
     # 1. Get Session
     session_res = await db.execute(select(ScreeningSession).where(ScreeningSession.id == session_id))
@@ -723,18 +724,13 @@ async def analyze_session_articles(
     res_articles = await db.execute(stmt)
     articles = res_articles.scalars().all()
 
-    stats = {"processed": 0, "parsed": 0, "analyzed": 0, "failed": 0}
+    vector_service = VectorService()
+    stats = {"processed": 0, "parsed": 0, "analyzed": 0, "indexed": 0, "failed": 0}
 
-    # Use sync session wrapper for services
-    import sqlalchemy.orm
-    sync_session_factory = sqlalchemy.orm.sessionmaker(bind=db.bind, sync_session_class=sqlalchemy.orm.Session)
-    
     for article in articles:
         try:
             # A. Parse to MD if needed
             if not article.local_md_path or article.parsed_status != "success":
-                # We need to bridge to sync session or adapt service
-                # For this task, I'll just use the article object and commit later
                 success = await pdf_parser.parse_article(article, db)
                 if success:
                     stats["parsed"] += 1
@@ -758,6 +754,14 @@ async def analyze_session_articles(
                 article.agri_variables_json = json.dumps(analysis.get("agri_variables", {}))
                 
                 stats["analyzed"] += 1
+                
+                # C. Index in RAG Vector DB (Sub-fase 2.3)
+                await vector_service.index_article(
+                    project_id=session.project_id,
+                    article=article,
+                    md_content=md_text
+                )
+                stats["indexed"] += 1
             
             stats["processed"] += 1
             await db.commit() # Persistent update per article to show progress

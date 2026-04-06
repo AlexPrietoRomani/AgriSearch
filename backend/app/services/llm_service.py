@@ -178,12 +178,13 @@ async def analyze_article_content(
     model: str = "gemma4:e4b"
 ) -> dict[str, Any]:
     """Deep analysis of article content."""
-    system_prompt = f"""Analyze this agricultural article. Goal: {project_goal}.
+    system_prompt = f"""Analyze this agricultural article content. Goal: {project_goal}.
 Extract: llm_summary, methodology_type, agri_variables (crops, pests_diseases, chemicals_treatments, environmental_factors), relevance_score, justification.
 JSON Format only."""
     try:
-        llm_model = f"ollama/{model}" if not model.startswith("ollama/") else model
-        content_sample = md_content[:8000]
+        requested_model = model or settings.litellm_model
+        llm_model = requested_model if requested_model.startswith("ollama/") else f"ollama/{requested_model}"
+        content_sample = md_content[:15000] # Gemma 4 has larger context window
         response = await litellm.acompletion(
             model=llm_model,
             messages=[
@@ -193,8 +194,49 @@ JSON Format only."""
             api_base=settings.litellm_api_base,
             response_format={"type": "json_object"},
             temperature=0.2,
-            max_tokens=2000,
+            max_tokens=2500,
         )
         return _extract_json_payload(response.choices[0].message.content)
     except Exception as e:
+        logger.error(f"Deep analysis failed: {e}")
         return {"llm_summary": str(e), "relevance_score": 0.0}
+
+async def describe_image_content(
+    image_base64: str,
+    context: str = "",
+    model: str = "gemma4:e4b"
+) -> str:
+    """Uses vision model to describe images/diagrams from PDFs."""
+    system_prompt = f"""You are a scientific vision assistant.
+Describe the provided image or diagram from a research paper.
+If it is a workflow or chart, try to describe the logic concisely.
+If appropriate, provide a Mermaid diagram code block.
+Focus: Agricultural context if applicable ({context})."""
+    
+    try:
+        requested_model = model or settings.litellm_model
+        llm_model = requested_model if requested_model.startswith("ollama/") else f"ollama/{requested_model}"
+        
+        response = await litellm.acompletion(
+            model=llm_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this figure:"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
+                        }
+                    ]
+                }
+            ],
+            api_base=settings.litellm_api_base,
+            temperature=0.2,
+            max_tokens=1500,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"Image description failed: {e}")
+        return f"[Image description failed: {e}]"

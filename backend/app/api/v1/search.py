@@ -252,3 +252,21 @@ async def delete_search_endpoint(
     except Exception as e:
         logger.error("Failed to delete search query: %s", str(e))
         raise HTTPException(status_code=500, detail="Failed to delete search query")
+
+@router.post(
+    "/reparse/{project_id}",
+    summary="Force re-parsing of all downloaded PDFs to Markdown"
+)
+async def reparse_pdfs(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Forces all previously downloaded PDFs in the project to be re-parsed to MD."""
+    from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
+    try:
+        stats = await enrich_articles_from_pdfs(db, project_id, force_reparse=True)
+        return {"status": "success", "stats": stats}
+    except Exception as e:
+        logger.error("Reparse failed: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to reparse PDFs: {str(e)}")
+

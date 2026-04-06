@@ -144,32 +144,72 @@ async def download_articles(
         
         results = await asyncio.gather(*tasks)
 
-    # FINAL STEP: Automatically Parse to MD and Analyze
+    # FINAL STEP: Automatically Update DB, Parse to MD and Analyze
     from app.services.pdf_parser import pdf_parser
     from app.services.llm_service import analyze_article_content
+    from app.services.vector_service import VectorService
     import json
+    
+    vector_service = VectorService()
+
+    status_counts = {
+        "downloaded": 0,
+        "failed": 0,
+        "paywall": 0,
+    }
+
+    results_map = {article_id: str(status) for article_id, status in results}
 
     for article in articles:
-        if article.download_status == DownloadStatus.SUCCESS.value:
-            try:
-                # 1. PDF -> MD
-                parsed = await pdf_parser.parse_article(article, db)
-                if parsed and article.local_md_path:
-                    # 2. MD -> LLM Analysis
-                    with open(article.local_md_path, "r", encoding="utf-8") as f:
-                        md_text = f.read()
+        new_status = results_map.get(article.id)
+        if new_status:
+            article.download_status = new_status
+            
+            if new_status == DownloadStatus.SUCCESS.value:
+                status_counts["downloaded"] += 1
+                try:
+                    # 1. PDF -> MD (Sub-fase 2.0)
+                    parsed_ok = await pdf_parser.parse_article(article, db)
                     
-                    analysis = await analyze_article_content(md_text, project_goal=project.goal if project else "")
-                    article.llm_summary = analysis.get("llm_summary")
-                    article.relevance_score = analysis.get("relevance_score", 0.0)
-                    article.methodology_type = analysis.get("methodology_type")
-                    article.agri_variables_json = json.dumps(analysis.get("agri_variables", {}))
-                    
-                    await db.commit()
-            except Exception as e:
-                logger.error(f"Post-download auto-processing failed for {article.id}: {e}")
+                    if parsed_ok and article.local_md_path:
+                        # 2. MD -> LLM Analysis (Sub-fase 2.1)
+                        with open(article.local_md_path, "r", encoding="utf-8") as f:
+                            md_text = f.read()
+                        
+                        analysis = await analyze_article_content(
+                            md_text, 
+                            project_goal=project.description if project else ""
+                        )
+                        
+                        article.llm_summary = analysis.get("llm_summary")
+                        article.relevance_score = analysis.get("relevance_score", 0.0)
+                        article.methodology_type = analysis.get("methodology_type")
+                        
+                        agri_vars = analysis.get("agri_variables", {})
+                        article.agri_variables_json = json.dumps(agri_vars)
+                        
+                        # 3. RAG Indexing (Sub-fase 2.3)
+                        await vector_service.index_article(
+                            project_id=project_id,
+                            article=article,
+                            md_content=md_text
+                        )
+                        
+                        logger.info(f"Auto-enriched and RAG-indexed article {article.id}.")
+                except Exception as e:
+                    logger.error(f"Post-download auto-processing failed for {article.id}: {e}")
+            elif new_status == DownloadStatus.FAILED.value:
+                status_counts["failed"] += 1
+            elif new_status == DownloadStatus.PAYWALL.value:
+                status_counts["paywall"] += 1
+
+    await db.commit()
+    # Refresh articles to get all DB fields correctly
+    for article in articles:
+        await db.refresh(article)
 
     return {
         "total": len(articles),
         **status_counts,
+        "articles": articles
     }
