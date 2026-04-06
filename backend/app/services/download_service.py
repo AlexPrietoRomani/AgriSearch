@@ -37,7 +37,7 @@ async def _download_single_pdf(
     session: aiohttp.ClientSession,
     article: Article,
     pdf_dir: Path,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """
     Download a single PDF for an article.
 
@@ -56,34 +56,34 @@ async def _download_single_pdf(
 
     # Skip if already downloaded
     if filepath.exists() and filepath.stat().st_size > 1000:
-        return article.id, DownloadStatus.SUCCESS.value
+        return article.id, DownloadStatus.SUCCESS.value, str(filepath)
 
     async with _download_semaphore:
         try:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=settings.download_timeout)) as resp:
                 if resp.status == 403 or resp.status == 401:
-                    return article.id, DownloadStatus.PAYWALL.value
+                    return article.id, DownloadStatus.PAYWALL.value, ""
                 if resp.status != 200:
                     logger.warning("Download failed for %s: HTTP %d", article.doi, resp.status)
-                    return article.id, DownloadStatus.FAILED.value
+                    return article.id, DownloadStatus.FAILED.value, ""
 
                 content = await resp.read()
 
                 # Validate it's actually a PDF
                 if not content[:4].startswith(PDF_MAGIC_BYTES):
                     logger.warning("Downloaded file for %s is not a PDF", article.doi)
-                    return article.id, DownloadStatus.FAILED.value
+                    return article.id, DownloadStatus.FAILED.value, ""
 
                 filepath.write_bytes(content)
                 logger.info("Downloaded: %s (%d bytes)", filename, len(content))
-                return article.id, DownloadStatus.SUCCESS.value
+                return article.id, DownloadStatus.SUCCESS.value, str(filepath)
 
         except asyncio.TimeoutError:
             logger.warning("Download timeout for %s", article.doi)
-            return article.id, DownloadStatus.FAILED.value
+            return article.id, DownloadStatus.FAILED.value, ""
         except Exception as e:
             logger.error("Download error for %s: %s", article.doi, str(e))
-            return article.id, DownloadStatus.FAILED.value
+            return article.id, DownloadStatus.FAILED.value, ""
 
 
 async def download_articles(
@@ -158,14 +158,18 @@ async def download_articles(
         "paywall": 0,
     }
 
-    results_map = {article_id: str(status) for article_id, status in results}
+    results_map = {article_id: (str(status), filepath) for article_id, status, filepath in results}
 
     for article in articles:
-        new_status = results_map.get(article.id)
-        if new_status:
+        new_status_record = results_map.get(article.id)
+        if new_status_record:
+            new_status, filepath = new_status_record
             article.download_status = new_status
             
             if new_status == DownloadStatus.SUCCESS.value:
+                if filepath:
+                    article.local_pdf_path = filepath
+
                 status_counts["downloaded"] += 1
                 try:
                     # 1. PDF -> MD (Sub-fase 2.0)

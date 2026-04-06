@@ -139,8 +139,11 @@ async def create_screening_session(
 
     # 1. Enrich articles from PDFs first (fill abstract, keywords, paths)
     from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
+    from app.api.v1.events import publish_event
     try:
+        await publish_event(req.project_id, {"type": "reparse_start", "msg": "Enriqueciendo metadatos desde PDFs para la nueva revisión..."})
         enrich_stats = await enrich_articles_from_pdfs(db, req.project_id)
+        await publish_event(req.project_id, {"type": "reparse_end", "msg": "Enriquecimiento completado.", "stats": enrich_stats})
         logger.info("Pre-screening enrichment: %s", enrich_stats)
     except Exception as e:
         logger.warning("Pre-screening enrichment failed (continuing anyway): %s", e)

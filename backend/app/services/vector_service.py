@@ -25,7 +25,7 @@ class VectorService:
     """
 
     def __init__(self):
-        self.client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+        self.client = QdrantClient(path=settings.vector_db_dir.absolute().as_posix())
         self.embedding_model = settings.embedding_model
         
         # Ensure model has provider prefix for LiteLLM if missing
