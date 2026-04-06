@@ -210,7 +210,11 @@ class DoclingParser:
             logger.warning(f"Could not read PDF pages via pypdf, falling back to full processing: {e}")
             total_pages = 9999
             
-        chunk_size = 15
+        import gc
+        import torch
+        import psutil
+
+        chunk_size = 10 
         md_parts = []
         all_images = []
         loop = asyncio.get_running_loop()
@@ -253,9 +257,15 @@ class DoclingParser:
             except Exception as loop_e:
                 logger.error(f"Docling error on chunk {start_page}-{end_page}: {loop_e}")
             
-            # GC to free memory after heavy chunk
-            import gc
+            # Heavy GC and CUDA cache clear to free memory after heavy chunk
             gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # Log periodic memory status
+            process = psutil.Process()
+            mem_info = process.memory_info().rss / (1024 * 1024)
+            logger.info(f"Chunk {start_page}-{end_page} completed. Backend RAM: {mem_info:.2f} MB")
 
             if total_pages == 9999:
                 break # Only one unchunked pass
