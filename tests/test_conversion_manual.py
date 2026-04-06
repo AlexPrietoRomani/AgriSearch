@@ -16,8 +16,8 @@ from sqlalchemy import select
 async def test_single_pdf_conversion():
     print("🚀 Iniciando test de conversión simple...")
     
-    # 1. Buscar un PDF real existente
-    pdf_path = Path(r"C:\Users\ALEX\Github\AgriSearch\backend\data\projects\Investigacion_CNN_vs_Vision_Attention\Busqueda_1\descargas\2025_Amit_Legume_leaf_disease_classification_via_attention-e.pdf")
+    # 1. Buscar un PDF real existente (Se usa uno muy grande para testear el chunking de Docling)
+    pdf_path = Path(r"C:\Users\ALEX\Github\AgriSearch\backend\data\projects\Investigacion_CNN_vs_Vision_Attention\Busqueda_1\descargas\2025_Hanyu_Multimodal_Learning_for_Visual_Perception_and_Robo.pdf")
     
     if not pdf_path.exists():
         print(f"❌ Error: El PDF no existe en {pdf_path}")

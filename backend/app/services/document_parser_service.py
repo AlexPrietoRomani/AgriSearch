@@ -201,32 +201,75 @@ class DoclingParser:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found at {pdf_path}")
 
-        # 1. Run Docling (Sync call, wrap in thread if needed for extreme concurrency)
-        # We use run_in_executor to avoid blocking the event loop
+        # Determine total pages using pypdf
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(str(pdf_path))
+            total_pages = len(reader.pages)
+        except Exception as e:
+            logger.warning(f"Could not read PDF pages via pypdf, falling back to full processing: {e}")
+            total_pages = 9999
+            
+        chunk_size = 15
+        md_parts = []
+        all_images = []
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, self.converter.convert, str(pdf_path))
-        doc = result.document
 
-        # 2. VLM Integration
-        image_map = {}
-        if vlm_describer and hasattr(doc, "pictures"):
-            for i, element in enumerate(doc.pictures):
-                try:
-                    # Get image bytes from Docling document
-                    img = element.get_image(doc)
-                    img_byte_arr = io.BytesIO()
-                    img.save(img_byte_arr, format='PNG')
+        for start_page in range(1, total_pages + 1, chunk_size):
+            end_page = min(start_page + chunk_size - 1, total_pages)
+            if start_page > total_pages:
+                break
+                
+            try:
+                # 1. Run Docling for the current page chunk
+                if total_pages != 9999:
+                    result = await loop.run_in_executor(
+                        None, 
+                        lambda: self.converter.convert(str(pdf_path), page_range=(start_page, end_page))
+                    )
+                else:
+                    result = await loop.run_in_executor(None, self.converter.convert, str(pdf_path))
                     
-                    desc = await vlm_describer.analyze_image_bytes(img_byte_arr.getvalue())
+                doc = result.document
+
+                # 2. Extract Document Images for VLM later
+                if hasattr(doc, "pictures"):
+                    for element in doc.pictures:
+                        try:
+                            img = element.get_image(doc)
+                            img_byte_arr = io.BytesIO()
+                            img.save(img_byte_arr, format='PNG')
+                            all_images.append(img_byte_arr.getvalue())
+                        except Exception as e:
+                            logger.error(f"Error extracting image from chunk {start_page}-{end_page}: {e}")
+
+                # 3. Export this chunk to Markdown
+                md_parts.append(doc.export_to_markdown())
+            except Exception as loop_e:
+                logger.error(f"Docling error on chunk {start_page}-{end_page}: {loop_e}")
+            
+            # GC to free memory after heavy chunk
+            import gc
+            gc.collect()
+
+            if total_pages == 9999:
+                break # Only one unchunked pass
+                
+        # Join chunks together
+        md_content = "\n\n".join(md_parts)
+
+        # 4. VLM Integration: Sequentially describe collected images
+        image_map = {}
+        if vlm_describer and all_images:
+            for i, img_bytes in enumerate(all_images):
+                try:
+                    desc = await vlm_describer.analyze_image_bytes(img_bytes)
                     if desc:
                         image_map[i] = desc
                 except Exception as e:
-                    logger.error(f"Error extracting/describing image {i}: {e}")
+                    logger.error(f"Error describing image {i} with VLM: {e}")
 
-        # 3. Export to Markdown
-        md_content = doc.export_to_markdown()
-
-        # 4. Inject VLM descriptions into MD
+        # 5. Inject VLM descriptions into MD sequentially
         if image_map:
             img_idx = 0
             def _inject_desc(match):
@@ -235,7 +278,8 @@ class DoclingParser:
                 img_idx += 1
                 if desc:
                     return f"\n\n> **[💡 Descripción de Imagen VLM]:** {desc}\n\n"
-                return "" # Remove decorative images from MD if possible, or keep placeholder
+                # If no description or failed VLM, keep the tag for visibility or remove if preferred.
+                return match.group(0)
 
             md_content = re.sub(r"<!--\s*image\s*-->", _inject_desc, md_content)
 
