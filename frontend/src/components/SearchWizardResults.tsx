@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { uploadPdf, reparsePdfs, type Article, type SearchResults, type DownloadProgress } from "../lib/api";
+import { uploadPdf, reparsePdfs, cancelReparse, type Article, type SearchResults, type DownloadProgress } from "../lib/api";
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
+import ProgressModal from "./ProgressModal";
 
 interface Props {
     searchResults: SearchResults | null;
@@ -34,17 +35,32 @@ export default function SearchWizardResults({
     const [uploadingId, setUploadingId] = useState<string | null>(null);
     const [showQueries, setShowQueries] = useState(false);
     const [isReparsing, setIsReparsing] = useState(false);
+    const [showProgressModal, setShowProgressModal] = useState(false);
 
     const handleReparse = async () => {
         setIsReparsing(true);
+        setShowProgressModal(true);
         try {
-            const res = await reparsePdfs(projectId);
-            alert(`Proceso completado. ${res.stats.processed} PDFs reparsados. Fallos: ${res.stats.failed}`);
-            // Podríamos recargar los artículos aquí, aunque es menos crítico si cambian internamente
+            await reparsePdfs(projectId);
         } catch (e: any) {
-            alert(`Error al rehacer MDs: ${e.message}`);
+            console.error(e);
         } finally {
             setIsReparsing(false);
+        }
+    };
+
+    const handleStopReparse = async () => {
+        try {
+            await cancelReparse(projectId);
+        } catch (e) {
+            console.error("Failed to cancel reparse:", e);
+        }
+    };
+
+    const handleProgressClose = (stats?: any) => {
+        setShowProgressModal(false);
+        if (stats) {
+            alert(`Proceso completado. ${stats.processed} PDFs reparsados. Fallos: ${stats.failed}`);
         }
     };
 
@@ -107,6 +123,15 @@ export default function SearchWizardResults({
 
     return (
         <div>
+            {/* Real-time Progress Modal */}
+            <ProgressModal
+                isOpen={showProgressModal}
+                projectId={projectId}
+                onClose={handleProgressClose}
+                onStop={handleStopReparse}
+                title="Reparando Archivos Markdown"
+            />
+
             {/* Stats Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
                 <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-center">

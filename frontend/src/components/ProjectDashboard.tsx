@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
     getProject, getProjectSearches, updateProject, deleteSearch, listProjectScreeningSessions, deleteScreeningSession,
-    type SearchQuery, type Project, type ScreeningSession, checkScreeningEligibility
+    type SearchQuery, type Project, type ScreeningSession, checkScreeningEligibility, type OllamaModel, getOllamaModels
 } from "../lib/api";
 
 const AGRI_AREAS = [
@@ -34,6 +34,11 @@ export default function ProjectDashboard() {
     const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
     const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
+    // Ollama Models state
+    const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
+    const [modelsLoading, setModelsLoading] = useState(false);
+    const [hasEmbeddingModel, setHasEmbeddingModel] = useState(false);
+
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const id = params.get("id");
@@ -41,7 +46,21 @@ export default function ProjectDashboard() {
         setProjectId(id);
 
         loadProject(id);
+        loadOllamaModels();
     }, []);
+
+    async function loadOllamaModels() {
+        setModelsLoading(true);
+        try {
+            const models = await getOllamaModels();
+            setOllamaModels(models);
+            setHasEmbeddingModel(models.some(m => m.is_embedding));
+        } catch (e) {
+            console.error("Failed to load Ollama models:", e);
+        } finally {
+            setModelsLoading(false);
+        }
+    }
 
     const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
         setNotification({ message, type });
@@ -441,23 +460,42 @@ export default function ProjectDashboard() {
                             </label>
 
                             <label className="block">
-                                <span className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 block">Modelo LLM Predeterminado</span>
+                                <span className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 flex justify-between items-center">
+                                    Modelo LLM Predeterminado
+                                    {modelsLoading && <span className="inline-block w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></span>}
+                                </span>
                                 <select
                                     value={editData.llm_model}
                                     onChange={(e) => setEditData({ ...editData, llm_model: e.target.value })}
                                     className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                                 >
-                                    <optgroup label="Recomendados para GPU">
-                                        <option value="llama3.1:8b">Llama 3.1 8B (Recomendado)</option>
-                                        <option value="qwen2.5:7b">Qwen 2.5 7B</option>
-                                        <option value="mistral-nemo:12b">Mistral Nemo 12B</option>
-                                        <option value="gpt-oss20b">GPT-OSS 20B (High-VRAM)</option>
-                                    </optgroup>
-                                    <optgroup label="Recomendados para CPU">
-                                        <option value="phi3:3.8b">Phi-3 Mini</option>
-                                        <option value="gemma2:2b">Gemma 2 2B</option>
-                                    </optgroup>
+                                    {ollamaModels.length > 0 ? (
+                                        <>
+                                            <optgroup label="Modelos Multimodales (Recomendado para Imágenes)">
+                                                {ollamaModels.filter(m => m.is_multimodal).map(m => (
+                                                    <option key={m.name} value={m.name}>
+                                                        {m.name} {m.name.includes('gemma4:e4b') ? '⭐(Recomendado)' : ''}
+                                                    </option>
+                                                ))}
+                                                {ollamaModels.filter(m => m.is_multimodal).length === 0 && (
+                                                    <option disabled>No hay modelos multimodales (ej: llava, gemma4:e4b)</option>
+                                                )}
+                                            </optgroup>
+                                            <optgroup label="Modelos de Texto">
+                                                {ollamaModels.filter(m => !m.is_multimodal && !m.is_embedding).map(m => (
+                                                    <option key={m.name} value={m.name}>{m.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        </>
+                                    ) : (
+                                        <option value={editData.llm_model}>{modelsLoading ? "Cargando modelos..." : editData.llm_model}</option>
+                                    )}
                                 </select>
+                                {!hasEmbeddingModel && !modelsLoading && ollamaModels.length > 0 && (
+                                    <p className="text-red-400 text-xs mt-2 italic font-semibold">
+                                        ⚠️ Advertencia: No se detectó modelo de embeddings.
+                                    </p>
+                                )}
                             </label>
 
                             <div className="flex gap-4 mt-4">
