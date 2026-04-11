@@ -170,8 +170,9 @@ class DoclingParser:
             do_cell_matching=True,
             mode=TableFormerMode.FAST # Changed from ACCURATE to FAST to save memory
         )
+        options.do_ocr = True  # Enable OCR for scanned PDFs
         options.do_formula_enrichment = False # Disabling formulas to save VRAM
-        options.generate_picture_images = True 
+        options.generate_picture_images = True
         options.images_scale = 0.8 # Lowering scale further for stability
         options.generate_page_images = False
         
