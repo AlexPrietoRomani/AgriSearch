@@ -1058,15 +1058,45 @@ def test_post_process_limpia_lineas_vacias():
 
 ---
 
+## TASK 2.0.8: Implementar Puente VLM Local (Ollama) para MarkItDown
+
+### Objetivo
+Asegurar que los modelos multimodales locales (como `gemma` o `llama3.2-vision` ejecutados en Ollama) sean 100% compatibles con las peticiones de MarkItDown. MarkItDown asume la API de OpenAI estricta, lo que puede causar errores con ciertos modelos de Ollama por configuraciones preestablecidas, prompts base o decodificación temporal.
+
+### Input
+- `MarkItDownParser`
+- Base64 de las imágenes detectadas
+- URL/Endpoint de Ollama (`http://localhost:11434/v1`)
+
+### Acciones Paso a Paso
+
+#### Acción 8.1: Crear el wrapper/puente `OllamaVLMWrapper`
+**Qué hace:** Encapsula el cliente de OpenAI y modifica de forma preventiva los argumentos de la solicitud o ajusta el prompt del sistema enviado a los modelos locales para evitar fallos de formato. Se crea como un adaptador inyectable.
+
+#### Acción 8.2: Integrar el puente en el Parser
+**Qué hace:** En lugar de enviar un `llm_client` directo configurado estándar, testear e inicializar este puente con las consideraciones paramétricas necesarias para que el base64 pase al VLM y el VLM responda en texto sin rechazar la solicitud.
+
+#### Acción 8.3: Crear pruebas unitarias para el Puente
+**Qué hace:** Comprueba unitariamente que el puente intercepta las llamadas, acomoda payloads y maneja posibles rechazos de la capa de adaptación de Ollama.
+
+### Test de Verificación (TASK 2.0.8)
+
+**Criterios de éxito:**
+- [ ] Construcción de un puente sólido para modelos locales Ollama.
+- [ ] No existen interrupciones `TimeoutError` o parches nulos (None) en el texto descriptivo del modelo.
+- [ ] Superación de los tests de adaptación.
+
+---
+
 ## Resumen de Archivos Modificados
 
 | Archivo | Tipo de Cambio | TASK |
 |---------|---------------|------|
 | `backend/pyproject.toml` | Añadir `markitdown[pdf]`, `markitdown-ocr`, `openai` | 2.0.1, 2.0.2 |
-| `backend/app/services/document_parser_service.py` | Añadir `MarkItDownParser`, deprecar `ImageFilter` | 2.0.1, 2.0.2, 2.0.3, 2.0.4 |
+| `backend/app/services/document_parser_service.py` | Añadir `MarkItDownParser`, deprecar `ImageFilter`, construir puente VLM | 2.0.1, 2.0.2, 2.0.3, 2.0.4, 2.0.8 |
 | `backend/app/services/pdf_enrichment_service.py` | Cambiar parser, eliminar chunking, añadir timeout | 2.0.5, 2.0.6 |
 | `tests/test_conversion_manual.py` | Reescribir para usar MarkItDown | 2.0.7 |
-| `tests/unit/test_pdf_preprocessing.py` | Añadir tests de MarkItDown, TableFlattener, YAML | 2.0.7 |
+| `tests/unit/test_pdf_preprocessing.py` | Añadir tests de MarkItDown, TableFlattener, YAML, y VLM Wrapper | 2.0.7, 2.0.8 |
 | `README.md` | Actualizar tecnologías (MarkItDown en lugar de Docling) | Final |
 | `backend/README.md` | Actualizar arquitectura y tecnologías | Final |
 
@@ -1079,11 +1109,12 @@ graph LR
     T1["TASK 2.0.1<br/>Instalar MarkItDown<br/>+ Crear Parser"] --> T2["TASK 2.0.2<br/>Integrar VLM"]
     T1 --> T3["TASK 2.0.3<br/>Adaptar TableFlattener"]
     T1 --> T4["TASK 2.0.4<br/>Front-matter YAML"]
-    T2 --> T6["TASK 2.0.6<br/>Batch + SSE"]
+    T2 --> T8["TASK 2.0.8<br/>Puente VLM Ollama"]
+    T8 --> T6["TASK 2.0.6<br/>Batch + SSE"]
     T3 --> T6
     T4 --> T5["TASK 2.0.5<br/>Guardar MD + BD"]
     T5 --> T6
     T6 --> T7["TASK 2.0.7<br/>Tests + Benchmark"]
 ```
 
-> **Dependencias:** TASK 2.0.1 es prerequisito de todas. TASKs 2.0.2, 2.0.3 y 2.0.4 son independientes entre sí. TASK 2.0.6 integra todo. TASK 2.0.7 valida el resultado final.
+> **Dependencias:** TASK 2.0.1 es prerequisito de todas. TASKs 2.0.2, 2.0.3 y 2.0.4 son independientes entre sí. TASK 2.0.8 depende de la 2.0.2. TASK 2.0.6 integra todo. TASK 2.0.7 valida el resultado final.
