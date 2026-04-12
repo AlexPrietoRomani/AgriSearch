@@ -48,6 +48,9 @@ dependencies = [
     "torchaudio",
     "pypdfium2",
     "pypdf",
+    "markitdown[pdf]>=0.1.5",
+    "markitdown-ocr>=0.1.0",
+    "openai>=2.30.0",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -41,7 +41,7 @@ class TableFlattener:
     """
     # Regex to detect Markdown table blocks
     _TABLE_PATTERN = re.compile(
-        r"((?:^\|.+\|$\n?)+)",
+        r"((?:^\|[^\n]+\|\s*$\n?){2,})",
         re.MULTILINE
     )
 
@@ -116,9 +116,13 @@ class TableFlattener:
         return cls._TABLE_PATTERN.sub(_replace_table, md_text)
 
 
+import warnings
+
 class ImageFilter:
     """
+    @deprecated
     Filters decorative images and describes technical ones using a VLM.
+    (This class is deprecated. VLM processing is now handled natively by MarkItDownParser).
     """
     SYSTEM_PROMPT = (
         "Eres un analista experto en extracción de datos científicos. "
@@ -129,6 +133,12 @@ class ImageFilter:
     )
 
     def __init__(self, model_name: str = "llama3.2-vision"):
+        warnings.warn(
+            "ImageFilter is deprecated and will be removed. "
+            "Use MarkItDownParser with an llm_client instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self.model = model_name
 
     async def analyze_image_bytes(self, image_bytes: bytes) -> Optional[str]:
@@ -317,10 +327,170 @@ class DoclingParser:
             "year": article_meta.get("year"),
             "journal": article_meta.get("journal"),
             "keywords": article_meta.get("keywords") or [],
-            "source_database": article_meta.get("source_database")
+            "source_database": article_meta.get("source_database"),
+            "parser_engine": "docling",
         }
         
         yaml_str = yaml.dump(front_matter, allow_unicode=True, sort_keys=False)
         final_md = f"---\n{yaml_str}---\n\n{md_content}"
 
         return final_md
+
+# ─── MarkItDown Parser (CPU-based, Zero-GPU) ─────────────────────────────
+try:
+    from markitdown import MarkItDown as _MarkItDown
+    MARKITDOWN_AVAILABLE = True
+except ImportError:
+    _MarkItDown = None
+    MARKITDOWN_AVAILABLE = False
+
+
+class MarkItDownParser:
+    """
+    Convierte PDFs a Markdown estructurado usando Microsoft MarkItDown.
+    Opera completamente en CPU — sin dependencia de GPU ni modelos pesados.
+    
+    Atributos:
+        md: Instancia de MarkItDown configurada.
+        has_vlm: Indica si hay un VLM disponible para describir imágenes.
+    """
+
+    def __init__(self, llm_client=None, llm_model: str = None):
+        """
+        Inicializa el parser.
+        
+        Args:
+            llm_client: Cliente OpenAI-compatible (openai.OpenAI). Opcional.
+                        Si se proporciona, MarkItDown describirá imágenes automáticamente.
+            llm_model:  Nombre del modelo VLM (ej: "llama3.2-vision", "gpt-4o").
+        """
+        if not MARKITDOWN_AVAILABLE:
+            raise ImportError(
+                "MarkItDown no está instalado. Ejecuta: uv add 'markitdown[pdf]'"
+            )
+        
+        init_kwargs = {}
+        self.has_vlm = False
+        
+        if llm_client and llm_model:
+            init_kwargs["llm_client"] = llm_client
+            init_kwargs["llm_model"] = llm_model
+            init_kwargs["llm_prompt"] = (
+                "Describe esta imagen científica de un artículo de investigación "
+                "en 2-3 oraciones concisas en español. Incluye qué tipo de gráfico "
+                "o figura es y qué variables o datos muestra. "
+                "Si la imagen es un logo, publicidad, decorativa o ilegible, "
+                "responde ÚNICAMENTE con la palabra: DESCARTAR."
+            )
+            # Habilitar plugins (necesario para markitdown-ocr si está instalado)
+            init_kwargs["enable_plugins"] = True
+            self.has_vlm = True
+            logger.info(f"MarkItDown inicializado con VLM: {llm_model}")
+        
+        self.md = _MarkItDown(**init_kwargs)
+        logger.info(
+            f"MarkItDown inicializado (CPU) | VLM: {'activo' if self.has_vlm else 'inactivo'}"
+        )
+
+    async def parse_pdf(
+        self,
+        pdf_path: Path,
+        article_meta: Dict[str, Any],
+        publish_event=None,
+        project_id: str = None,
+    ) -> str:
+        """
+        Convierte un PDF a Markdown enriquecido.
+        
+        Pipeline:
+          1. MarkItDown convierte el PDF completo a Markdown (CPU).
+          2. TableFlattener aplana tablas en oraciones atómicas para RAG.
+          3. Se inyecta front-matter YAML con metadatos bibliográficos.
+        
+        Args:
+            pdf_path:      Ruta absoluta al archivo PDF.
+            article_meta:  Dict con claves: id, doi, title, authors, year,
+                          journal, keywords, source_database.
+            publish_event: Función async para enviar progreso via SSE (opcional).
+            project_id:    ID del proyecto para los eventos SSE (opcional).
+        
+        Returns:
+            String con el Markdown enriquecido completo (YAML + contenido + tablas aplanadas).
+        
+        Raises:
+            FileNotFoundError: Si el PDF no existe en la ruta indicada.
+        """
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
+
+        # ── 1. Conversión PDF → Markdown (CPU) ──────────────────────
+        if publish_event and project_id:
+            await publish_event(project_id, {
+                "type": "sub_progress",
+                "msg": f"Convirtiendo PDF a Markdown (MarkItDown CPU)..."
+            })
+
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None, lambda: self.md.convert(str(pdf_path))
+        )
+        md_content = result.markdown
+
+        if not md_content or len(md_content.strip()) < 50:
+            logger.warning(f"Conversión vacía o muy corta para {pdf_path.name}")
+            md_content = f"<!-- MarkItDown: conversión vacía para {pdf_path.name} -->"
+
+        # ── 2. Limpiar artefactos de conversión ──────────────────────
+        md_content = self._post_process(md_content)
+
+        # ── 3. Filtrar descripciones VLM de imágenes decorativas ─────
+        if self.has_vlm:
+            md_content = self._filter_discarded_images(md_content)
+
+        # ── 4. Aplanar tablas para RAG ───────────────────────────────
+        if publish_event and project_id:
+            await publish_event(project_id, {
+                "type": "sub_progress",
+                "msg": "Aplanando tablas para optimización RAG..."
+            })
+        md_content = TableFlattener.flatten(md_content, article_meta)
+
+        # ── 5. Inyectar front-matter YAML ────────────────────────────
+        front_matter = {
+            "agrisearch_id": article_meta.get("id"),
+            "doi": article_meta.get("doi"),
+            "title": article_meta.get("title"),
+            "authors": article_meta.get("authors"),
+            "year": article_meta.get("year"),
+            "journal": article_meta.get("journal"),
+            "keywords": article_meta.get("keywords") or [],
+            "source_database": article_meta.get("source_database"),
+            "parser_engine": "markitdown",
+        }
+        yaml_str = yaml.dump(front_matter, allow_unicode=True, sort_keys=False)
+        final_md = f"---\n{yaml_str}---\n\n{md_content}"
+
+        return final_md
+
+    @staticmethod
+    def _post_process(md_text: str) -> str:
+        """Limpia artefactos comunes de la conversión PDF→MD."""
+        # Eliminar líneas vacías excesivas (más de 2 consecutivas)
+        md_text = re.sub(r"\n{4,}", "\n\n\n", md_text)
+        # Eliminar headers vacíos (## \n)
+        md_text = re.sub(r"^(#{1,6})\s*$", "", md_text, flags=re.MULTILINE)
+        # Normalizar separadores de página
+        md_text = re.sub(r"-{5,}", "---", md_text)
+        return md_text.strip()
+
+    @staticmethod
+    def _filter_discarded_images(md_text: str) -> str:
+        """Elimina bloques de imagen cuya descripción VLM dice DESCARTAR."""
+        # Patrón: líneas que contengan DESCARTAR en contexto de descripción de imagen
+        md_text = re.sub(
+            r"!\[.*?\]\(.*?\)\s*\n*.*?DESCARTAR.*?\n*",
+            "",
+            md_text,
+            flags=re.IGNORECASE,
+        )
+        return md_text
