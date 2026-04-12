@@ -100,7 +100,18 @@ async def process_and_enrich_pdf(db, article: Article, parser, vector_service, v
             "source_database": article.source_database
         }
 
-        final_md = await parser.parse_pdf(pdf_path, meta, vlm_describer=vlm, publish_event=publish_event, project_id=project_id)
+        from app.services.document_parser_service import MarkItDownParser
+        try:
+            if isinstance(parser, MarkItDownParser):
+                parse_coro = parser.parse_pdf(pdf_path, meta, publish_event=publish_event, project_id=project_id)
+            else:
+                parse_coro = parser.parse_pdf(pdf_path, meta, vlm_describer=vlm, publish_event=publish_event, project_id=project_id)
+            
+            final_md = await asyncio.wait_for(parse_coro, timeout=180.0)
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout procesando {article.id[:8]} ({pdf_path.name})")
+            article.parsed_status = "timeout"
+            return {"success": False, "error": "timeout"}
 
         # 2. Extract abstract if missing (from the generated MD)
         # Simple extraction: look for # Abstract or similar
@@ -164,10 +175,42 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
 
     # Initialize Services
     try:
-        from app.services.document_parser_service import DoclingParser, ImageFilter
-        parser = DoclingParser()
         vector_service = VectorService()
-        vlm = ImageFilter(model_name=project.llm_model) if project.llm_model else None
+        
+        # Elegir parser: MarkItDown (default) o Docling (fallback)
+        import os
+        use_docling = os.environ.get("AGRISEARCH_USE_DOCLING", "").lower() == "true"
+        
+        if use_docling:
+            try:
+                from app.services.document_parser_service import DoclingParser, ImageFilter, DOCLING_AVAILABLE
+                if DOCLING_AVAILABLE:
+                    parser = DoclingParser()
+                    vlm = ImageFilter(model_name=project.llm_model) if project.llm_model else None
+                    logger.info("Usando DoclingParser (fallback activado)")
+                else:
+                    raise ImportError("Docling is not available")
+            except ImportError:
+                use_docling = False
+                logger.warning("Docling requested but not available. Falling back to MarkItDown.")
+        
+        if not use_docling:
+            from app.services.document_parser_service import MarkItDownParser
+            # Configurar VLM via OpenAI-compatible client (Ollama)
+            llm_client = None
+            if project.llm_model:
+                try:
+                    from openai import OpenAI
+                    llm_client = OpenAI(
+                        base_url="http://localhost:11434/v1",
+                        api_key="ollama"
+                    )
+                except Exception as vlm_err:
+                    logger.warning(f"No se pudo crear llm_client, continuando sin VLM: {vlm_err}")
+            
+            parser = MarkItDownParser(llm_client=llm_client, llm_model=project.llm_model)
+            vlm = None  # MarkItDown maneja VLM internamente
+            logger.info(f"Usando MarkItDownParser (CPU) | VLM: {'activo' if llm_client else 'inactivo'}")
     except Exception as e:
         logger.error(f"Could not initialize Services: {e}")
         return {"error": str(e)}
@@ -218,9 +261,7 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
         })
         res = await process_and_enrich_pdf(db, article, parser, vector_service, vlm, publish_event, project_id)
         
-        # Manual GC to free memory from large PDFs
-        import gc
-        gc.collect()
+        # No se requiere GC manual con MarkItDown
 
         if res.get("success"):
             stats["processed"] += 1

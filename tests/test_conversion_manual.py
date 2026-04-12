@@ -3,11 +3,14 @@ import sys
 import os
 from pathlib import Path
 
+# Fix unicode output in windows console
+sys.stdout.reconfigure(encoding='utf-8')
+
 # Add backend to path
 backend_path = Path(__file__).parent.parent / "backend"
 sys.path.append(str(backend_path))
 
-from app.services.document_parser_service import DoclingParser
+from app.services.document_parser_service import MarkItDownParser
 from app.services.pdf_enrichment_service import process_and_enrich_pdf
 from app.db.database import async_session_factory
 from app.models.project import Article
@@ -27,10 +30,10 @@ async def test_single_pdf_conversion():
 
     # 2. Inicializar el parser
     try:
-        parser = DoclingParser()
-        print("✅ DoclingParser inicializado con éxito.")
+        parser = MarkItDownParser()
+        print("✅ MarkItDownParser inicializado con éxito.")
     except Exception as e:
-        print(f"❌ Error al inicializar DoclingParser: {e}")
+        print(f"❌ Error al inicializar MarkItDownParser: {e}")
         return
 
     # 3. Simular un objeto Article para SQLAlchemy
