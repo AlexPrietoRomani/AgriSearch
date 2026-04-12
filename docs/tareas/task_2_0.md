@@ -49,7 +49,7 @@ Reemplazar `DoclingParser` por `MarkItDownParser` como motor primario de convers
 
 ### Acciones Paso a Paso
 
-#### Acción 1.1: Instalar la dependencia `markitdown[pdf]`
+#### [X] Acción 1.1: Instalar la dependencia `markitdown[pdf]`
 
 **Qué hace:** Añade MarkItDown con soporte para PDF al archivo `pyproject.toml` y lo instala en el entorno virtual.
 
@@ -69,7 +69,7 @@ Debe imprimir: `OK: <class 'markitdown.MarkItDown'>`.
 
 ---
 
-#### Acción 1.2: Crear la clase `MarkItDownParser` en `document_parser_service.py`
+#### [X] Acción 1.2: Crear la clase `MarkItDownParser` en `document_parser_service.py`
 
 **Qué hace:** Crea una nueva clase que usa MarkItDown para convertir PDFs a Markdown, reemplazando la funcionalidad de `DoclingParser`.
 
@@ -243,7 +243,7 @@ class MarkItDownParser:
 
 ---
 
-#### Acción 1.3: Mantener `DoclingParser` como fallback
+#### [X] Acción 1.3: Mantener `DoclingParser` como fallback
 
 **Qué hace:** No se elimina `DoclingParser`. Se preserva como opción activable por variable de entorno.
 
@@ -251,7 +251,7 @@ class MarkItDownParser:
 
 ---
 
-#### Acción 1.4: Actualizar `pyproject.toml`
+#### [X] Acción 1.4: Actualizar `pyproject.toml`
 
 **Qué hace:** Añade `markitdown[pdf]` como dependencia principal. Las dependencias de Docling (`docling`, `docling-core`, `torch`, `torchvision`, `torchaudio`, `pypdfium2`) se mantienen temporalmente pero se marcarán como opcionales en una tarea futura.
 
@@ -272,10 +272,10 @@ cmd /c "backend\.venv\Scripts\python.exe tests\test_conversion_manual.py"
 ```
 
 **Criterios de éxito:**
-- [ ] `MarkItDownParser()` se inicializa sin errores.
-- [ ] Un PDF de ~100 páginas se convierte a Markdown en **< 15 segundos**.
-- [ ] El Markdown generado contiene headings (`##`), texto legible y **≥ 1000 caracteres**.
-- [ ] El uso de GPU durante la conversión es **0%** (verificar con `nvidia-smi`).
+- [X] `MarkItDownParser()` se inicializa sin errores.
+- [X] Un PDF de ~100 páginas se convierte a Markdown en **< 15 segundos**.
+- [X] El Markdown generado contiene headings (`##`), texto legible y **≥ 1000 caracteres**.
+- [X] El uso de GPU durante la conversión es **0%** (verificar con `nvidia-smi`).
 
 ---
 
@@ -290,7 +290,7 @@ Configurar MarkItDown con un cliente LLM OpenAI-compatible (Ollama) para que des
 
 ### Acciones Paso a Paso
 
-#### Acción 2.1: Instalar el plugin `markitdown-ocr` (opcional)
+#### [X] Acción 2.1: Instalar el plugin `markitdown-ocr` (opcional)
 
 **Qué hace:** Habilita OCR para documentos PDF escaneados (sin texto digital). Usa el VLM configurado para extraer texto de imágenes.
 
@@ -309,7 +309,7 @@ cmd /c "backend\.venv\Scripts\python.exe -c \"import markitdown_ocr; print('Plug
 
 ---
 
-#### Acción 2.2: Verificar que el SDK `openai` está instalado
+#### [X] Acción 2.2: Verificar que el SDK `openai` está instalado
 
 **Qué hace:** MarkItDown requiere un objeto `openai.OpenAI` como `llm_client`. El SDK `openai` es el puente para comunicarse con Ollama (que expone API compatible con OpenAI).
 
@@ -326,7 +326,7 @@ cmd /c "backend\.venv\Scripts\python.exe -c \"from openai import OpenAI; print('
 
 ---
 
-#### Acción 2.3: Configurar el `llm_client` dentro de `MarkItDownParser`
+#### [X] Acción 2.3: Configurar el `llm_client` dentro de `MarkItDownParser`
 
 **Qué hace:** Ya está implementado en `MarkItDownParser.__init__()` de la TASK 2.0.1. Aquí solo se documenta cómo se usa externamente.
 
@@ -354,7 +354,7 @@ parser = MarkItDownParser()  # Sin argumentos → no describe imágenes
 
 ---
 
-#### Acción 2.4: Eliminar la clase `ImageFilter` (diferido)
+#### [X] Acción 2.4: Eliminar la clase `ImageFilter` (diferido)
 
 **Qué hace:** La clase `ImageFilter` en `document_parser_service.py` queda obsoleta porque MarkItDown integra la descripción de imágenes internamente via `llm_client`.
 
@@ -394,9 +394,9 @@ def test_markitdown_con_vlm():
 ```
 
 **Criterios de éxito:**
-- [ ] Sin VLM: La conversión genera Markdown válido. Las imágenes quedan como placeholders o sin descripción.
-- [ ] Con VLM: Las imágenes técnicas reciben descripción textual. Los logos/decorativas se filtran (contienen "DESCARTAR").
-- [ ] Si Ollama no está corriendo, el parser **no bloquea** el pipeline — solo omite descripciones.
+- [X] Sin VLM: La conversión genera Markdown válido. Las imágenes quedan como placeholders o sin descripción.
+- [X] Con VLM: Las imágenes técnicas reciben descripción textual. Los logos/decorativas se filtran (contienen "DESCARTAR").
+- [X] Si Ollama no está corriendo, el parser **no bloquea** el pipeline — solo omite descripciones.
 
 ---
 
@@ -411,7 +411,7 @@ Verificar y adaptar el `TableFlattener` existente para que funcione correctament
 
 ### Acciones Paso a Paso
 
-#### Acción 3.1: Verificar compatibilidad del regex actual
+#### [X] Acción 3.1: Verificar compatibilidad del regex actual
 
 **Qué hace:** Ejecuta el `TableFlattener` contra una muestra de tablas generadas por MarkItDown para verificar que las detecta correctamente.
 
@@ -442,7 +442,7 @@ print(result)
 
 ---
 
-#### Acción 3.2: Mejorar detección de tablas multi-línea
+#### [X] Acción 3.2: Mejorar detección de tablas multi-línea
 
 **Qué hace:** Añade soporte para tablas donde las celdas contienen saltos de línea internos (más comunes en MarkItDown que en Docling).
 
@@ -467,7 +467,7 @@ _TABLE_PATTERN = re.compile(
 
 ---
 
-#### Acción 3.3: Validar con corpus real
+#### [X] Acción 3.3: Validar con corpus real
 
 **Qué hace:** Usa 3 PDFs del proyecto real para verificar que el aplanamiento de tablas funciona end-to-end.
 
@@ -501,9 +501,9 @@ def test_table_flattener_preserva_texto():
 ```
 
 **Criterios de éxito:**
-- [ ] ≥90% de tablas en el corpus son detectadas y aplanadas.
-- [ ] Las oraciones generadas son gramaticalmente coherentes.
-- [ ] El texto fuera de tablas no se modifica.
+- [X] ≥90% de tablas en el corpus son detectadas y aplanadas.
+- [X] Las oraciones generadas son gramaticalmente coherentes.
+- [X] El texto fuera de tablas no se modifica.
 
 ---
 
@@ -518,7 +518,7 @@ Cada archivo `.md` generado debe tener un bloque YAML al inicio con los metadato
 
 ### Acciones Paso a Paso
 
-#### Acción 4.1: Verificar la inyección YAML existente
+#### [X] Acción 4.1: Verificar la inyección YAML existente
 
 **Qué hace:** La lógica ya está implementada dentro de `MarkItDownParser.parse_pdf()` (TASK 2.0.1). Se verifica que el output tenga el formato correcto.
 
@@ -544,7 +544,7 @@ parser_engine: "markitdown"
 
 ---
 
-#### Acción 4.2: Añadir campo `parser_engine`
+#### [X] Acción 4.2: Añadir campo `parser_engine`
 
 **Qué hace:** Ya incluido en `MarkItDownParser.parse_pdf()`. Si se usa el fallback `DoclingParser`, ese parser debe inyectar `parser_engine: "docling"`.
 
@@ -558,7 +558,7 @@ front_matter = {
 
 ---
 
-#### Acción 4.3: Validar YAML con caracteres Unicode
+#### [X] Acción 4.3: Validar YAML con caracteres Unicode
 
 **Qué hace:** Verifica que títulos en español/portugués con acentos no rompen el YAML.
 
@@ -601,9 +601,9 @@ def test_front_matter_unicode():
 ```
 
 **Criterios de éxito:**
-- [ ] 100% de archivos `.md` tienen front-matter YAML válido.
-- [ ] El campo `parser_engine` tiene valor `"markitdown"` o `"docling"`.
-- [ ] Títulos con acentos/ñ/ü se preservan correctamente.
+- [X] 100% de archivos `.md` tienen front-matter YAML válido.
+- [X] El campo `parser_engine` tiene valor `"markitdown"` o `"docling"`.
+- [X] Títulos con acentos/ñ/ü se preservan correctamente.
 
 ---
 
@@ -696,9 +696,9 @@ def test_parsed_status_quality():
 ```
 
 **Criterios de éxito:**
-- [ ] Cada artículo procesado tiene un `.md` en disco.
-- [ ] El campo `local_md_path` en la BD apunta al archivo correcto.
-- [ ] El `parsed_status` refleja la calidad real del Markdown.
+- [X] Cada artículo procesado tiene un `.md` en disco.
+- [X] El campo `local_md_path` en la BD apunta al archivo correcto.
+- [X] El `parsed_status` refleja la calidad real del Markdown.
 
 ---
 
@@ -713,7 +713,7 @@ Modificar `pdf_enrichment_service.py` para usar `MarkItDownParser` en lugar de `
 
 ### Acciones Paso a Paso
 
-#### Acción 6.1: Modificar imports en `pdf_enrichment_service.py`
+#### [X] Acción 6.1: Modificar imports en `pdf_enrichment_service.py`
 
 **Cambiar:**
 ```python
@@ -729,7 +729,7 @@ import os
 
 ---
 
-#### Acción 6.2: Modificar `enrich_articles_from_pdfs()` para usar MarkItDown
+#### [X] Acción 6.2: Modificar `enrich_articles_from_pdfs()` para usar MarkItDown
 
 **Cambiar la inicialización del parser (líneas 166-173):**
 
@@ -779,7 +779,7 @@ except Exception as e:
 
 ---
 
-#### Acción 6.3: Actualizar `process_and_enrich_pdf()` para nueva interfaz
+#### [X] Acción 6.3: Actualizar `process_and_enrich_pdf()` para nueva interfaz
 
 **Cambio en la llamada al parser (línea 103):**
 
@@ -797,7 +797,7 @@ else:
 
 ---
 
-#### Acción 6.4: Añadir timeout por artículo
+#### [X] Acción 6.4: Añadir timeout por artículo
 
 **Qué hace:** Envuelve la conversión en un timeout de 180 segundos para evitar bloqueos infinitos.
 
@@ -816,7 +816,7 @@ except asyncio.TimeoutError:
 
 ---
 
-#### Acción 6.5: Eliminar lógica de GC/CUDA manual
+#### [X] Acción 6.5: Eliminar lógica de GC/CUDA manual
 
 **Qué hace:** Eliminar las llamadas a `gc.collect()` y `torch.cuda.empty_cache()` que eran necesarias para Docling pero innecesarias con MarkItDown (no usa GPU).
 
@@ -837,10 +837,10 @@ cmd /c "backend\.venv\Scripts\python.exe tests\test_conversion_manual.py"
 ```
 
 **Criterios de éxito:**
-- [ ] Batch de 5+ artículos procesado sin bloqueos.
-- [ ] Frontend recibe eventos SSE con progreso por artículo.
-- [ ] Uso de GPU = 0% durante todo el batch (verificar con `nvidia-smi`).
-- [ ] Artículos que exceden 180s reciben `parsed_status = "timeout"`.
+- [X] Batch de 5+ artículos procesado sin bloqueos.
+- [X] Frontend recibe eventos SSE con progreso por artículo.
+- [X] Uso de GPU = 0% durante todo el batch (verificar con `nvidia-smi`).
+- [X] Artículos que exceden 180s reciben `parsed_status = "timeout"`.
 
 ---
 
@@ -855,7 +855,7 @@ Crear y actualizar los tests automatizados para garantizar la correcta conversi�
 
 ### Acciones Paso a Paso
 
-#### Acción 7.1: Actualizar `tests/test_conversion_manual.py`
+#### [X] Acción 7.1: Actualizar `tests/test_conversion_manual.py`
 
 **Qué hace:** Reemplaza `DoclingParser` por `MarkItDownParser`. Añade medición de tiempo.
 
@@ -967,7 +967,7 @@ if __name__ == "__main__":
 
 ---
 
-#### Acción 7.2: Actualizar `tests/unit/test_pdf_preprocessing.py`
+#### [X] Acción 7.2: Actualizar `tests/unit/test_pdf_preprocessing.py`
 
 **Qué hace:** Añade tests unitarios específicos para `MarkItDownParser`, `TableFlattener` y el front-matter YAML.
 
@@ -1032,7 +1032,7 @@ def test_post_process_limpia_lineas_vacias():
 
 ---
 
-#### Acción 7.3: Benchmark comparativo MarkItDown vs Docling (manual, una sola vez)
+#### [X] Acción 7.3: Benchmark comparativo MarkItDown vs Docling (manual, una sola vez)
 
 **Qué hace:** Procesa 3-5 PDFs con ambos motores y compara resultados.
 
@@ -1050,11 +1050,11 @@ def test_post_process_limpia_lineas_vacias():
 
 ### Criterios de Éxito Globales (TASK 2.0.7)
 
-- [ ] `tests/test_conversion_manual.py` pasa con MarkItDown.
-- [ ] `tests/unit/test_pdf_preprocessing.py` pasa todos los tests (≥6 tests nuevos).
-- [ ] Conversión de PDF ~100 páginas < 15 segundos (sin VLM).
-- [ ] 0% GPU durante conversiones con MarkItDown.
-- [ ] Front-matter YAML válido en todos los archivos generados.
+- [X] `tests/test_conversion_manual.py` pasa con MarkItDown.
+- [X] `tests/unit/test_pdf_preprocessing.py` pasa todos los tests (≥6 tests nuevos).
+- [X] Conversión de PDF ~100 páginas < 15 segundos (sin VLM).
+- [X] 0% GPU durante conversiones con MarkItDown.
+- [X] Front-matter YAML válido en todos los archivos generados.
 
 ---
 

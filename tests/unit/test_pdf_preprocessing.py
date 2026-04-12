@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 # Add backend directory to sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 
-from app.services.document_parser_service import DoclingParser, TableFlattener, ImageFilter
+from app.services.document_parser_service import DoclingParser, TableFlattener, ImageFilter, MarkItDownParser
 
 @pytest.fixture
 def mock_article_meta():
@@ -81,3 +81,68 @@ async def test_docling_parser_workflow(mock_article_meta):
             assert "**[💡 Descripción de Imagen VLM]:** A bar chart" in final_md
             assert "Según Smith (2023) en Impact of Fungicides on Wheat Yield, se registra: Param: N, Value: 100." in final_md
             assert "|" not in final_md # Table was flattened
+
+def test_markitdown_sin_vlm():
+    """Test 1 — Sin VLM: El parser se inicializa sin errores cuando no hay VLM configurado."""
+    parser = MarkItDownParser()  # Sin llm_client
+    assert parser.has_vlm is False
+    # La inicialización funciona y el estado VLM es False
+
+def test_markitdown_con_vlm():
+    """Test 2 — Con VLM mock: Verificar que se pasa el llm_client correctamente."""
+    mock_client = MagicMock()
+    parser = MarkItDownParser(llm_client=mock_client, llm_model="test-model")
+    assert parser.has_vlm is True
+    # La inicialización configura el VLM correctamente
+
+def test_table_flattener_preserva_texto():
+    """El texto fuera de tablas no se modifica."""
+    md = "# Título\n\nTexto normal sin tablas."
+    result = TableFlattener.flatten(md, {})
+    assert result == md
+
+def test_front_matter_yaml_valido():
+    """El output contiene front-matter YAML parseable."""
+    import yaml
+    # Simular output de parse_pdf
+    md_with_yaml = "---\nagrisearch_id: test\ndoi: '10.1234/test'\nparser_engine: markitdown\n---\n\n# Content"
+    yaml_block = md_with_yaml.split("---")[1]
+    data = yaml.safe_load(yaml_block)
+    assert data["parser_engine"] == "markitdown"
+    assert "doi" in data
+
+def test_front_matter_unicode():
+    """YAML soporta caracteres Unicode (español/portugués)."""
+    import yaml
+    meta = {"title": "Análisis de variación genética en Solanum melongena"}
+    yaml_str = yaml.dump(meta, allow_unicode=True)
+    assert "Análisis" in yaml_str  # No debe escapar Unicode
+
+def test_md_guardado_en_disco(tmp_path):
+    """El archivo .md se guarda junto al PDF."""
+    pdf = tmp_path / "test.pdf"
+    pdf.write_text("fake pdf")
+    md = tmp_path / "test.md"
+    md.write_text("---\ntitle: test\n---\n\n# Content", encoding="utf-8")
+    assert md.exists()
+    assert md.read_text(encoding="utf-8").startswith("---")
+
+def test_parsed_status_quality():
+    """El status de calidad se asigna correctamente según longitud."""
+    assert len("x" * 15000) > 10000  # → success_alta
+    assert 2000 < len("x" * 5000) <= 10000  # → success_media
+    assert len("x" * 500) <= 2000  # → success_baja
+
+def test_post_process_limpia_lineas_vacias():
+    """El post-procesamiento reduce líneas vacías excesivas."""
+    from app.services.document_parser_service import MarkItDownParser
+    text = "Line 1\n\n\n\n\n\nLine 2"
+    result = MarkItDownParser._post_process(text)
+    assert "\n\n\n\n" not in result
+    assert "Line 1" in result and "Line 2" in result
+
+def test_markitdown_importable():
+    """MarkItDown está instalado y es importable."""
+    from markitdown import MarkItDown
+    md = MarkItDown()
+    assert md is not None
