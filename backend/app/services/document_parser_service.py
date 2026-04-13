@@ -345,6 +345,106 @@ except ImportError:
     MARKITDOWN_AVAILABLE = False
 
 
+class OllamaVLMWrapper:
+    """
+    Puente adaptador para conectar MarkItDown con modelos multimodales locales en Ollama.
+    Garantiza que el payload de imagen y el prompt sean 100% compatibles con gemma4:26b.
+    """
+    class Completions:
+        def __init__(self, parent_wrapper):
+            self.parent_wrapper = parent_wrapper
+            self.base_url = parent_wrapper.base_url
+
+        def create(self, **kwargs):
+            """Redirige la petición a la API nativa de Ollama para mayor robustez."""
+            import requests
+            import json
+            import base64
+
+            model = kwargs.get("model", "gemma4:26b")
+            messages = kwargs.get("messages", [])
+            temperature = kwargs.get("temperature", 0.0)
+            
+            # Formatear mensajes para la API nativa de Ollama
+            ollama_messages = []
+            ollama_images = []
+
+            for msg in messages:
+                role = msg.get("role")
+                content = msg.get("content")
+                
+                text_content = ""
+                if isinstance(content, list):
+                    for part in content:
+                        if part.get("type") == "text":
+                            text_content += part.get("text", "")
+                        elif part.get("type") == "image_url":
+                            url = part.get("image_url", {}).get("url", "")
+                            # Extraer base64 puro (sin prefijo)
+                            if url.startswith("data:image"):
+                                if "," in url:
+                                    ollama_images.append(url.split(",")[1])
+                                else:
+                                    ollama_images.append(url)
+                            else:
+                                ollama_images.append(url)
+                else:
+                    text_content = str(content)
+
+                msg_obj = {"role": role, "content": text_content}
+                if ollama_images and role == "user":
+                    msg_obj["images"] = ollama_images
+                
+                ollama_messages.append(msg_obj)
+
+            # Preparar payload nativo
+            payload = {
+                "model": model,
+                "messages": ollama_messages,
+                "stream": False,
+                "options": {
+                    "temperature": temperature
+                }
+            }
+
+            logger.info(f"Enviando petición VLM NATIVA a Ollama: {model} ({len(ollama_images)} imágenes)")
+            
+            base_url = self.parent_wrapper.base_url
+            endpoint = base_url.replace("/v1", "/api/chat") if "/v1" in base_url else f"{base_url}/api/chat"
+            
+            try:
+                response = requests.post(endpoint, json=payload, timeout=180)
+                response.raise_for_status()
+                data = response.json()
+                
+                # Mockear la respuesta al formato de OpenAI que espera MarkItDown
+                class MockMessage:
+                    def __init__(self, content):
+                        self.content = content
+                
+                class MockChoice:
+                    def __init__(self, content):
+                        self.message = MockMessage(content)
+                
+                class MockResponse:
+                    def __init__(self, content):
+                        self.choices = [MockChoice(content)]
+                
+                return MockResponse(data.get("message", {}).get("content", ""))
+                
+            except Exception as e:
+                logger.error(f"Error en el puente NATIVO Ollama: {e}")
+                raise
+
+    class Chat:
+        def __init__(self, parent_wrapper):
+            self.completions = parent_wrapper.Completions(parent_wrapper)
+
+    def __init__(self, base_url: str = "http://localhost:11434", api_key: str = "ollama"):
+        self.base_url = base_url
+        self.chat = self.Chat(self)
+
+
 class MarkItDownParser:
     """
     Convierte PDFs a Markdown estructurado usando Microsoft MarkItDown.
@@ -360,9 +460,9 @@ class MarkItDownParser:
         Inicializa el parser.
         
         Args:
-            llm_client: Cliente OpenAI-compatible (openai.OpenAI). Opcional.
-                        Si se proporciona, MarkItDown describirá imágenes automáticamente.
-            llm_model:  Nombre del modelo VLM (ej: "llama3.2-vision", "gpt-4o").
+            llm_client: Cliente OpenAI-compatible (openai.OpenAI o OllamaVLMWrapper).
+                        Opcional. Si se proporciona, MarkItDown describirá imágenes automáticamente.
+            llm_model:  Nombre del modelo VLM (ej: "gemma4:26b", "llama3.2-vision").
         """
         if not MARKITDOWN_AVAILABLE:
             raise ImportError(
@@ -373,19 +473,26 @@ class MarkItDownParser:
         self.has_vlm = False
         
         if llm_client and llm_model:
+            # Si se pasa una URL de Ollama pero no el cliente wrapper, lo creamos automáticamente
+            if isinstance(llm_client, str) and "http" in llm_client:
+                logger.info(f"Detectada URL de Ollama. Inicializando OllamaVLMWrapper para {llm_model}...")
+                llm_client = OllamaVLMWrapper(base_url=llm_client)
+
             init_kwargs["llm_client"] = llm_client
             init_kwargs["llm_model"] = llm_model
             init_kwargs["llm_prompt"] = (
-                "Describe esta imagen científica de un artículo de investigación "
-                "en 2-3 oraciones concisas en español. Incluye qué tipo de gráfico "
-                "o figura es y qué variables o datos muestra. "
-                "Si la imagen es un logo, publicidad, decorativa o ilegible, "
-                "responde ÚNICAMENTE con la palabra: DESCARTAR."
+                "Eres un analista experto en extracción de datos científicos. "
+                "Describe esta imagen de un artículo de investigación en JSON o texto plano: "
+                "1. Tipo de figura (gráfico, tabla, foto, diagrama). "
+                "2. Variables principales. "
+                "3. Hallazgo clave. "
+                "Sé directo y conciso en español. "
+                "Si la imagen es irrelevante, responde solo DESCARTAR."
             )
             # Habilitar plugins (necesario para markitdown-ocr si está instalado)
             init_kwargs["enable_plugins"] = True
             self.has_vlm = True
-            logger.info(f"MarkItDown inicializado con VLM: {llm_model}")
+            logger.info(f"MarkItDown inicializado con VLM: {llm_model} vía Puente Adaptativo")
         
         self.md = _MarkItDown(**init_kwargs)
         logger.info(
@@ -420,6 +527,9 @@ class MarkItDownParser:
         Raises:
             FileNotFoundError: Si el PDF no existe en la ruta indicada.
         """
+        if isinstance(pdf_path, str):
+            pdf_path = Path(pdf_path)
+
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
 

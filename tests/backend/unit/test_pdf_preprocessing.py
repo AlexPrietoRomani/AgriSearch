@@ -141,8 +141,63 @@ def test_post_process_limpia_lineas_vacias():
     assert "\n\n\n\n" not in result
     assert "Line 1" in result and "Line 2" in result
 
+def test_generate_sample_unit_output(mock_article_meta):
+    """Genera un archivo MD de muestra en la carpeta de outputs de la unidad para inspección."""
+    parser = MarkItDownParser()
+    # Simular un Markdown enriquecido (mismo formato que sacaría el parser real)
+    sample_content = (
+        "---\n"
+        "agrisearch_id: test-unit-sample\n"
+        "title: Sample Research Article\n"
+        "parser_engine: markitdown\n"
+        "---\n\n"
+        "# Abstract\n"
+        "This is a sample output to verify the unit test pathing.\n\n"
+        "## Results\n"
+        "![Figure 1](figure1.png)\n"
+        "> **[💡 Descripción de Imagen VLM]:** Gráfico de barras mostrando el crecimiento de trigo.\n"
+    )
+    
+    output_dir = Path(__file__).parent / "outputs"
+    output_dir.mkdir(exist_ok=True)
+    output_file = output_dir / "sample_unit_test.md"
+    output_file.write_text(sample_content, encoding="utf-8")
+    
+    assert output_file.exists()
+
 def test_markitdown_importable():
     """MarkItDown está instalado y es importable."""
     from markitdown import MarkItDown
     md = MarkItDown()
     assert md is not None
+
+def test_ollama_vlm_wrapper_format():
+    """TASK 2.0.8: Verifica que el wrapper ajusta los argumentos (vía Mock de requests)."""
+    from app.services.document_parser_service import OllamaVLMWrapper
+    
+    with patch("requests.post") as mock_post:
+        # Mock de respuesta exitosa de Ollama
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"message": {"role": "assistant", "content": "descripción de prueba"}}
+        mock_post.return_value = mock_response
+        
+        wrapper = OllamaVLMWrapper(base_url="http://localhost:11434/v1")
+        
+        # Simular llamada de MarkItDown
+        res = wrapper.chat.completions.create(
+            model="gemma4:26b",
+            messages=[{"role": "user", "content": "test"}],
+            temperature=0.5
+        )
+        
+        # Verificar que se llamó a requests.post con el endpoint /api/chat y payload convertido
+        args, kwargs = mock_post.call_args
+        assert "/api/chat" in args[0]
+        payload = kwargs["json"]
+        
+        assert payload["model"] == "gemma4:26b"
+        assert payload["options"]["temperature"] == 0.5
+        assert payload["messages"][0]["role"] == "user"
+        assert payload["messages"][0]["content"] == "test"
+        assert res.choices[0].message.content == "descripción de prueba"
