@@ -196,21 +196,11 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
         
         if not use_docling:
             from app.services.document_parser_service import MarkItDownParser
-            # Configurar VLM via OpenAI-compatible client (Ollama)
-            llm_client = None
-            if project.llm_model:
-                try:
-                    from openai import OpenAI
-                    llm_client = OpenAI(
-                        base_url="http://localhost:11434/v1",
-                        api_key="ollama"
-                    )
-                except Exception as vlm_err:
-                    logger.warning(f"No se pudo crear llm_client, continuando sin VLM: {vlm_err}")
-            
-            parser = MarkItDownParser(llm_client=llm_client, llm_model=project.llm_model)
+            # El parser ahora detecta URLs de Ollama y usa OllamaVLMWrapper automáticamente
+            ollama_url = "http://localhost:11434/v1"
+            parser = MarkItDownParser(llm_client=ollama_url, llm_model=project.llm_model)
             vlm = None  # MarkItDown maneja VLM internamente
-            logger.info(f"Usando MarkItDownParser (CPU) | VLM: {'activo' if llm_client else 'inactivo'}")
+            logger.info(f"Usando MarkItDownParser (CPU) | VLM: {'activo' if project.llm_model else 'inactivo'}")
     except Exception as e:
         logger.error(f"Could not initialize Services: {e}")
         return {"error": str(e)}

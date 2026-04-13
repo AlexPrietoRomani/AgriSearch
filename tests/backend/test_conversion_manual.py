@@ -77,7 +77,9 @@ async def test_single_pdf_conversion():
             print(f"📝 Longitud del Markdown generado: {len(final_md)} caracteres")
             
             # Guardar resultado temporal
-            output_test = Path(__file__).parent / "test_output.md"
+            output_dir = Path(__file__).parent / "outputs"
+            output_dir.mkdir(exist_ok=True)
+            output_test = output_dir / "test_output.md"
             output_test.write_text(final_md, encoding="utf-8")
             print(f"💾 Resultado guardado en: {output_test}")
             
