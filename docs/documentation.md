@@ -43,7 +43,7 @@ graph TD
     Start([Creación de Proyecto]):::core --> QueryGen[Extracción de Conceptos PICO <br>via LLM Local]:::llm
     
     %% 2. Búsqueda
-    subgraph Fase 1: Adquisición de Conocimiento
+    subgraph fase1 [Fase 1: Adquisición de Conocimiento]
         QueryGen --> QueryAdapt[Adaptación Determinista de Queries]:::core
         QueryAdapt --> SearchAPIs[Búsqueda en 9 Motores <br> ArXiv, OpenAlex, etc.]:::db
         SearchAPIs --> Dedup{Deduplicación UUID}:::core
@@ -53,14 +53,14 @@ graph TD
     Dedup --> PDFDownload[Descarga de PDFs Open Access]:::core
     
     %% 4. Conversiones a md y resúmenes
-    subgraph Fase 2: Preprocesamiento y Enriquecimiento
+    subgraph fase2 [Fase 2: Preprocesamiento y Enriquecimiento]
         PDFDownload --> Parser[Conversión de PDF a Markdown]:::core
         Parser -->|MarkItDown + VLM Local| VLM[Descripción VLM de Figuras e Imágenes]:::llm
         VLM --> Translation[Traducción Automática de Abstracts]:::llm
     end
     
     %% 5 y 6. Cribado PRISMA
-    subgraph Fase 3: Cribado Académico (PRISMA)
+    subgraph fase3 [Fase 3: Cribado Académico PRISMA]
         Translation --> Session[Inicialización de Sesión Screening]:::core
         Session --> AIAssist[Screening con Ayuda LLM <br> Sugerencias de Relevancia PICO]:::llm
         Session --> HumanDecision[Cribado Interactivo Humano]:::core
@@ -69,7 +69,7 @@ graph TD
     end
     
     %% 7 y 8. Análisis (RAG y Grafos)
-    subgraph Fase 4: Análisis Deep Dive
+    subgraph fase4 [Fase 4: Análisis Deep Dive]
         Included --> Vectorization[Anidado y Vectorización Nomic <br> Qdrant DB]:::db
         Vectorization --> RAG[Chat con RAG Multi-Documento <br> Citación formato APA]:::llm
         
@@ -78,6 +78,47 @@ graph TD
     
     %% Leyendas
     note1[En proceso de creación]:::inprogress -.-> Graphs
+```
+
+#### Flujo de Búsqueda (Diagrama de Secuencia)
+
+Detalle específico sobre cómo se ejecutan las llamadas a las APIs al crear un proyecto y hacer el request concurrente.
+
+```mermaid
+sequenceDiagram
+    actor User as Usuario
+    participant FE as Frontend
+    participant API as FastAPI
+    participant LLM as LLM (Ollama)
+    participant QB as query_builder.py
+    participant OA as OpenAlex
+    participant SS as Semantic Scholar
+    participant AX as ArXiv
+    participant DB as SQLite
+
+    User->>FE: Describe tema en lenguaje natural
+    FE->>API: POST /build-query
+    API->>LLM: Extrae conceptos + sinónimos + PICO
+    LLM-->>API: {concepts, synonyms, pico}
+    API-->>FE: Conceptos para revisión del usuario
+    User->>FE: Aprueba/edita query
+    FE->>API: POST /execute {query, databases}
+    API->>QB: build_all_queries(concepts, databases)
+    QB-->>API: {openalex: "...", ss: "...", arxiv: "..."}
+    par OpenAlex
+        API->>OA: GET /works?search=...
+    and Semantic Scholar
+        API->>SS: GET /paper/search?query=...
+    and ArXiv
+        API->>AX: GET /api/query?search_query=...
+    end
+    OA-->>API: resultados
+    SS-->>API: resultados
+    AX-->>API: resultados
+    API->>API: Merge + Dedup (DOI + fuzzy title)
+    API->>DB: INSERT artículos nuevos
+    API-->>FE: Resultados + adapted_queries
+    FE->>User: Tabla de artículos filtrados
 ```
 
 #### Archivos clave del flujo
