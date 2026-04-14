@@ -229,8 +229,10 @@ export async function uploadPdf(articleId: string, file: File): Promise<Article>
   return res.json();
 }
 
-export async function reparsePdfs(projectId: string): Promise<{ status: string; stats: any }> {
-  return request(`/search/reparse/${projectId}`, { method: "POST" });
+export async function reparsePdfs(projectId: string, articleId?: string): Promise<{ status: string; stats: any }> {
+  let url = `/search/reparse/${projectId}`;
+  if (articleId) url += `?article_id=${articleId}`;
+  return request(url, { method: "POST" });
 }
 
 export async function cancelReparse(projectId: string): Promise<{ status: string }> {

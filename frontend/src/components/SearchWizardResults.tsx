@@ -37,11 +37,11 @@ export default function SearchWizardResults({
     const [isReparsing, setIsReparsing] = useState(false);
     const [showProgressModal, setShowProgressModal] = useState(false);
 
-    const handleReparse = async () => {
+    const handleReparse = async (articleId?: string) => {
         setIsReparsing(true);
         setShowProgressModal(true);
         try {
-            await reparsePdfs(projectId);
+            await reparsePdfs(projectId, typeof articleId === "string" ? articleId : undefined);
         } catch (e: any) {
             console.error(e);
         } finally {
@@ -243,7 +243,7 @@ export default function SearchWizardResults({
                     )}
                 </button>
                 <button
-                    onClick={handleReparse}
+                    onClick={() => handleReparse()}
                     disabled={isReparsing || loading}
                     className="px-5 py-2 bg-gradient-to-r from-purple-500 to-fuchsia-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-purple-500/25 hover:scale-[1.02] disabled:opacity-50 transition-all flex items-center gap-2"
                 >
@@ -372,7 +372,17 @@ export default function SearchWizardResults({
                                                 <span className="text-slate-600 text-xs">—</span>
                                             )}
                                             {a.download_status === "success" ? (
-                                                <span className="text-[10px] text-emerald-500/60 font-medium whitespace-nowrap">Local PDF ✅</span>
+                                                <div className="flex flex-col items-end gap-1.5">
+                                                    <span className="text-[10px] text-emerald-500/60 font-medium whitespace-nowrap">Local PDF ✅</span>
+                                                    <button
+                                                        onClick={() => handleReparse(a.id)}
+                                                        disabled={isReparsing}
+                                                        className="text-[10px] whitespace-nowrap text-purple-400 hover:text-purple-300 font-bold border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 px-2 py-0.5 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        title="Volver a convertir este PDF a Markdown individualmente"
+                                                    >
+                                                        🔄 Rehacer MD
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <div className="relative">
                                                     <input

@@ -260,6 +260,7 @@ async def delete_search_endpoint(
 async def reparse_pdfs(
     project_id: str,
     background_tasks: BackgroundTasks,
+    article_id: str | None = Query(None, description="ID del artículo específico a reparsar (opcional)"),
 ) -> dict:
     """Forces all previously downloaded PDFs in the project to be re-parsed to MD via Background Task."""
     from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
@@ -273,7 +274,10 @@ async def reparse_pdfs(
         async with async_session_factory() as session:
             try:
                 await publish_event(project_id, {"type": "reparse_start", "msg": "Iniciando proceso de conversión de PDFs a Markdown..."})
-                stats = await enrich_articles_from_pdfs(session, project_id, force_reparse=True)
+                
+                # Pasar article_ids si viene un artículo específico
+                art_ids = [article_id] if article_id else None
+                stats = await enrich_articles_from_pdfs(session, project_id, article_ids=art_ids, force_reparse=True)
                 await publish_event(project_id, {"type": "reparse_end", "msg": "¡Proceso terminado!", "stats": stats})
             except Exception as e:
                 logger.error(f"Background reparse failed for {project_id}: {e}")

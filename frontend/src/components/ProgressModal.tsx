@@ -24,6 +24,7 @@ export default function ProgressModal({ isOpen, projectId, onClose, onStop, titl
     const [status, setStatus] = useState<"connecting" | "processing" | "completed" | "error" | "stopped">("connecting");
     const [message, setMessage] = useState("Conectando...");
     const [subMessage, setSubMessage] = useState("");
+    const [isStopping, setIsStopping] = useState(false);
     const [currentArticle, setCurrentArticle] = useState("");
     const [progress, setProgress] = useState(0);
     const [counts, setCounts] = useState({ current: 0, total: 0 });
@@ -36,6 +37,7 @@ export default function ProgressModal({ isOpen, projectId, onClose, onStop, titl
         setStatus("connecting");
         setMessage("Estableciendo canal de eventos...");
         setSubMessage("");
+        setIsStopping(false);
         setCurrentArticle("");
         setProgress(0);
         setCounts({ current: 0, total: 0 });
@@ -77,8 +79,13 @@ export default function ProgressModal({ isOpen, projectId, onClose, onStop, titl
                         eventSource.close();
                         break;
                     case "error":
-                        setStatus("error");
-                        setMessage(data.msg || "Ocurrió un error en el servidor.");
+                        if (data.msg === "Proceso detenido por el usuario.") {
+                            setStatus("stopped");
+                            setMessage("El proceso fue detenido por el usuario.");
+                        } else {
+                            setStatus("error");
+                            setMessage(data.msg || "Ocurrió un error en el servidor.");
+                        }
                         eventSource.close();
                         break;
                 }
@@ -170,10 +177,18 @@ export default function ProgressModal({ isOpen, projectId, onClose, onStop, titl
                         <div className="pt-4 flex justify-between gap-4">
                             {status === "processing" && onStop && (
                                 <button
-                                    onClick={onStop}
-                                    className="px-6 py-3 rounded-xl border border-rose-500/50 text-rose-400 font-bold hover:bg-rose-500/10 transition-colors"
+                                    onClick={() => {
+                                        setIsStopping(true);
+                                        onStop();
+                                    }}
+                                    disabled={isStopping}
+                                    className={`px-6 py-3 rounded-xl border font-bold transition-all ${
+                                        isStopping 
+                                            ? "border-amber-500/50 text-amber-500 bg-amber-500/10 cursor-not-allowed"
+                                            : "border-rose-500/50 text-rose-400 hover:bg-rose-500/10"
+                                    }`}
                                 >
-                                    Detener Proceso
+                                    {isStopping ? "Deteniendo (esperando fin de archivo actual)..." : "Detener Proceso"}
                                 </button>
                             )}
                             <button
