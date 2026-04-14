@@ -6,6 +6,7 @@ Uses Qdrant for persistence and LiteLLM/Ollama for embeddings.
 """
 
 import logging
+import re
 from typing import List, Dict, Any, Optional
 import uuid
 
@@ -55,7 +56,7 @@ class VectorService:
         collection_name = self._get_collection_name(project_id)
         try:
             self.client.get_collection(collection_name)
-        except UnexpectedResponse as e:
+        except Exception as e:
             if "not found" in str(e).lower():
                 logger.info(f"Creating Qdrant collection: {collection_name}")
                 self.client.create_collection(
@@ -65,6 +66,8 @@ class VectorService:
                         distance=models.Distance.COSINE
                     )
                 )
+            else:
+                raise
 
     def chunk_text(self, text: str, chunk_size: int = 1500, overlap: int = 300) -> List[Dict[str, Any]]:
         """
