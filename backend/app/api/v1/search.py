@@ -268,8 +268,8 @@ async def reparse_pdfs(
     import asyncio
 
     async def run_reparse():
-        # Give SSE time to connect
-        await asyncio.sleep(0.5)
+        # Give SSE time to connect (increased to 1.5s to avoid missing the 'reparse_start' event if frontend routing/render is delayed)
+        await asyncio.sleep(1.5)
         async with async_session_factory() as session:
             try:
                 await publish_event(project_id, {"type": "reparse_start", "msg": "Iniciando proceso de conversión de PDFs a Markdown..."})

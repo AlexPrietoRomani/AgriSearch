@@ -35,6 +35,10 @@ async def stream_events(project_id: str, request: Request):
         
         logger.info(f"New SSE client for project {project_id}")
         
+        # Enviar un evento vacío o comentario inicial INMEDIATAMENTE para forzar el envío de los Headers HTTP
+        # Esto previene que el navegador (EventSource) desconecte al no recibir el estatus 200 inicial
+        yield ": start\n\n"
+        
         try:
             while True:
                 if await request.is_disconnected():
