@@ -28,43 +28,56 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
   - En la interfaz gráfica del modal de creación de proyectos, se autocompleta la lista de modelos separándolos según sus "Familias", e identificando proactivamente si un modelo tiene facultades **Multimodales** (VLM - ej. `gemma4:e4b`) las cuales son altamente requeridas para extraer información desde imágenes presentes en los PDFs descargados.
 - **Dashboard Integrado:** La portada de cada proyecto (`ProjectDashboard.tsx`) amalgama eficientemente tanto el **Historial de Búsquedas** como el **Historial de Revisiones (Screening)**, creando un ecosistema completo para monitorear el progreso del cribado PRISMA en una sola vista central. Asimismo se han refactorizado las asignaciones de estado (`useState`) iniciales en base a parámetros URl para eliminar destellos visuales o pestañeos transaccionales del renderizado (Flicker Fixes).
 
-#### Flujo de Búsqueda (Diagrama de Secuencia)
+#### Flujo de Ejecución Global del Sistema (Arquitectura)
+
+A continuación se detalla el ciclo de vida completo de un proyecto dentro de AgriSearch, desde su concepción hasta el análisis avanzado de artículos.
 
 ```mermaid
-sequenceDiagram
-    actor User as Usuario
-    participant FE as Frontend
-    participant API as FastAPI
-    participant LLM as LLM (Ollama)
-    participant QB as query_builder.py
-    participant OA as OpenAlex
-    participant SS as Semantic Scholar
-    participant AX as ArXiv
-    participant DB as SQLite
+graph TD
+    classDef inprogress fill:#fff3cd,stroke:#ffc107,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef core fill:#e2ebf0,stroke:#005b96,stroke-width:2px;
+    classDef llm fill:#e8dff5,stroke:#6b5b95,stroke-width:2px;
+    classDef db fill:#d5f4e6,stroke:#3b8686,stroke-width:2px;
 
-    User->>FE: Describe tema en lenguaje natural
-    FE->>API: POST /build-query
-    API->>LLM: Extrae conceptos + sinónimos + PICO
-    LLM-->>API: {concepts, synonyms, pico}
-    API-->>FE: Conceptos para revisión del usuario
-    User->>FE: Aprueba/edita query
-    FE->>API: POST /execute {query, databases}
-    API->>QB: build_all_queries(concepts, databases)
-    QB-->>API: {openalex: "...", ss: "...", arxiv: "..."}
-    par OpenAlex
-        API->>OA: GET /works?search=...
-    and Semantic Scholar
-        API->>SS: GET /paper/search?query=...
-    and ArXiv
-        API->>AX: GET /api/query?search_query=...
+    %% 1. Creación de proyecto
+    Start([Creación de Proyecto]):::core --> QueryGen[Extracción de Conceptos PICO <br>via LLM Local]:::llm
+    
+    %% 2. Búsqueda
+    subgraph Fase 1: Adquisición de Conocimiento
+        QueryGen --> QueryAdapt[Adaptación Determinista de Queries]:::core
+        QueryAdapt --> SearchAPIs[Búsqueda en 9 Motores <br> ArXiv, OpenAlex, etc.]:::db
+        SearchAPIs --> Dedup{Deduplicación UUID}:::core
     end
-    OA-->>API: resultados
-    SS-->>API: resultados
-    AX-->>API: resultados
-    API->>API: Merge + Dedup (DOI + fuzzy title)
-    API->>DB: INSERT artículos nuevos
-    API-->>FE: Resultados + adapted_queries
-    FE->>User: Tabla de artículos filtrados
+    
+    %% 3. Descarga de PDF
+    Dedup --> PDFDownload[Descarga de PDFs Open Access]:::core
+    
+    %% 4. Conversiones a md y resúmenes
+    subgraph Fase 2: Preprocesamiento y Enriquecimiento
+        PDFDownload --> Parser[Conversión de PDF a Markdown]:::core
+        Parser -->|MarkItDown + VLM Local| VLM[Descripción VLM de Figuras e Imágenes]:::llm
+        VLM --> Translation[Traducción Automática de Abstracts]:::llm
+    end
+    
+    %% 5 y 6. Cribado PRISMA
+    subgraph Fase 3: Cribado Académico (PRISMA)
+        Translation --> Session[Inicialización de Sesión Screening]:::core
+        Session --> AIAssist[Screening con Ayuda LLM <br> Sugerencias de Relevancia PICO]:::llm
+        Session --> HumanDecision[Cribado Interactivo Humano]:::core
+        AIAssist -.-> HumanDecision
+        HumanDecision -->|Incluye Artículo| Included([Artículos Incluidos Definitivos]):::core
+    end
+    
+    %% 7 y 8. Análisis (RAG y Grafos)
+    subgraph Fase 4: Análisis Deep Dive
+        Included --> Vectorization[Anidado y Vectorización Nomic <br> Qdrant DB]:::db
+        Vectorization --> RAG[Chat con RAG Multi-Documento <br> Citación formato APA]:::llm
+        
+        Included --> Graphs([Análisis por Grafos de Conocimiento <br>y Estadísticos]):::inprogress
+    end
+    
+    %% Leyendas
+    note1[En proceso de creación]:::inprogress -.-> Graphs
 ```
 
 #### Archivos clave del flujo
