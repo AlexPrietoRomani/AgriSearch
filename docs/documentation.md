@@ -122,6 +122,108 @@ sequenceDiagram
     FE->>User: Tabla de artículos filtrados
 ```
 
+#### Flujo de Preprocesamiento y Enriquecimiento (Fase 2)
+
+Detalle del proceso automático una vez concluida la búsqueda, encargado de procesar la metadata y transcribir información multimodal.
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as FastAPI
+    participant Down as Download Service
+    participant MID as MarkItDown Parser
+    participant VLM as VLM Nativo (Ollama)
+    participant DB as SQLite
+
+    FE->>API: POST /search/reparse (ó al Iniciar Cribado)
+    API->>DB: Recupera artículos listos (Open Access)
+    API->>Down: Solicitud asíncrona de descarga de PDFs
+    Down-->>API: PDFs almacenados localmente
+    
+    loop Por cada PDF descargado
+        API->>MID: Inicia parseo PDF a Markdown (Vía CPU)
+        
+        opt PDF contiene Imágenes o Gráficos
+            MID->>VLM: Extrae bounding box de imagen (Base64)
+            VLM-->>MID: Retorna descripción textual JSON
+        end
+        
+        MID-->>API: Markdown Enriquecido (Texto + Descripciones)
+        API->>DB: Serializa MD en campo pre-procesado
+        
+        API->>VLM: Prompt para Traducción Científica del Abstract
+        VLM-->>API: Abstract traducido al español
+        API->>DB: Actualiza el artículo con traducciones
+    end
+    API-->>FE: HTTP 200 (Dashboard actualizado con Enriquecimiento)
+```
+
+#### Flujo de Cribado Académico PRISMA (Fase 3)
+
+Operativa interactiva para la inclusión formal de literatura mediante revisión doble manual/LLM.
+
+```mermaid
+sequenceDiagram
+    actor User as Usuario
+    participant FE as Frontend
+    participant API as FastAPI
+    participant AI as AI Assist (Ollama)
+    participant DB as SQLite
+
+    User->>FE: Click en "Iniciar Revisión"
+    FE->>API: POST /screening/sessions
+    API->>DB: Verifica disponibilidad de artículos (OuterJoin)
+    API->>DB: Genera ScreeningSession y Decisions
+    API-->>FE: Interfaz de Screening Inicializada
+    
+    loop Evaluación Manual PICO
+        opt AI Assist (Sugerencia)
+            User->>FE: Solicita asistencia sobre Abstract
+            FE->>API: GET /articles/{id}/suggestion
+            API->>AI: Cruza Abstract con Criterio Base
+            AI-->>API: Dictamen PICO estructurado
+            API-->>FE: Sugerencia Visual (Include/Exclude)
+        end
+        
+        User->>FE: Somete decisión y/o razón de exclusión
+        FE->>API: PUT /screening/decisions/{id}
+        API->>DB: UPDATE de registro
+        API-->>FE: Actualiza contadores PRISMA
+    end
+```
+
+#### Flujo de Análisis Deep Dive RAG (Fase 4)
+
+Uso final de los artículos formalmente incluidos en un entorno conversacional citacional.
+
+```mermaid
+sequenceDiagram
+    actor User as Usuario
+    participant FE as Frontend
+    participant API as FastAPI
+    participant Qdrant as DB Vectorial (Qdrant)
+    participant EMB as Embedder (Nomic)
+    participant LLM as LLM Experto (Ollama)
+
+    Note over API, Qdrant: Background: Indexación RAG <br/> (Markdown dividido en Chunks)
+    API->>EMB: Envía Chunks para Vectorización
+    EMB-->>API: Vectores Densos
+    API->>Qdrant: Upsert Vectores
+    
+    User->>FE: Formula Pregunta Científica (Chat)
+    FE->>API: POST /chat/message
+    API->>EMB: Vectoriza la Pregunta
+    EMB-->>API: Query Vector
+    
+    API->>Qdrant: Búsqueda Semántica
+    Qdrant-->>API: Top-K Contextos Relevantes
+    
+    API->>LLM: Inyecta Contextos + Instrucciones de Citación APA
+    LLM-->>API: Respuesta analítica (stream/JSON)
+    API-->>FE: Presentación UI con Referencias Activas
+    FE->>User: Experiencia Conversacional Validable
+```
+
 #### Archivos clave del flujo
 | Archivo | Responsabilidad |
 |---------|----------------|
