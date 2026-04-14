@@ -34,10 +34,11 @@ A continuación se detalla el ciclo de vida completo de un proyecto dentro de Ag
 
 ```mermaid
 graph TD
-    classDef inprogress fill:#fff3cd,stroke:#ffc107,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef core fill:#e2ebf0,stroke:#005b96,stroke-width:2px;
-    classDef llm fill:#e8dff5,stroke:#6b5b95,stroke-width:2px;
-    classDef db fill:#d5f4e6,stroke:#3b8686,stroke-width:2px;
+    %% Definición de Estilos (Paleta Premium de Alto Contraste)
+    classDef core fill:#003366,stroke:#00aaff,stroke-width:2px,color:#fff;
+    classDef llm fill:#4b0082,stroke:#9370db,stroke-width:2px,color:#fff;
+    classDef db fill:#004d40,stroke:#1de9b6,stroke-width:2px,color:#fff;
+    classDef inprogress fill:#424242,stroke:#ffc107,stroke-width:2px,color:#fff,stroke-dasharray: 5 5;
 
     %% 1. Creación de proyecto
     Start([Creación de Proyecto]):::core --> QueryGen[Extracción de Conceptos PICO <br>via LLM Local]:::llm
