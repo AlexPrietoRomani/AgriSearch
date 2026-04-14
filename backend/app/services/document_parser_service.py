@@ -361,7 +361,8 @@ class OllamaVLMWrapper:
             import json
             import base64
 
-            model = kwargs.get("model", "gemma4:26b")
+            # Utilizar el modelo de kwargs, o el por defecto configurado
+            model = kwargs.get("model", self.parent_wrapper.default_model)
             messages = kwargs.get("messages", [])
             temperature = kwargs.get("temperature", 0.0)
             
@@ -440,8 +441,9 @@ class OllamaVLMWrapper:
         def __init__(self, parent_wrapper):
             self.completions = parent_wrapper.Completions(parent_wrapper)
 
-    def __init__(self, base_url: str = "http://localhost:11434", api_key: str = "ollama"):
+    def __init__(self, base_url: str = "http://localhost:11434", default_model: str = "gemma4:26b"):
         self.base_url = base_url
+        self.default_model = default_model
         self.chat = self.Chat(self)
 
 
@@ -476,7 +478,7 @@ class MarkItDownParser:
             # Si se pasa una URL de Ollama pero no el cliente wrapper, lo creamos automáticamente
             if isinstance(llm_client, str) and "http" in llm_client:
                 logger.info(f"Detectada URL de Ollama. Inicializando OllamaVLMWrapper para {llm_model}...")
-                llm_client = OllamaVLMWrapper(base_url=llm_client)
+                llm_client = OllamaVLMWrapper(base_url=llm_client, default_model=llm_model)
 
             init_kwargs["llm_client"] = llm_client
             init_kwargs["llm_model"] = llm_model

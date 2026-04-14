@@ -107,7 +107,8 @@ async def process_and_enrich_pdf(db, article: Article, parser, vector_service, v
             else:
                 parse_coro = parser.parse_pdf(pdf_path, meta, vlm_describer=vlm, publish_event=publish_event, project_id=project_id)
             
-            final_md = await asyncio.wait_for(parse_coro, timeout=180.0)
+            # Ampliado a 30 minutos para modelos de lenguaje pesados ejecutándose por CPU/GPU local en PDFs extensos
+            final_md = await asyncio.wait_for(parse_coro, timeout=1800.0)
         except asyncio.TimeoutError:
             logger.error(f"Timeout procesando {article.id[:8]} ({pdf_path.name})")
             article.parsed_status = "timeout"
@@ -198,9 +199,15 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
             from app.services.document_parser_service import MarkItDownParser
             # El parser ahora detecta URLs de Ollama y usa OllamaVLMWrapper automáticamente
             ollama_url = "http://localhost:11434/v1"
-            parser = MarkItDownParser(llm_client=ollama_url, llm_model=project.llm_model)
+            
+            # Extract and clean model name
+            vlm_model = project.llm_model or settings.litellm_model
+            if vlm_model and vlm_model.startswith("ollama/"):
+                vlm_model = vlm_model.replace("ollama/", "")
+                
+            parser = MarkItDownParser(llm_client=ollama_url, llm_model=vlm_model)
             vlm = None  # MarkItDown maneja VLM internamente
-            logger.info(f"Usando MarkItDownParser (CPU) | VLM: {'activo' if project.llm_model else 'inactivo'}")
+            logger.info(f"Usando MarkItDownParser (CPU) | VLM: {'activo' if vlm_model else 'inactivo'} (Modelo: {vlm_model})")
     except Exception as e:
         logger.error(f"Could not initialize Services: {e}")
         return {"error": str(e)}
