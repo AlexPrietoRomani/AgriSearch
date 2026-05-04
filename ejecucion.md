@@ -98,21 +98,21 @@ Con el Ollama encendido, simplemente ve a la carpeta de tu proyecto y haz **dobl
 
 El CMD levantará el servidor backend y el visor frontend automáticamente, y en un par de segundos se abrirá tu navegador predeterminado en `http://localhost:4321`.
 
-> **¿El doble clic no funciona o la ventana se cierra instantáneamente?**
-> Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **dos ventanas separadas**:
-> 
-> **Ventana 1 (Backend):** 
-> ```powershell
-> cd backend
-> uv run uvicorn app.main:app --port 8000 --reload
-> ```
-> 
-> **Ventana 2 (Frontend):**
-> ```bash
-> cd C:\ruta\donde\clonaste\AgriSearch
-> cd frontend
-> npm run dev
-> ```
-> Finalmente, abre en tu navegador web la dirección `http://localhost:4321`.
+**¿El doble clic no funciona o la ventana se cierra instantáneamente?**
+Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **dos ventanas separadas**:
+
+**Ventana 1 (Backend):** 
+```powershell
+cd backend
+uv run uvicorn app.main:app --port 8000 --reload
+```
+
+**Ventana 2 (Frontend):**
+```bash
+cd C:\ruta\donde\clonaste\AgriSearch
+cd frontend
+npm run dev
+```
+Finalmente, abre en tu navegador web la dirección `http://localhost:4321`.
 
 ¡Y listo! Ya puedes continuar con tu Revisión Sistemática PRISMA de forma estructurada.
