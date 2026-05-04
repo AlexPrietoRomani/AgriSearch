@@ -1,29 +1,39 @@
-# Python Globals
+# ==========================================
+# AgriSearch Git Ignore Configuration
+# ==========================================
+
+# --- OS Globals ---
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- Environment & Credentials ---
+.env
+.env.*
+!.env.example
+
+# --- Python / Backend ---
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-
-# OS Globals
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Environment Variables
-.env
-
-
-# Local data and DBs
-/data/
-!/data/.gitkeep
-backend/data/
-/vector_db/
-!/vector_db/.gitkeep
-*.sqlite3
-*.db
 .pytest_cache/
+.tox/
+.coverage
+.mypy_cache/
+htmlcov/
+build/
+dist/
+*.egg-info/
+.eggs/
+nosetests.xml
+coverage.xml
+*.cover
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Backend Specific
+# Backend specific paths
 backend/venv/
 backend/env/
 backend/.venv/
@@ -41,30 +51,80 @@ backend/lib64/
 backend/var/
 backend/parts/
 
-# Frontend (additional protection, rely on frontend/.gitignore primarily)
+# --- Frontend (Node / Astro) ---
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/.astro/
 frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
+.npm
+.eslintcache
 
-# IDE and Editor
+# --- IDE & Editors ---
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+.project
+.settings/
+.classpath
 
-# Documentos
+# --- AI Agents & Coding Tools ---
+# General Agent patterns
+.agents/
+.claude/
+.opencode/
+.aide/
+.cline/
+.cursor/
+.windsurf/
+.codeium/
+.copilot/
+.continue/
+.promptfoo/
+
+# Agent Documentation & Planning
+CLAUDE.md
+AGENTS.md
+PLAN.md
+Plan.md
+todo.md
+*plan.md
+*scratch*
+skills-lock.json
+
+# --- Data & Databases ---
+/data/
+!/data/.gitkeep
+backend/data/
+backend/vector_db/
+/vector_db/
+!/vector_db/.gitkeep
+/vector_db_test/
+*.sqlite3
+*.db
+*.db-journal
+*.sqlite
+agrisearch.db
+
+# --- Logs & Outputs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+test_output.txt
+
+# --- Documents (Ignore binaries usually) ---
 *.pdf
 *.docx
+*.pptx
+*.xlsx
 
-# Agent and Planning
-.agents/
-
-# Logs
-*.log
+# --- Project Specific ---
 docs/plan_a_seguir.md
