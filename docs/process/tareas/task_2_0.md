@@ -1,8 +1,8 @@
-# Sub-fase 2.0: Tareas de Implementación — PDF → Markdown Enriquecido (MarkItDown)
+# Sub-fase 2.0: Tareas de Implementación — Dual-Parser: OpenDataLoader PDF + MarkItDown
 
-> **Referencia:** `docs/plan_a_seguir.md` → Sub-fase 2.0
+> **Referencia:** `docs/process/plan/plan_a_seguir.md` → Sub-fase 2.0
 > **Estado:** 🔴 Pendiente
-> **Última actualización:** 2026-04-12
+> **Última actualización:** 2026-05-04
 
 ---
 
@@ -10,13 +10,15 @@
 
 | # | Tarea | Archivos Afectados | Estado |
 |---|-------|--------------------|--------|
-| 2.0.1 | Instalar MarkItDown y crear `MarkItDownParser` | `pyproject.toml`, `document_parser_service.py` | 🔴 |
-| 2.0.2 | Integrar VLM para descripción de imágenes | `document_parser_service.py` | 🔴 |
-| 2.0.3 | Adaptar `TableFlattener` al output de MarkItDown | `document_parser_service.py` | 🔴 |
-| 2.0.4 | Inyectar metadatos como Front-matter YAML | `document_parser_service.py` | 🔴 |
-| 2.0.5 | Almacenar `.md` y actualizar base de datos | `pdf_enrichment_service.py` | 🔴 |
-| 2.0.6 | Procesamiento batch asíncrono con progreso SSE | `pdf_enrichment_service.py` | 🔴 |
-| 2.0.7 | Tests y validación del pipeline completo | `tests/test_conversion_manual.py`, `tests/unit/test_pdf_preprocessing.py` | 🔴 |
+| 2.0.1 | Instalar OpenDataLoader PDF y crear `OpenDataLoaderParser` | `pyproject.toml`, `document_parser_service.py` | 🔴 |
+| 2.0.2 | Mantener `MarkItDownParser` como parser universal | `document_parser_service.py` | 🔴 |
+| 2.0.3 | Implementar `ParserRouter` (selector de parser) | `document_parser_service.py` | 🔴 |
+| 2.0.4 | Adaptar `TableFlattener` a outputs de ambos parsers | `document_parser_service.py` | 🔴 |
+| 2.0.5 | Inyectar metadatos como Front-matter YAML | `document_parser_service.py` | 🔴 |
+| 2.0.6 | Almacenar `.md` y actualizar base de datos | `pdf_enrichment_service.py` | 🔴 |
+| 2.0.7 | Procesamiento batch asíncrono con progreso SSE | `pdf_enrichment_service.py` | 🔴 |
+| 2.0.8 | Integrar VLM para descripción de imágenes (MarkItDown) | `document_parser_service.py` | 🔴 |
+| 2.0.9 | Tests y validación del pipeline completo | `tests/test_conversion_manual.py`, `tests/unit/test_pdf_preprocessing.py` | 🔴 |
 
 ---
 
@@ -25,6 +27,7 @@
 Antes de empezar cualquier tarea, asegúrate de tener:
 
 - **Python 3.11** instalado.
+- **Java 11+** instalado (requerido por OpenDataLoader PDF). Verificar con `java -version`. Instalar desde [Adoptium](https://adoptium.net/).
 - **uv** instalado como gestor de paquetes (`pip install uv` o descarga desde https://docs.astral.sh/uv/).
 - El entorno virtual del backend creado con `uv sync` desde `backend/`.
 - **Ollama** corriendo localmente (solo necesario para TASKs con VLM).
@@ -38,10 +41,10 @@ cmd /c "backend\.venv\Scripts\python.exe <ruta_del_script>"
 
 ---
 
-## TASK 2.0.1: Instalar MarkItDown y Crear `MarkItDownParser`
+## TASK 2.0.1: Instalar OpenDataLoader PDF y Crear `OpenDataLoaderParser`
 
 ### Objetivo
-Reemplazar `DoclingParser` por `MarkItDownParser` como motor primario de conversión PDF→Markdown. MarkItDown opera 100% en CPU, eliminando la dependencia de GPU y los bloqueos por saturación de VRAM.
+Reemplazar `DoclingParser` por `OpenDataLoaderParser` como motor primario para **PDFs de artículos científicos**. OpenDataLoader PDF es el #1 en benchmarks (0.907 overall, 0.928 en tablas), funciona localmente sin GPU (Java + CPU), y detecta layout de doble columna, tablas borderless y fórmulas LaTeX.
 
 ### Input
 - `backend/pyproject.toml` (dependencias actuales del proyecto).
@@ -49,23 +52,23 @@ Reemplazar `DoclingParser` por `MarkItDownParser` como motor primario de convers
 
 ### Acciones Paso a Paso
 
-#### [X] Acción 1.1: Instalar la dependencia `markitdown[pdf]`
+#### [ ] Acción 1.1: Verificar Java 11+ y instalar `opendataloader-pdf`
 
-**Qué hace:** Añade MarkItDown con soporte para PDF al archivo `pyproject.toml` y lo instala en el entorno virtual.
+**Qué hace:** Verifica que Java 11+ está disponible e instala OpenDataLoader PDF.
 
-**Comando a ejecutar:**
+**Comandos a ejecutar:**
 ```bash
+java -version          # Debe mostrar Java 11+
 cd backend
-uv add "markitdown[pdf]"
+uv add opendataloader-pdf
 ```
 
-**Resultado esperado:** La línea `markitdown[pdf]>=0.1.0` aparece en la sección `dependencies` de `pyproject.toml`. Se descarga e instala ~50MB de dependencias (pdfminer, etc.) sin necesidad de `torch` ni modelos GPU.
+**Resultado esperado:** La línea `opendataloader-pdf>=0.9.0` aparece en `pyproject.toml`. Se instala ~30MB de dependencias Python + el runtime Java (JVM) se usa en tiempo de ejecución.
 
 **Verificación:**
 ```bash
-cmd /c "backend\.venv\Scripts\python.exe -c \"from markitdown import MarkItDown; print('OK:', MarkItDown)\""
+cmd /c "backend\.venv\Scripts\python.exe -c \"import opendataloader_pdf; print('OK: OpenDataLoader PDF disponible')\""
 ```
-Debe imprimir: `OK: <class 'markitdown.MarkItDown'>`.
 
 ---
 
@@ -1105,13 +1108,13 @@ Asegurar que los modelos multimodales locales, específicamente `gemma4:26b` (o 
 
 | Archivo | Tipo de Cambio | TASK |
 |---------|---------------|------|
-| `backend/pyproject.toml` | Añadir `markitdown[pdf]`, `markitdown-ocr`, `openai` | 2.0.1, 2.0.2 |
-| `backend/app/services/document_parser_service.py` | Añadir `MarkItDownParser`, deprecar `ImageFilter`, construir puente VLM | 2.0.1, 2.0.2, 2.0.3, 2.0.4, 2.0.8 |
-| `backend/app/services/pdf_enrichment_service.py` | Cambiar parser, eliminar chunking, añadir timeout | 2.0.5, 2.0.6 |
-| `tests/backend/test_conversion_manual.py` | Reescribir para usar MarkItDown | 2.0.7 |
-| `tests/backend/unit/test_pdf_preprocessing.py` | Añadir tests de MarkItDown, TableFlattener, YAML, y VLM Wrapper | 2.0.7, 2.0.8 |
-| `README.md` | Actualizar tecnologías (MarkItDown en lugar de Docling) | Final |
-| `backend/README.md` | Actualizar arquitectura y tecnologías | Final |
+| `backend/pyproject.toml` | Añadir `opendataloader-pdf`, mantener `markitdown[pdf]`, eliminar `docling`/`torch` | 2.0.1 |
+| `backend/app/services/document_parser_service.py` | Añadir `OpenDataLoaderParser`, mantener `MarkItDownParser`, crear `ParserRouter` | 2.0.1, 2.0.2, 2.0.3, 2.0.4, 2.0.5 |
+| `backend/app/services/pdf_enrichment_service.py` | Usar `ParserRouter`, procesamiento batch, timeout | 2.0.6, 2.0.7 |
+| `tests/backend/test_conversion_manual.py` | Reescribir para dual-parser (OpenDataLoader + MarkItDown) | 2.0.9 |
+| `tests/backend/unit/test_pdf_preprocessing.py` | Tests unitarios de ambos parsers, TableFlattener, YAML, VLM | 2.0.9 |
+| `README.md` | Actualizar stack tecnológico, requisitos (Java 11+, uv) | Final |
+| `backend/README.md` | Actualizar arquitectura dual-parser | Final |
 
 ---
 
@@ -1119,15 +1122,16 @@ Asegurar que los modelos multimodales locales, específicamente `gemma4:26b` (o 
 
 ```mermaid
 graph LR
-    T1["TASK 2.0.1<br/>Instalar MarkItDown<br/>+ Crear Parser"] --> T2["TASK 2.0.2<br/>Integrar VLM"]
-    T1 --> T3["TASK 2.0.3<br/>Adaptar TableFlattener"]
-    T1 --> T4["TASK 2.0.4<br/>Front-matter YAML"]
-    T2 --> T8["TASK 2.0.8<br/>Puente VLM Ollama"]
-    T8 --> T6["TASK 2.0.6<br/>Batch + SSE"]
-    T3 --> T6
-    T4 --> T5["TASK 2.0.5<br/>Guardar MD + BD"]
-    T5 --> T6
-    T6 --> T7["TASK 2.0.7<br/>Tests + Benchmark"]
+    T1["TASK 2.0.1<br/>Instalar OpenDataLoader<br/>+ Crear Parser"] --> T3["TASK 2.0.3<br/>ParserRouter"]
+    T2["TASK 2.0.2<br/>Mantener MarkItDown"] --> T3
+    T1 --> T4["TASK 2.0.4<br/>Adaptar TableFlattener"]
+    T3 --> T7["TASK 2.0.7<br/>Batch + SSE"]
+    T4 --> T7
+    T5["TASK 2.0.5<br/>Front-matter YAML"] --> T6["TASK 2.0.6<br/>Guardar MD + BD"]
+    T6 --> T7
+    T2 --> T8["TASK 2.0.8<br/>VLM Ollama"]
+    T8 --> T7
+    T7 --> T9["TASK 2.0.9<br/>Tests + Benchmark"]
 ```
 
-> **Dependencias:** TASK 2.0.1 es prerequisito de todas. TASKs 2.0.2, 2.0.3 y 2.0.4 son independientes entre sí. TASK 2.0.8 depende de la 2.0.2. TASK 2.0.6 integra todo. TASK 2.0.7 valida el resultado final.
+> **Dependencias:** TASKs 2.0.1 y 2.0.2 son prerequisitos base. TASK 2.0.3 integra ambos parsers. TASKs 2.0.4, 2.0.5, 2.0.8 son independientes entre sí. TASK 2.0.7 integra todo. TASK 2.0.9 valida el resultado final.
