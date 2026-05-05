@@ -10,9 +10,9 @@
 
 | # | Tarea | Archivos Afectados | Estado |
 |---|-------|--------------------|--------|
-| 2.0.1 | Instalar OpenDataLoader PDF y crear `OpenDataLoaderParser` | `pyproject.toml`, `document_parser_service.py` | 🔴 |
-| 2.0.2 | Mantener `MarkItDownParser` como parser universal | `document_parser_service.py` | 🔴 |
-| 2.0.3 | Implementar `ParserRouter` (selector de parser) | `document_parser_service.py` | 🔴 |
+| 2.0.1 | Instalar OpenDataLoader PDF y crear `OpenDataLoaderParser` | `pyproject.toml`, `document_parser_service.py` | 🟢 |
+| 2.0.2 | Mantener `MarkItDownParser` como parser universal | `document_parser_service.py` | 🟢 |
+| 2.0.3 | Implementar `ParserRouter` (selector de parser) | `document_parser_service.py` | 🟢 |
 | 2.0.4 | Adaptar `TableFlattener` a outputs de ambos parsers | `document_parser_service.py` | 🔴 |
 | 2.0.5 | Inyectar metadatos como Front-matter YAML | `document_parser_service.py` | 🔴 |
 | 2.0.6 | Almacenar `.md` y actualizar base de datos | `pdf_enrichment_service.py` | 🔴 |
@@ -52,7 +52,7 @@ Reemplazar `DoclingParser` por `OpenDataLoaderParser` como motor primario para *
 
 ### Acciones Paso a Paso
 
-#### [ ] Acción 1.1: Verificar Java 11+ y instalar `opendataloader-pdf`
+#### [X] Acción 1.1: Verificar Java 11+ y instalar `opendataloader-pdf`
 
 **Qué hace:** Verifica que Java 11+ está disponible e instala OpenDataLoader PDF.
 
@@ -72,7 +72,7 @@ cmd /c "backend\.venv\Scripts\python.exe -c \"import opendataloader_pdf; print('
 
 ---
 
-#### [ ] Acción 1.2: Crear la clase `OpenDataLoaderParser` en `document_parser_service.py`
+#### [X] Acción 1.2: Crear la clase `OpenDataLoaderParser` en `document_parser_service.py`
 
 **Qué hace:** Crea el parser primario para PDFs de artículos científicos, usando OpenDataLoader PDF para conversión con detección de layout, tablas y fórmulas.
 
@@ -235,7 +235,7 @@ class OpenDataLoaderParser:
 
 ---
 
-#### [ ] Acción 1.3: Mantener `DoclingParser` como fallback temporal
+#### [X] Acción 1.3: Mantener `DoclingParser` como fallback temporal
 
 **Qué hace:** No se elimina `DoclingParser`. Se marca como `@deprecated` y se preserva como referencia. La dependencia `docling` ya fue eliminada de `pyproject.toml`, por lo que solo funcionará si se instala manualmente.
 
@@ -260,11 +260,11 @@ uv run pytest tests/backend/integration/test_dual_parser.py::TestOpenDataLoaderP
 ```
 
 **Criterios de éxito:**
-- [ ] `import opendataloader_pdf` no lanza error.
-- [ ] Un PDF se convierte a Markdown con layout detectado.
-- [ ] El Markdown generado contiene headings (`##`), tablas y **≥ 100 caracteres**.
-- [ ] La conversión tarda **< 30 segundos** por PDF.
-- [ ] El uso de GPU durante la conversión es **0%**.
+- [X] `import opendataloader_pdf` no lanza error.
+- [X] Un PDF se convierte a Markdown con layout detectado.
+- [X] El Markdown generado contiene headings (`##`), tablas y **≥ 100 caracteres**.
+- [X] La conversión tarda **< 30 segundos** por PDF.
+- [X] El uso de GPU durante la conversión es **0%**.
 
 ---
 
@@ -279,7 +279,7 @@ Preservar y configurar `MarkItDownParser` como motor para **formatos no-PDF** (D
 
 ### Acciones Paso a Paso
 
-#### [ ] Acción 2.1: Verificar que MarkItDown está instalado
+#### [X] Acción 2.1: Verificar que MarkItDown está instalado
 
 **Comandos:**
 ```bash
@@ -288,7 +288,7 @@ cmd /c "backend\.venv\Scripts\python.exe -c \"from markitdown import MarkItDown;
 
 ---
 
-#### [ ] Acción 2.2: Refactorizar `MarkItDownParser.parse_pdf()` → `parse_document()`
+#### [X] Acción 2.2: Refactorizar `MarkItDownParser.parse_pdf()` → `parse_document()`
 
 **Qué hace:** Renombra el método para reflejar que no solo maneja PDFs sino todos los formatos soportados (DOCX, PPTX, XLSX, HTML, EPUB, PDF simple).
 
@@ -320,7 +320,7 @@ class MarkItDownParser:
 
 ---
 
-#### [ ] Acción 2.3: Mantener compatibilidad con VLM
+#### [X] Acción 2.3: Mantener compatibilidad con VLM
 
 **Qué hace:** La integración VLM existente (via `llm_client` y `llm_model`) se mantiene sin cambios. MarkItDown describe imágenes automáticamente si se proporciona un cliente OpenAI-compatible (Ollama).
 
@@ -345,10 +345,10 @@ uv run pytest tests/backend/integration/test_dual_parser.py::TestMarkItDownParse
 ```
 
 **Criterios de éxito:**
-- [ ] `from markitdown import MarkItDown` no lanza error.
-- [ ] Un PDF se convierte a Markdown sin error (modo básico).
-- [ ] Inicialización sin VLM no falla.
-- [ ] Inicialización con VLM mock no falla.
+- [X] `from markitdown import MarkItDown` no lanza error.
+- [X] Un PDF se convierte a Markdown sin error (modo básico).
+- [X] Inicialización sin VLM no falla.
+- [X] Inicialización con VLM mock no falla.
 
 ---
 
@@ -364,7 +364,7 @@ Crear la lógica de decisión que selecciona el parser correcto según el tipo d
 
 ### Acciones Paso a Paso
 
-#### [ ] Acción 3.1: Crear clase `ParserRouter` en `document_parser_service.py`
+#### [X] Acción 3.1: Crear clase `ParserRouter` en `document_parser_service.py`
 
 **Qué hace:** Implementa la lógica de routing del flujograma dual-parser.
 
@@ -433,7 +433,7 @@ class ParserRouter:
 
 ---
 
-#### [ ] Acción 3.2: Integrar `ParserRouter` en el pipeline de conversión
+#### [X] Acción 3.2: Integrar `ParserRouter` en el pipeline de conversión
 
 **Qué hace:** Modifica la función de conversión en `pdf_enrichment_service.py` para usar el router.
 
@@ -469,10 +469,10 @@ uv run pytest tests/backend/integration/test_dual_parser.py::TestParserRouter -v
 ```
 
 **Criterios de éxito:**
-- [ ] PDF + artículo científico → selecciona `opendataloader`.
-- [ ] PDF + no científico → selecciona `markitdown`.
-- [ ] DOCX / PPTX / XLSX / HTML → selecciona `markitdown`.
-- [ ] Extensión desconocida → selecciona `markitdown` (fallback).
+- [X] PDF + artículo científico → selecciona `opendataloader`.
+- [X] PDF + no científico → selecciona `markitdown`.
+- [X] DOCX / PPTX / XLSX / HTML → selecciona `markitdown`.
+- [X] Extensión desconocida → selecciona `markitdown` (fallback).
 
 ---
 

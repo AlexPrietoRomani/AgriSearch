@@ -459,8 +459,11 @@ class OllamaVLMWrapper:
 
 class MarkItDownParser:
     """
-    Convierte PDFs a Markdown estructurado usando Microsoft MarkItDown.
+    Convierte documentos multi-formato a Markdown usando Microsoft MarkItDown.
     Opera completamente en CPU — sin dependencia de GPU ni modelos pesados.
+    
+    Formatos soportados: PDF (básico), DOCX, PPTX, XLSX, HTML, EPUB, CSV.
+    Para PDFs de artículos científicos, usar OpenDataLoaderParser.
     
     Atributos:
         md: Instancia de MarkItDown configurada.
@@ -511,23 +514,24 @@ class MarkItDownParser:
             f"MarkItDown inicializado (CPU) | VLM: {'activo' if self.has_vlm else 'inactivo'}"
         )
 
-    async def parse_pdf(
+    async def parse_document(
         self,
-        pdf_path: Path,
+        file_path: Path,
         article_meta: Dict[str, Any],
         publish_event=None,
         project_id: str = None,
     ) -> str:
         """
-        Convierte un PDF a Markdown enriquecido.
+        Convierte un documento a Markdown enriquecido.
+        Soporta PDF, DOCX, PPTX, XLSX, HTML, EPUB, CSV.
         
         Pipeline:
-          1. MarkItDown convierte el PDF completo a Markdown (CPU).
+          1. MarkItDown convierte el documento a Markdown (CPU).
           2. TableFlattener aplana tablas en oraciones atómicas para RAG.
           3. Se inyecta front-matter YAML con metadatos bibliográficos.
         
         Args:
-            pdf_path:      Ruta absoluta al archivo PDF.
+            file_path:     Ruta absoluta al archivo (PDF, DOCX, PPTX, etc.).
             article_meta:  Dict con claves: id, doi, title, authors, year,
                           journal, keywords, source_database.
             publish_event: Función async para enviar progreso via SSE (opcional).
@@ -537,30 +541,30 @@ class MarkItDownParser:
             String con el Markdown enriquecido completo (YAML + contenido + tablas aplanadas).
         
         Raises:
-            FileNotFoundError: Si el PDF no existe en la ruta indicada.
+            FileNotFoundError: Si el archivo no existe en la ruta indicada.
         """
-        if isinstance(pdf_path, str):
-            pdf_path = Path(pdf_path)
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
 
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
+        if not file_path.exists():
+            raise FileNotFoundError(f"Archivo no encontrado: {file_path}")
 
-        # ── 1. Conversión PDF → Markdown (CPU) ──────────────────────
+        # ── 1. Conversión documento → Markdown (CPU) ────────────────
         if publish_event and project_id:
             await publish_event(project_id, {
                 "type": "sub_progress",
-                "msg": f"Convirtiendo PDF a Markdown (MarkItDown CPU)..."
+                "msg": f"Convirtiendo {file_path.suffix.upper()} a Markdown (MarkItDown CPU)..."
             })
 
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
-            None, lambda: self.md.convert(str(pdf_path))
+            None, lambda: self.md.convert(str(file_path))
         )
         md_content = result.markdown
 
         if not md_content or len(md_content.strip()) < 50:
-            logger.warning(f"Conversión vacía o muy corta para {pdf_path.name}")
-            md_content = f"<!-- MarkItDown: conversión vacía para {pdf_path.name} -->"
+            logger.warning(f"Conversión vacía o muy corta para {file_path.name}")
+            md_content = f"<!-- MarkItDown: conversión vacía para {file_path.name} -->"
 
         # ── 2. Limpiar artefactos de conversión ──────────────────────
         md_content = self._post_process(md_content)
@@ -616,6 +620,11 @@ class MarkItDownParser:
             flags=re.IGNORECASE,
         )
         return md_text
+
+    # Alias de compatibilidad — parse_pdf delega a parse_document
+    async def parse_pdf(self, *args, **kwargs) -> str:
+        """Alias de compatibilidad. Usa parse_document() para nuevos código."""
+        return await self.parse_document(*args, **kwargs)
 
 
 # ─── OpenDataLoader PDF Parser (Java + CPU, #1 en benchmarks) ────────────
@@ -753,6 +762,11 @@ class OpenDataLoaderParser:
 
         return final_md
 
+    # Alias de compatibilidad — parse_document delega a parse_pdf
+    async def parse_document(self, *args, **kwargs) -> str:
+        """Alias de compatibilidad. Usa parse_pdf() internamente."""
+        return await self.parse_pdf(*args, **kwargs)
+
     @staticmethod
     def _post_process(md_text: str) -> str:
         """Limpia artefactos comunes de la conversión PDF→MD."""
@@ -760,3 +774,68 @@ class OpenDataLoaderParser:
         md_text = re.sub(r"^(#{1,6})\s*$", "", md_text, flags=re.MULTILINE)
         md_text = re.sub(r"-{5,}", "---", md_text)
         return md_text.strip()
+
+
+# ─── ParserRouter (Selector Dual-Parser) ──────────────────────────────────
+
+
+class ParserRouter:
+    """
+    Selecciona el parser apropiado según tipo de archivo y naturaleza del documento.
+    
+    Reglas de routing:
+    ┌──────────────────────────────┬─────────────────────────┐
+    │ Condición                    │ Parser seleccionado     │
+    ├──────────────────────────────┼─────────────────────────┤
+    │ PDF + artículo científico    │ OpenDataLoaderParser    │
+    │ PDF + no científico          │ MarkItDownParser        │
+    │ DOCX / PPTX / XLSX / HTML   │ MarkItDownParser        │
+    │ EPUB / CSV / otros           │ MarkItDownParser        │
+    └──────────────────────────────┴─────────────────────────┘
+    """
+
+    # Extensiones que siempre van a MarkItDown
+    _MARKITDOWN_EXTENSIONS = {".docx", ".pptx", ".xlsx", ".html", ".htm", ".epub", ".csv"}
+    
+    # Fuentes que indican artículo científico
+    _SCIENTIFIC_SOURCES = {
+        "openalex", "semantic_scholar", "arxiv", "crossref",
+        "core", "scielo", "redalyc", "agecon", "organic_eprints",
+    }
+
+    @classmethod
+    def select_parser(
+        cls,
+        file_path: Path,
+        article_meta: Dict[str, Any],
+        opendataloader_parser: "OpenDataLoaderParser" = None,
+        markitdown_parser: "MarkItDownParser" = None,
+    ) -> tuple:
+        """
+        Selecciona el parser correcto y retorna (parser, engine_name).
+        
+        Returns:
+            Tupla de (parser_instance, "opendataloader" | "markitdown")
+        """
+        ext = file_path.suffix.lower()
+        source = (article_meta.get("source_database") or "").lower().strip()
+        is_scientific = source in cls._SCIENTIFIC_SOURCES
+
+        # Regla 1: Formatos no-PDF → siempre MarkItDown
+        if ext in cls._MARKITDOWN_EXTENSIONS:
+            logger.info(f"Router: {ext} → MarkItDown (formato no-PDF)")
+            return markitdown_parser, "markitdown"
+
+        # Regla 2: PDF científico → OpenDataLoader
+        if ext == ".pdf" and is_scientific and opendataloader_parser:
+            logger.info(f"Router: PDF científico ({source}) → OpenDataLoader")
+            return opendataloader_parser, "opendataloader"
+
+        # Regla 3: PDF no-científico o fallback → MarkItDown
+        if ext == ".pdf":
+            logger.info(f"Router: PDF no-científico → MarkItDown (fallback)")
+            return markitdown_parser, "markitdown"
+
+        # Regla 4: Extensión desconocida → MarkItDown (mejor esfuerzo)
+        logger.warning(f"Router: extensión desconocida '{ext}' → MarkItDown")
+        return markitdown_parser, "markitdown"

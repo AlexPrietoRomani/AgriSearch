@@ -71,17 +71,17 @@ def scan_and_match_pdfs(pdf_dir: Path, articles: list) -> dict[str, str]:
     return matched
 
 
-async def process_and_enrich_pdf(db, article: Article, parser, vector_service, vlm = None, publish_event = None, project_id: str = None) -> bool:
+async def process_and_enrich_pdf(db, article: Article, parsers: dict, vector_service, publish_event = None, project_id: str = None) -> bool:
     """
     Processes a single article:
-    1. Converts PDF to Markdown (via Docling).
+    1. Converts PDF to Markdown via dual-parser router.
     2. Saves Markdown to disk.
     3. Updates article model with Markdown path and status.
     4. Extracts basic metadata (abstract/keywords) if missing.
     """
     if not article.local_pdf_path or not Path(article.local_pdf_path).exists():
         logger.warning(f"No PDF path found for article {article.id}")
-        return False
+        return {"success": False, "error": "no_pdf_path"}
 
     pdf_path = Path(article.local_pdf_path)
     # Target Markdown path
@@ -100,14 +100,18 @@ async def process_and_enrich_pdf(db, article: Article, parser, vector_service, v
             "source_database": article.source_database
         }
 
-        from app.services.document_parser_service import MarkItDownParser
+        from app.services.document_parser_service import ParserRouter
+        
+        # RUTEO: Seleccionar parser según tipo de archivo y fuente científica
+        selected_parser, engine = ParserRouter.select_parser(
+            file_path=pdf_path,
+            article_meta=meta,
+            opendataloader_parser=parsers.get("opendataloader"),
+            markitdown_parser=parsers.get("markitdown"),
+        )
+        
         try:
-            if isinstance(parser, MarkItDownParser):
-                parse_coro = parser.parse_pdf(pdf_path, meta, publish_event=publish_event, project_id=project_id)
-            else:
-                parse_coro = parser.parse_pdf(pdf_path, meta, vlm_describer=vlm, publish_event=publish_event, project_id=project_id)
-            
-            # Ampliado a 30 minutos para modelos de lenguaje pesados ejecutándose por CPU/GPU local en PDFs extensos
+            parse_coro = selected_parser.parse_document(pdf_path, meta, publish_event=publish_event, project_id=project_id)
             final_md = await asyncio.wait_for(parse_coro, timeout=1800.0)
         except asyncio.TimeoutError:
             logger.error(f"Timeout procesando {article.id[:8]} ({pdf_path.name})")
@@ -161,7 +165,7 @@ async def process_and_enrich_pdf(db, article: Article, parser, vector_service, v
 
 async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] | None = None, force_reparse: bool = False) -> dict:
     """
-    High-fidelity enrichment using Docling.
+    Dual-Parser enrichment: OpenDataLoader PDF para artículos científicos, MarkItDown para el resto.
     """
     from sqlalchemy import select
     from app.core.config import get_settings
@@ -178,36 +182,29 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
     try:
         vector_service = VectorService()
         
-        # Elegir parser: MarkItDown (default) o Docling (fallback)
-        import os
-        use_docling = os.environ.get("AGRISEARCH_USE_DOCLING", "").lower() == "true"
+        from app.services.document_parser_service import (
+            OpenDataLoaderParser, MarkItDownParser, OPENDATALOADER_AVAILABLE
+        )
         
-        if use_docling:
-            try:
-                from app.services.document_parser_service import DoclingParser, ImageFilter, DOCLING_AVAILABLE
-                if DOCLING_AVAILABLE:
-                    parser = DoclingParser()
-                    vlm = ImageFilter(model_name=project.llm_model) if project.llm_model else None
-                    logger.info("Usando DoclingParser (fallback activado)")
-                else:
-                    raise ImportError("Docling is not available")
-            except ImportError:
-                use_docling = False
-                logger.warning("Docling requested but not available. Falling back to MarkItDown.")
+        # Inicializar ambos parsers
+        parsers = {}
         
-        if not use_docling:
-            from app.services.document_parser_service import MarkItDownParser
-            # El parser ahora detecta URLs de Ollama y usa OllamaVLMWrapper automáticamente
-            ollama_url = "http://localhost:11434/v1"
-            
-            # Extract and clean model name
-            vlm_model = project.llm_model or settings.litellm_model
-            if vlm_model and vlm_model.startswith("ollama/"):
-                vlm_model = vlm_model.replace("ollama/", "")
-                
-            parser = MarkItDownParser(llm_client=ollama_url, llm_model=vlm_model)
-            vlm = None  # MarkItDown maneja VLM internamente
-            logger.info(f"Usando MarkItDownParser (CPU) | VLM: {'activo' if vlm_model else 'inactivo'} (Modelo: {vlm_model})")
+        if OPENDATALOADER_AVAILABLE:
+            parsers["opendataloader"] = OpenDataLoaderParser()
+            logger.info("OpenDataLoaderParser inicializado (Java+CPU) para PDFs científicos")
+        else:
+            logger.warning("OpenDataLoader no disponible. Todos los PDFs irán a MarkItDown.")
+        
+        # Configurar VLM via Ollama
+        vlm_model = project.llm_model or settings.litellm_model
+        if vlm_model and vlm_model.startswith("ollama/"):
+            vlm_model = vlm_model.replace("ollama/", "")
+        
+        ollama_url = "http://localhost:11434/v1"
+        parsers["markitdown"] = MarkItDownParser(llm_client=ollama_url, llm_model=vlm_model)
+        logger.info(f"MarkItDownParser inicializado (CPU) | VLM: {'activo' if vlm_model else 'inactivo'}")
+        
+        vlm = None  # MarkItDown maneja VLM internamente
     except Exception as e:
         logger.error(f"Could not initialize Services: {e}")
         return {"error": str(e)}
@@ -256,7 +253,7 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
             "current": idx + 1,
             "total": len(articles)
         })
-        res = await process_and_enrich_pdf(db, article, parser, vector_service, vlm, publish_event, project_id)
+        res = await process_and_enrich_pdf(db, article, parsers, vector_service, publish_event, project_id)
         
         # No se requiere GC manual con MarkItDown
 
