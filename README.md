@@ -34,23 +34,35 @@ El sistema integra **9 Bases de Datos Científicas** y Modelos de Lenguaje Grand
 
 ## 🚀 Tecnologías Principales
 
-*   **Frontend**: Astro, React, Tailwind CSS (Vite).
-*   **Backend**: FastAPI (Python), SQLAlchemy, aiosqlite (SQLite local).
+*   **Frontend**: Astro (SSR Híbrido), React, CSS Vanilla (Vite).
+*   **Backend**: FastAPI (Python 3.11), SQLAlchemy, aiosqlite (SQLite local).
+*   **Parsing de Documentos**: OpenDataLoader PDF (artículos científicos, #1 en benchmarks), Microsoft MarkItDown (DOCX, PPTX, XLSX, HTML, EPUB).
 *   **IA e Integración**: LiteLLM, Ollama, Qdrant (Base de datos Vectorial local).
 *   **Gestión de Agentes**: Herramientas integradas en Model Context Protocol (MCP) creados para interconectar búsquedas en la web y descargar referencias.
+*   **Gestión de Dependencias**: [uv](https://docs.astral.sh/uv/) (recomendado) o pip como alternativa.
 
 ## 📥 Estructura del Proyecto
 
 El proyecto está separado en dos contenedores lógicos principales:
 
 1.  `/backend`: Lógica del servidor, API REST (FastAPI), modelos Pydantic, conexión a bases de datos SQLite y Qdrant, y procesamiento RAG/LLM.
-2.  `/frontend`: Interfaz de usuario (Astro SSR híbrido + React para componentes dinámicos de cliente), estilizada con TailwindCSS.
+2.  `/frontend`: Interfaz de usuario (Astro SSR híbrido + React para componentes dinámicos de cliente), estilizada con CSS Vanilla.
 
 ## 🛠 Instalación y Ejecución Local
 
-Para ejecutar este proyecto en tu entorno de desarrollo, asegúrate de tener instalados **Node.js** y **Python 3.11+**. 
+### Requisitos Previos
 
-⚠️ **Requisito Previo de IA:** Debes tener instalado y ejecutándose **Ollama** para que AgriSearch pueda orquestar las búsquedas y asistir en el cribado.
+| Requisito | Versión | Propósito |
+|-----------|---------|-----------|
+| **Python** | 3.11.x | Backend (FastAPI) |
+| **Node.js** | 18+ | Frontend (Astro) |
+| **Java (JDK)** | 11+ | OpenDataLoader PDF (parser de artículos científicos) |
+| **Ollama** | Última | LLM local para búsqueda asistida y screening |
+| **uv** *(recomendado)* | Última | Gestión de dependencias Python (alternativa: pip) |
+
+> ⚠️ **Java es necesario** para el parsing de PDFs científicos con OpenDataLoader PDF. Verifica con `java -version`. Si no lo tienes, instálalo desde [Adoptium](https://adoptium.net/).
+
+> ⚠️ **Ollama debe estar ejecutándose** para que AgriSearch pueda orquestar las búsquedas y asistir en el cribado.
 
 Para la configuración detallada de los modelos, descarga y optimización (CPU vs GPU), por favor consulta primero la **[Guía de Ejecución (ejecucion.md)](ejecucion.md)**.
 
@@ -76,7 +88,7 @@ Simplemente haz doble clic en el archivo:
 > `start_agrisearch.bat`
 
 Al hacer esto por primera vez, el script se encargará automáticamente de:
-- Verificar o instalar el entorno virtual en `backend/` usando `uv` (o recursando a `pip` tradicional si no tienes `uv` instalado).
+- Verificar o instalar el entorno virtual en `backend/` usando `uv` (o recurriendo a `pip` tradicional si no tienes `uv` instalado).
 - Descargar e instalar todas las dependencias de Python y Node (`npm install`).
 - Crear las carpetas de datos locales para SQLite y Qdrant.
 - Abrir las terminales independientes y lanzar el navegador.
@@ -87,26 +99,24 @@ Al hacer esto por primera vez, el script se encargará automáticamente de:
 
 > 💡 **Nota:** Para una guía visual y detallada paso a paso, por favor lee **[ejecucion.md](ejecucion.md)**.
 
-#### 1. Configuración del Backend
+#### 1. Configuración del Backend (con `uv` — Recomendado)
 
-1. Navega al directorio del backend:
-   ```bash
-   cd backend
-   ```
-2. Crea y activa un entorno virtual (se recomienda usar `uv` o `venv` puro):
-   ```bash
-   python -m venv venv
-   .\venv\Scripts\activate  # En Windows
-   ```
-3. Instala las dependencias:
-   ```bash
-   pip install -r requirements.txt
-   # o utilizando uv: uv pip install -r requirements.txt
-   ```
-4. Inicia el servidor de desarrollo Uvicorn:
-   ```bash
-   uvicorn app.main:app --port 8000
-   ```
+```bash
+cd backend
+uv sync                                    # Crea el .venv e instala todas las dependencias
+uv run uvicorn app.main:app --port 8000    # Inicia el servidor
+```
+
+#### 1b. Configuración del Backend (con `pip` — Alternativa)
+
+```bash
+cd backend
+python -m venv .venv
+.\.venv\Scripts\activate   # En Windows
+pip install -e .           # Instala desde pyproject.toml
+uvicorn app.main:app --port 8000
+```
+
 La API estará disponible en `http://localhost:8000` (documentación Swagger en `/docs`).
 
 #### 2. Configuración del Frontend
