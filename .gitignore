@@ -128,4 +128,4 @@ test_output.txt
 *.xlsx
 
 # --- Project Specific ---
-docs/plan_a_seguir.md
+**/plan_a_seguir.md
