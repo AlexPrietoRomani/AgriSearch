@@ -10,6 +10,7 @@ import re
 import yaml
 import io
 import asyncio
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
@@ -31,6 +32,14 @@ except ImportError:
     InputFormat = None
     ImageRefMode = None
     DOCLING_AVAILABLE = False
+
+# ─── OpenDataLoader PDF (Java + CPU, #1 en benchmarks) ──────────────────
+try:
+    import opendataloader_pdf
+    OPENDATALOADER_AVAILABLE = True
+except ImportError:
+    opendataloader_pdf = None
+    OPENDATALOADER_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +176,8 @@ class ImageFilter:
 
 class DoclingParser:
     """
-    Advanced PDF to Markdown converter using Docling.
+    DEPRECATED: Reemplazado por OpenDataLoaderParser + MarkItDownParser.
+    Se mantiene como referencia hasta confirmar estabilidad del nuevo pipeline.
     """
     def __init__(self):
         if not DOCLING_AVAILABLE:
@@ -606,3 +616,147 @@ class MarkItDownParser:
             flags=re.IGNORECASE,
         )
         return md_text
+
+
+# ─── OpenDataLoader PDF Parser (Java + CPU, #1 en benchmarks) ────────────
+
+
+class OpenDataLoaderParser:
+    """
+    Convierte PDFs de artículos científicos a Markdown usando OpenDataLoader PDF.
+    
+    Motor #1 en benchmarks (0.907 overall, 0.928 en tablas).
+    Opera en CPU (Java JVM) — sin dependencia de GPU.
+    Detecta layout de doble columna, tablas borderless, y fórmulas LaTeX.
+    
+    Requiere: Java 11+ instalado en el sistema.
+    """
+
+    def __init__(self, hybrid_mode: bool = False, hybrid_port: int = 5002):
+        """
+        Inicializa el parser.
+        
+        Args:
+            hybrid_mode: Si True, usa el servidor hybrid para OCR/fórmulas/imágenes.
+                         Requiere `opendataloader-pdf-hybrid` corriendo en hybrid_port.
+            hybrid_port: Puerto del servidor hybrid (default: 5002).
+        """
+        if not OPENDATALOADER_AVAILABLE:
+            raise ImportError(
+                "OpenDataLoader PDF no está instalado. "
+                "Ejecuta: uv add opendataloader-pdf\n"
+                "También requiere Java 11+: java -version"
+            )
+        
+        self.hybrid_mode = hybrid_mode
+        self.hybrid_port = hybrid_port
+        logger.info(
+            f"OpenDataLoaderParser inicializado (Java+CPU) | "
+            f"Híbrido: {'activo' if hybrid_mode else 'inactivo'}"
+        )
+
+    async def parse_pdf(
+        self,
+        pdf_path: Path,
+        article_meta: Dict[str, Any],
+        publish_event=None,
+        project_id: str = None,
+    ) -> str:
+        """
+        Convierte un PDF científico a Markdown estructurado.
+        
+        Pipeline:
+          1. OpenDataLoader convierte el PDF (Java JVM, CPU).
+          2. TableFlattener aplana tablas en oraciones atómicas para RAG.
+          3. Se inyecta front-matter YAML con metadatos bibliográficos.
+        
+        Args:
+            pdf_path:      Ruta absoluta al archivo PDF.
+            article_meta:  Dict con claves: id, doi, title, authors, year,
+                          journal, keywords, source_database.
+            publish_event: Función async para enviar progreso via SSE (opcional).
+            project_id:    ID del proyecto para los eventos SSE (opcional).
+        
+        Returns:
+            String con el Markdown enriquecido completo (YAML + contenido + tablas aplanadas).
+        """
+        if isinstance(pdf_path, str):
+            pdf_path = Path(pdf_path)
+
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
+
+        # ── 1. Conversión PDF → Markdown (Java JVM, CPU) ─────────────
+        if publish_event and project_id:
+            await publish_event(project_id, {
+                "type": "sub_progress",
+                "msg": f"Convirtiendo PDF con OpenDataLoader (layout + tablas)..."
+            })
+
+        loop = asyncio.get_running_loop()
+        
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Ejecutar en thread pool (Java JVM es bloqueante)
+            convert_kwargs = {
+                "input_path": str(pdf_path),
+                "output_dir": tmp_dir,
+                "format": "markdown",
+                "use_struct_tree": True,
+                "table_method": "cluster",
+                "reading_order": "xycut",
+            }
+            
+            if self.hybrid_mode:
+                convert_kwargs["hybrid"] = "docling-fast"
+                convert_kwargs["hybrid_mode"] = "auto"
+            
+            await loop.run_in_executor(
+                None, lambda: opendataloader_pdf.convert(**convert_kwargs)
+            )
+            
+            # Leer el .md generado
+            md_files = list(Path(tmp_dir).glob("*.md"))
+            if not md_files:
+                logger.warning(f"OpenDataLoader no generó .md para {pdf_path.name}")
+                md_content = f"<!-- OpenDataLoader: conversión vacía para {pdf_path.name} -->"
+            else:
+                md_content = md_files[0].read_text(encoding="utf-8")
+
+        if len(md_content.strip()) < 50:
+            logger.warning(f"Contenido muy corto para {pdf_path.name}: {len(md_content)} chars")
+
+        # ── 2. Limpiar artefactos de conversión ──────────────────────
+        md_content = self._post_process(md_content)
+
+        # ── 3. Aplanar tablas para RAG ───────────────────────────────
+        if publish_event and project_id:
+            await publish_event(project_id, {
+                "type": "sub_progress",
+                "msg": "Aplanando tablas para optimización RAG..."
+            })
+        md_content = TableFlattener.flatten(md_content, article_meta)
+
+        # ── 4. Inyectar front-matter YAML ────────────────────────────
+        front_matter = {
+            "agrisearch_id": article_meta.get("id"),
+            "doi": article_meta.get("doi"),
+            "title": article_meta.get("title"),
+            "authors": article_meta.get("authors"),
+            "year": article_meta.get("year"),
+            "journal": article_meta.get("journal"),
+            "keywords": article_meta.get("keywords") or [],
+            "source_database": article_meta.get("source_database"),
+            "parser_engine": "opendataloader",
+        }
+        yaml_str = yaml.dump(front_matter, allow_unicode=True, sort_keys=False)
+        final_md = f"---\n{yaml_str}---\n\n{md_content}"
+
+        return final_md
+
+    @staticmethod
+    def _post_process(md_text: str) -> str:
+        """Limpia artefactos comunes de la conversión PDF→MD."""
+        md_text = re.sub(r"\n{4,}", "\n\n\n", md_text)
+        md_text = re.sub(r"^(#{1,6})\s*$", "", md_text, flags=re.MULTILINE)
+        md_text = re.sub(r"-{5,}", "---", md_text)
+        return md_text.strip()
