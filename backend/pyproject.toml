@@ -11,32 +11,26 @@ dependencies = [
     "python-multipart==0.0.24",
     "jinja2==3.1.6",
     "markupsafe==3.0.3",
-
     # --- Database & ORM ---
     "sqlalchemy==2.0.49",
     "aiosqlite==0.22.1",
     "alembic==1.18.4",
-
     # --- Document Parsing (Dual-Parser Strategy) ---
     "opendataloader-pdf>=0.9.0",
     "markitdown[pdf]>=0.1.5",
     "markitdown-ocr>=0.1.0",
-
     # --- AI & LLM Integration ---
     "ollama==0.6.1",
     "litellm==1.83.3",
     "openai>=2.30.0",
-
     # --- Vector DB & ML ---
     "qdrant-client[http]==1.17.1",
     "scikit-learn==1.8.0",
     "scipy==1.17.1",
     "rank-bm25==0.2.2",
     "numpy==2.4.4",
-
     # --- HTTP & Networking ---
     "aiohttp==3.13.5",
-
     # --- Data Processing ---
     "pandas==3.0.2",
     "beautifulsoup4==4.14.3",
@@ -45,14 +39,12 @@ dependencies = [
     "pillow==11.1.0",
     "rapidfuzz==3.14.3",
     "pypdf",
-
     # --- Scientific API Clients ---
     "habanero>=2.3.0",
     "pycite>=0.1.3",
     "feedparser>=6.0.12",
     "google-search-results>=2.4.2",
     "pybtex>=0.26.1",
-
     # --- Configuration & CLI ---
     "pydantic==2.12.5",
     "pydantic-settings==2.13.1",
@@ -60,7 +52,6 @@ dependencies = [
     "click==8.1.8",
     "colorama==0.4.6",
     "rich==14.3.3",
-
     # --- Testing ---
     "faker==40.12.0",
     "pytest==9.0.2",
