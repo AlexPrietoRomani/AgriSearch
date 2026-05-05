@@ -72,69 +72,58 @@ cmd /c "backend\.venv\Scripts\python.exe -c \"import opendataloader_pdf; print('
 
 ---
 
-#### [X] Acción 1.2: Crear la clase `MarkItDownParser` en `document_parser_service.py`
+#### [ ] Acción 1.2: Crear la clase `OpenDataLoaderParser` en `document_parser_service.py`
 
-**Qué hace:** Crea una nueva clase que usa MarkItDown para convertir PDFs a Markdown, reemplazando la funcionalidad de `DoclingParser`.
+**Qué hace:** Crea el parser primario para PDFs de artículos científicos, usando OpenDataLoader PDF para conversión con detección de layout, tablas y fórmulas.
 
 **Archivo a modificar:** `backend/app/services/document_parser_service.py`
 
 **Código a añadir** (al final del archivo, sin eliminar `DoclingParser` aún):
 
 ```python
-# ─── MarkItDown Parser (CPU-based, Zero-GPU) ─────────────────────────────
+# ─── OpenDataLoader PDF Parser (Java + CPU, #1 en benchmarks) ────────────
+import tempfile
+
 try:
-    from markitdown import MarkItDown as _MarkItDown
-    MARKITDOWN_AVAILABLE = True
+    import opendataloader_pdf
+    OPENDATALOADER_AVAILABLE = True
 except ImportError:
-    _MarkItDown = None
-    MARKITDOWN_AVAILABLE = False
+    opendataloader_pdf = None
+    OPENDATALOADER_AVAILABLE = False
 
 
-class MarkItDownParser:
+class OpenDataLoaderParser:
     """
-    Convierte PDFs a Markdown estructurado usando Microsoft MarkItDown.
-    Opera completamente en CPU — sin dependencia de GPU ni modelos pesados.
+    Convierte PDFs de artículos científicos a Markdown usando OpenDataLoader PDF.
     
-    Atributos:
-        md: Instancia de MarkItDown configurada.
-        has_vlm: Indica si hay un VLM disponible para describir imágenes.
+    Motor #1 en benchmarks (0.907 overall, 0.928 en tablas).
+    Opera en CPU (Java JVM) — sin dependencia de GPU.
+    Detecta layout de doble columna, tablas borderless, y fórmulas LaTeX.
+    
+    Requiere: Java 11+ instalado en el sistema.
     """
 
-    def __init__(self, llm_client=None, llm_model: str = None):
+    def __init__(self, hybrid_mode: bool = False, hybrid_port: int = 5002):
         """
         Inicializa el parser.
         
         Args:
-            llm_client: Cliente OpenAI-compatible (openai.OpenAI). Opcional.
-                        Si se proporciona, MarkItDown describirá imágenes automáticamente.
-            llm_model:  Nombre del modelo VLM (ej: "llama3.2-vision", "gpt-4o").
+            hybrid_mode: Si True, usa el servidor hybrid para OCR/fórmulas/imágenes.
+                         Requiere `opendataloader-pdf-hybrid` corriendo en hybrid_port.
+            hybrid_port: Puerto del servidor hybrid (default: 5002).
         """
-        if not MARKITDOWN_AVAILABLE:
+        if not OPENDATALOADER_AVAILABLE:
             raise ImportError(
-                "MarkItDown no está instalado. Ejecuta: uv add 'markitdown[pdf]'"
+                "OpenDataLoader PDF no está instalado. "
+                "Ejecuta: uv add opendataloader-pdf\n"
+                "También requiere Java 11+: java -version"
             )
         
-        init_kwargs = {}
-        self.has_vlm = False
-        
-        if llm_client and llm_model:
-            init_kwargs["llm_client"] = llm_client
-            init_kwargs["llm_model"] = llm_model
-            init_kwargs["llm_prompt"] = (
-                "Describe esta imagen científica de un artículo de investigación "
-                "en 2-3 oraciones concisas en español. Incluye qué tipo de gráfico "
-                "o figura es y qué variables o datos muestra. "
-                "Si la imagen es un logo, publicidad, decorativa o ilegible, "
-                "responde ÚNICAMENTE con la palabra: DESCARTAR."
-            )
-            # Habilitar plugins (necesario para markitdown-ocr si está instalado)
-            init_kwargs["enable_plugins"] = True
-            self.has_vlm = True
-            logger.info(f"MarkItDown inicializado con VLM: {llm_model}")
-        
-        self.md = _MarkItDown(**init_kwargs)
+        self.hybrid_mode = hybrid_mode
+        self.hybrid_port = hybrid_port
         logger.info(
-            f"MarkItDown inicializado (CPU) | VLM: {'activo' if self.has_vlm else 'inactivo'}"
+            f"OpenDataLoaderParser inicializado (Java+CPU) | "
+            f"Híbrido: {'activo' if hybrid_mode else 'inactivo'}"
         )
 
     async def parse_pdf(
@@ -145,10 +134,10 @@ class MarkItDownParser:
         project_id: str = None,
     ) -> str:
         """
-        Convierte un PDF a Markdown enriquecido.
+        Convierte un PDF científico a Markdown estructurado.
         
         Pipeline:
-          1. MarkItDown convierte el PDF completo a Markdown (CPU).
+          1. OpenDataLoader convierte el PDF (Java JVM, CPU).
           2. TableFlattener aplana tablas en oraciones atómicas para RAG.
           3. Se inyecta front-matter YAML con metadatos bibliográficos.
         
@@ -161,38 +150,53 @@ class MarkItDownParser:
         
         Returns:
             String con el Markdown enriquecido completo (YAML + contenido + tablas aplanadas).
-        
-        Raises:
-            FileNotFoundError: Si el PDF no existe en la ruta indicada.
         """
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
 
-        # ── 1. Conversión PDF → Markdown (CPU) ──────────────────────
+        # ── 1. Conversión PDF → Markdown (Java JVM, CPU) ─────────────
         if publish_event and project_id:
             await publish_event(project_id, {
                 "type": "sub_progress",
-                "msg": f"Convirtiendo PDF a Markdown (MarkItDown CPU)..."
+                "msg": f"Convirtiendo PDF con OpenDataLoader (layout + tablas)..."
             })
 
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None, lambda: self.md.convert(str(pdf_path))
-        )
-        md_content = result.markdown
+        
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Ejecutar en thread pool (Java JVM es bloqueante)
+            convert_kwargs = {
+                "input_path": str(pdf_path),
+                "output_dir": tmp_dir,
+                "format": "markdown",
+                "use_struct_tree": True,
+                "table_method": "cluster",
+                "reading_order": "xycut",
+            }
+            
+            if self.hybrid_mode:
+                convert_kwargs["hybrid"] = "docling-fast"
+                convert_kwargs["hybrid_mode"] = "auto"
+            
+            await loop.run_in_executor(
+                None, lambda: opendataloader_pdf.convert(**convert_kwargs)
+            )
+            
+            # Leer el .md generado
+            md_files = list(Path(tmp_dir).glob("*.md"))
+            if not md_files:
+                logger.warning(f"OpenDataLoader no generó .md para {pdf_path.name}")
+                md_content = f"<!-- OpenDataLoader: conversión vacía para {pdf_path.name} -->"
+            else:
+                md_content = md_files[0].read_text(encoding="utf-8")
 
-        if not md_content or len(md_content.strip()) < 50:
-            logger.warning(f"Conversión vacía o muy corta para {pdf_path.name}")
-            md_content = f"<!-- MarkItDown: conversión vacía para {pdf_path.name} -->"
+        if len(md_content.strip()) < 50:
+            logger.warning(f"Contenido muy corto para {pdf_path.name}: {len(md_content)} chars")
 
         # ── 2. Limpiar artefactos de conversión ──────────────────────
         md_content = self._post_process(md_content)
 
-        # ── 3. Filtrar descripciones VLM de imágenes decorativas ─────
-        if self.has_vlm:
-            md_content = self._filter_discarded_images(md_content)
-
-        # ── 4. Aplanar tablas para RAG ───────────────────────────────
+        # ── 3. Aplanar tablas para RAG ───────────────────────────────
         if publish_event and project_id:
             await publish_event(project_id, {
                 "type": "sub_progress",
@@ -200,7 +204,7 @@ class MarkItDownParser:
             })
         md_content = TableFlattener.flatten(md_content, article_meta)
 
-        # ── 5. Inyectar front-matter YAML ────────────────────────────
+        # ── 4. Inyectar front-matter YAML ────────────────────────────
         front_matter = {
             "agrisearch_id": article_meta.get("id"),
             "doi": article_meta.get("doi"),
@@ -210,7 +214,7 @@ class MarkItDownParser:
             "journal": article_meta.get("journal"),
             "keywords": article_meta.get("keywords") or [],
             "source_database": article_meta.get("source_database"),
-            "parser_engine": "markitdown",
+            "parser_engine": "opendataloader",
         }
         yaml_str = yaml.dump(front_matter, allow_unicode=True, sort_keys=False)
         final_md = f"---\n{yaml_str}---\n\n{md_content}"
@@ -220,293 +224,255 @@ class MarkItDownParser:
     @staticmethod
     def _post_process(md_text: str) -> str:
         """Limpia artefactos comunes de la conversión PDF→MD."""
-        # Eliminar líneas vacías excesivas (más de 2 consecutivas)
         md_text = re.sub(r"\n{4,}", "\n\n\n", md_text)
-        # Eliminar headers vacíos (## \n)
         md_text = re.sub(r"^(#{1,6})\s*$", "", md_text, flags=re.MULTILINE)
-        # Normalizar separadores de página
         md_text = re.sub(r"-{5,}", "---", md_text)
         return md_text.strip()
-
-    @staticmethod
-    def _filter_discarded_images(md_text: str) -> str:
-        """Elimina bloques de imagen cuya descripción VLM dice DESCARTAR."""
-        # Patrón: líneas que contengan DESCARTAR en contexto de descripción de imagen
-        md_text = re.sub(
-            r"!\[.*?\]\(.*?\)\s*\n*.*?DESCARTAR.*?\n*",
-            "",
-            md_text,
-            flags=re.IGNORECASE,
-        )
-        return md_text
 ```
 
 **Input:** El archivo `document_parser_service.py` existente.  
-**Output:** Archivo actualizado con la clase `MarkItDownParser` funcional.
+**Output:** Archivo actualizado con la clase `OpenDataLoaderParser` funcional.
 
 ---
 
-#### [X] Acción 1.3: Mantener `DoclingParser` como fallback
+#### [ ] Acción 1.3: Mantener `DoclingParser` como fallback temporal
 
-**Qué hace:** No se elimina `DoclingParser`. Se preserva como opción activable por variable de entorno.
+**Qué hace:** No se elimina `DoclingParser`. Se marca como `@deprecated` y se preserva como referencia. La dependencia `docling` ya fue eliminada de `pyproject.toml`, por lo que solo funcionará si se instala manualmente.
 
-**Sin cambios en código.** La lógica de selección se implementará en TASK 2.0.6 cuando se modifique `pdf_enrichment_service.py`. Por ahora, ambas clases coexisten en el mismo archivo.
-
----
-
-#### [X] Acción 1.4: Actualizar `pyproject.toml`
-
-**Qué hace:** Añade `markitdown[pdf]` como dependencia principal. Las dependencias de Docling (`docling`, `docling-core`, `torch`, `torchvision`, `torchaudio`, `pypdfium2`) se mantienen temporalmente pero se marcarán como opcionales en una tarea futura.
-
-**Esto ya se hizo en la Acción 1.1** con `uv add`. Verificar que el archivo contiene la línea:
-```toml
-"markitdown[pdf]>=0.1.0",
+**Sin cambios en código.** Solo añadir un comentario:
+```python
+class DoclingParser:
+    """
+    DEPRECATED: Reemplazado por OpenDataLoaderParser + MarkItDownParser.
+    Se mantiene como referencia hasta confirmar estabilidad del nuevo pipeline.
+    """
 ```
 
 ---
 
 ### Test de Verificación (TASK 2.0.1)
 
-**Archivo:** `tests/test_conversion_manual.py` (actualizar)
+**Archivo:** `tests/backend/integration/test_dual_parser.py` → `TestOpenDataLoaderParser`
 
 **Ejecutar:**
 ```bash
-cmd /c "backend\.venv\Scripts\python.exe tests\test_conversion_manual.py"
+uv run pytest tests/backend/integration/test_dual_parser.py::TestOpenDataLoaderParser -v
 ```
 
 **Criterios de éxito:**
-- [X] `MarkItDownParser()` se inicializa sin errores.
-- [X] Un PDF de ~100 páginas se convierte a Markdown en **< 15 segundos**.
-- [X] El Markdown generado contiene headings (`##`), texto legible y **≥ 1000 caracteres**.
-- [X] El uso de GPU durante la conversión es **0%** (verificar con `nvidia-smi`).
+- [ ] `import opendataloader_pdf` no lanza error.
+- [ ] Un PDF se convierte a Markdown con layout detectado.
+- [ ] El Markdown generado contiene headings (`##`), tablas y **≥ 100 caracteres**.
+- [ ] La conversión tarda **< 30 segundos** por PDF.
+- [ ] El uso de GPU durante la conversión es **0%**.
 
 ---
 
-## TASK 2.0.2: Integrar VLM para Descripción de Imágenes
+## TASK 2.0.2: Mantener `MarkItDownParser` como Parser Universal
 
 ### Objetivo
-Configurar MarkItDown con un cliente LLM OpenAI-compatible (Ollama) para que describa automáticamente las imágenes científicas durante la conversión, reemplazando la clase `ImageFilter` manual.
+Preservar y configurar `MarkItDownParser` como motor para **formatos no-PDF** (DOCX, PPTX, XLSX, HTML, EPUB) y como **fallback** para PDFs no-científicos. MarkItDown opera en CPU puro (~50MB) y soporta VLM opcional para imágenes.
 
 ### Input
-- Clase `MarkItDownParser` creada en TASK 2.0.1.
-- Ollama corriendo localmente con un modelo de visión (ej: `llama3.2-vision`).
+- Clase `MarkItDownParser` existente en `document_parser_service.py`.
+- `markitdown[pdf]` y `markitdown-ocr` en `pyproject.toml`.
 
 ### Acciones Paso a Paso
 
-#### [X] Acción 2.1: Instalar el plugin `markitdown-ocr` (opcional)
+#### [ ] Acción 2.1: Verificar que MarkItDown está instalado
 
-**Qué hace:** Habilita OCR para documentos PDF escaneados (sin texto digital). Usa el VLM configurado para extraer texto de imágenes.
-
-**Comando:**
+**Comandos:**
 ```bash
-cd backend
-uv add markitdown-ocr
-```
-
-**Verificación:**
-```bash
-cmd /c "backend\.venv\Scripts\python.exe -c \"import markitdown_ocr; print('Plugin OCR OK')\""
-```
-
-> **Nota:** Si el plugin no está disponible, MarkItDown funcionará igual para PDFs con texto digital. Solo es necesario para PDFs que son imágenes escaneadas.
-
----
-
-#### [X] Acción 2.2: Verificar que el SDK `openai` está instalado
-
-**Qué hace:** MarkItDown requiere un objeto `openai.OpenAI` como `llm_client`. El SDK `openai` es el puente para comunicarse con Ollama (que expone API compatible con OpenAI).
-
-**Comando:**
-```bash
-cd backend
-uv add openai
-```
-
-**Verificación:**
-```bash
-cmd /c "backend\.venv\Scripts\python.exe -c \"from openai import OpenAI; print('OpenAI SDK OK')\""
+cmd /c "backend\.venv\Scripts\python.exe -c \"from markitdown import MarkItDown; print('OK:', MarkItDown)\""
 ```
 
 ---
 
-#### [X] Acción 2.3: Configurar el `llm_client` dentro de `MarkItDownParser`
+#### [ ] Acción 2.2: Refactorizar `MarkItDownParser.parse_pdf()` → `parse_document()`
 
-**Qué hace:** Ya está implementado en `MarkItDownParser.__init__()` de la TASK 2.0.1. Aquí solo se documenta cómo se usa externamente.
+**Qué hace:** Renombra el método para reflejar que no solo maneja PDFs sino todos los formatos soportados (DOCX, PPTX, XLSX, HTML, EPUB, PDF simple).
 
-**Ejemplo de uso (en `pdf_enrichment_service.py`, se hará en TASK 2.0.6):**
-
+**Cambio en `document_parser_service.py`:**
 ```python
-from openai import OpenAI
-
-# Ollama expone API compatible con OpenAI en localhost:11434
-llm_client = OpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="ollama"  # Ollama no requiere API key real
-)
-
-parser = MarkItDownParser(
-    llm_client=llm_client,
-    llm_model="llama3.2-vision"  # o el modelo VLM del proyecto
-)
-```
-
-**Sin VLM (modo solo CPU):**
-```python
-parser = MarkItDownParser()  # Sin argumentos → no describe imágenes
-```
-
----
-
-#### [X] Acción 2.4: Eliminar la clase `ImageFilter` (diferido)
-
-**Qué hace:** La clase `ImageFilter` en `document_parser_service.py` queda obsoleta porque MarkItDown integra la descripción de imágenes internamente via `llm_client`.
-
-**Acción:** Marcar como `@deprecated` con un comentario. Se eliminará completamente cuando se confirme que MarkItDown + VLM funciona correctamente en producción.
-
-```python
-class ImageFilter:
+class MarkItDownParser:
     """
-    DEPRECATED: Reemplazada por MarkItDownParser(llm_client=...).
-    MarkItDown describe imágenes internamente vía llm_client.
-    Se mantendrá temporalmente como referencia.
+    Convierte documentos multi-formato a Markdown usando Microsoft MarkItDown.
+    Opera completamente en CPU — sin dependencia de GPU.
+    
+    Formatos soportados: PDF (básico), DOCX, PPTX, XLSX, HTML, EPUB, CSV.
+    Para PDFs de artículos científicos, usar OpenDataLoaderParser.
     """
-    # ... código existente sin cambios ...
+
+    async def parse_document(
+        self,
+        file_path: Path,
+        article_meta: Dict[str, Any],
+        publish_event=None,
+        project_id: str = None,
+    ) -> str:
+        """
+        Convierte un documento a Markdown enriquecido.
+        Soporta PDF, DOCX, PPTX, XLSX, HTML, EPUB.
+        """
+        # ... lógica existente de parse_pdf adaptada ...
+        # Cambio clave: parser_engine = "markitdown" en el front-matter
+```
+
+---
+
+#### [ ] Acción 2.3: Mantener compatibilidad con VLM
+
+**Qué hace:** La integración VLM existente (via `llm_client` y `llm_model`) se mantiene sin cambios. MarkItDown describe imágenes automáticamente si se proporciona un cliente OpenAI-compatible (Ollama).
+
+**Sin cambios en código.** Solo documentar el uso:
+```python
+# Con VLM (describe imágenes):
+parser = MarkItDownParser(llm_client=ollama_client, llm_model="gemma4:26b")
+
+# Sin VLM (solo texto):
+parser = MarkItDownParser()
 ```
 
 ---
 
 ### Test de Verificación (TASK 2.0.2)
 
-**Archivo:** `tests/unit/test_pdf_preprocessing.py` (nuevo test)
+**Archivo:** `tests/backend/integration/test_dual_parser.py` → `TestMarkItDownParser`
 
-**Test 1 — Sin VLM:** El parser convierte PDF sin errores cuando no hay VLM configurado.
-```python
-def test_markitdown_sin_vlm():
-    parser = MarkItDownParser()  # Sin llm_client
-    assert parser.has_vlm is False
-    # La conversión funciona normalmente
-```
-
-**Test 2 — Con VLM mock:** Verificar que se pasa el `llm_client` correctamente.
-```python
-def test_markitdown_con_vlm():
-    from unittest.mock import MagicMock
-    mock_client = MagicMock()
-    parser = MarkItDownParser(llm_client=mock_client, llm_model="test-model")
-    assert parser.has_vlm is True
+**Ejecutar:**
+```bash
+uv run pytest tests/backend/integration/test_dual_parser.py::TestMarkItDownParser -v
 ```
 
 **Criterios de éxito:**
-- [X] Sin VLM: La conversión genera Markdown válido. Las imágenes quedan como placeholders o sin descripción.
-- [X] Con VLM: Las imágenes técnicas reciben descripción textual. Los logos/decorativas se filtran (contienen "DESCARTAR").
-- [X] Si Ollama no está corriendo, el parser **no bloquea** el pipeline — solo omite descripciones.
+- [ ] `from markitdown import MarkItDown` no lanza error.
+- [ ] Un PDF se convierte a Markdown sin error (modo básico).
+- [ ] Inicialización sin VLM no falla.
+- [ ] Inicialización con VLM mock no falla.
 
 ---
 
-## TASK 2.0.3: Adaptar `TableFlattener` al Output de MarkItDown
+## TASK 2.0.3: Implementar `ParserRouter` (Selector de Parser)
 
 ### Objetivo
-Verificar y adaptar el `TableFlattener` existente para que funcione correctamente con tablas generadas por MarkItDown (que pueden tener formato ligeramente distinto al de Docling).
+Crear la lógica de decisión que selecciona el parser correcto según el tipo de archivo y si el documento es un artículo científico. Esto implementa el nodo de decisión `{¿Tipo de archivo?}` del flujograma.
 
 ### Input
-- Clase `TableFlattener` existente en `document_parser_service.py`.
-- Output Markdown de MarkItDown con tablas.
+- `OpenDataLoaderParser` (TASK 2.0.1).
+- `MarkItDownParser` (TASK 2.0.2).
+- Campo `source_database` del artículo (determina si es científico).
 
 ### Acciones Paso a Paso
 
-#### [X] Acción 3.1: Verificar compatibilidad del regex actual
+#### [ ] Acción 3.1: Crear clase `ParserRouter` en `document_parser_service.py`
 
-**Qué hace:** Ejecuta el `TableFlattener` contra una muestra de tablas generadas por MarkItDown para verificar que las detecta correctamente.
+**Qué hace:** Implementa la lógica de routing del flujograma dual-parser.
 
-**Script de verificación manual:**
 ```python
-"""Ejecutar: cmd /c "backend\.venv\Scripts\python.exe tests/scratch/test_table_flattener.py" """
-from app.services.document_parser_service import TableFlattener
+class ParserRouter:
+    """
+    Selecciona el parser apropiado según tipo de archivo y naturaleza del documento.
+    
+    Reglas de routing:
+    ┌──────────────────────────────┬─────────────────────────┐
+    │ Condición                    │ Parser seleccionado     │
+    ├──────────────────────────────┼─────────────────────────┤
+    │ PDF + artículo científico    │ OpenDataLoaderParser    │
+    │ PDF + no científico          │ MarkItDownParser        │
+    │ DOCX / PPTX / XLSX / HTML   │ MarkItDownParser        │
+    │ EPUB / CSV / otros           │ MarkItDownParser        │
+    └──────────────────────────────┴─────────────────────────┘
+    """
 
-# Tabla de ejemplo en formato MarkItDown
-test_md = """
-## Resultados
+    # Extensiones que siempre van a MarkItDown
+    _MARKITDOWN_EXTENSIONS = {".docx", ".pptx", ".xlsx", ".html", ".htm", ".epub", ".csv"}
+    
+    # Fuentes que indican artículo científico
+    _SCIENTIFIC_SOURCES = {
+        "openalex", "semantic_scholar", "arxiv", "crossref",
+        "core", "scielo", "redalyc", "agecon", "organic_eprints",
+    }
 
-| Cultivo | Rendimiento (t/ha) | Tratamiento |
-|---------|-------------------|-------------|
-| Trigo   | 4.2               | Control     |
-| Maíz    | 8.7               | Fertilizado |
-| Soja    | 3.1               | Inoculado   |
+    @classmethod
+    def select_parser(
+        cls,
+        file_path: Path,
+        article_meta: Dict[str, Any],
+        opendataloader_parser: "OpenDataLoaderParser" = None,
+        markitdown_parser: "MarkItDownParser" = None,
+    ) -> tuple:
+        """
+        Selecciona el parser correcto y retorna (parser, engine_name).
+        
+        Returns:
+            Tupla de (parser_instance, "opendataloader" | "markitdown")
+        """
+        ext = file_path.suffix.lower()
+        source = (article_meta.get("source_database") or "").lower().strip()
+        is_scientific = source in cls._SCIENTIFIC_SOURCES
 
-Texto después de la tabla.
-"""
+        # Regla 1: Formatos no-PDF → siempre MarkItDown
+        if ext in cls._MARKITDOWN_EXTENSIONS:
+            logger.info(f"Router: {ext} → MarkItDown (formato no-PDF)")
+            return markitdown_parser, "markitdown"
 
-meta = {"title": "Evaluación de cultivos", "authors": "García J., López M.", "year": 2024}
-result = TableFlattener.flatten(test_md, meta)
-print(result)
-# Esperado: Cada fila convertida en una oración con formato
-# "Según García J. (2024) en Evaluación de cultivos, se registra: Cultivo: Trigo, Rendimiento: 4.2 t/ha, Tratamiento: Control."
+        # Regla 2: PDF científico → OpenDataLoader
+        if ext == ".pdf" and is_scientific and opendataloader_parser:
+            logger.info(f"Router: PDF científico ({source}) → OpenDataLoader")
+            return opendataloader_parser, "opendataloader"
+
+        # Regla 3: PDF no-científico o fallback → MarkItDown
+        if ext == ".pdf":
+            logger.info(f"Router: PDF no-científico → MarkItDown (fallback)")
+            return markitdown_parser, "markitdown"
+
+        # Regla 4: Extensión desconocida → MarkItDown (mejor esfuerzo)
+        logger.warning(f"Router: extensión desconocida '{ext}' → MarkItDown")
+        return markitdown_parser, "markitdown"
 ```
 
 ---
 
-#### [X] Acción 3.2: Mejorar detección de tablas multi-línea
+#### [ ] Acción 3.2: Integrar `ParserRouter` en el pipeline de conversión
 
-**Qué hace:** Añade soporte para tablas donde las celdas contienen saltos de línea internos (más comunes en MarkItDown que en Docling).
+**Qué hace:** Modifica la función de conversión en `pdf_enrichment_service.py` para usar el router.
 
-**Archivo:** `backend/app/services/document_parser_service.py` → Clase `TableFlattener`
-
-**Cambio en el regex** `_TABLE_PATTERN`:
 ```python
-# ANTES (solo detecta líneas con |):
-_TABLE_PATTERN = re.compile(
-    r"((?:^\|.+\|$\n?)+)",
-    re.MULTILINE
+# En pdf_enrichment_service.py
+from app.services.document_parser_service import (
+    OpenDataLoaderParser, MarkItDownParser, ParserRouter
 )
 
-# DESPUÉS (más robusto, incluye líneas de separador):
-_TABLE_PATTERN = re.compile(
-    r"((?:^\|[^\n]+\|\s*$\n?){2,})",
-    re.MULTILINE
+# Inicializar ambos parsers al inicio
+odl_parser = OpenDataLoaderParser()
+mit_parser = MarkItDownParser()
+
+# Para cada artículo:
+parser, engine = ParserRouter.select_parser(
+    file_path=pdf_path,
+    article_meta=meta,
+    opendataloader_parser=odl_parser,
+    markitdown_parser=mit_parser,
 )
+final_md = await parser.parse_document(pdf_path, meta)
 ```
-
-> **Nota:** Si las tablas se detectan correctamente con el regex actual (verificar en Acción 3.1), no es necesario cambiar nada. Solo modificar si hay tablas no detectadas.
-
----
-
-#### [X] Acción 3.3: Validar con corpus real
-
-**Qué hace:** Usa 3 PDFs del proyecto real para verificar que el aplanamiento de tablas funciona end-to-end.
-
-**Proceso manual:**
-1. Convertir 3 PDFs con `MarkItDownParser`.
-2. Buscar tablas en el Markdown generado (`ctrl+F` para `|`).
-3. Verificar que `TableFlattener` las convierte en oraciones coherentes.
-4. Si encuentra tablas no detectadas → ajustar regex.
 
 ---
 
 ### Test de Verificación (TASK 2.0.3)
 
-**Archivo:** `tests/unit/test_pdf_preprocessing.py` (añadir tests)
+**Archivo:** `tests/backend/integration/test_dual_parser.py` → `TestParserRouter`
 
-```python
-def test_table_flattener_basic():
-    """Tabla simple se aplana correctamente."""
-    md = "| Col A | Col B |\n|-------|-------|\n| val1  | val2  |"
-    meta = {"title": "Paper", "authors": "Smith J.", "year": 2023}
-    result = TableFlattener.flatten(md, meta)
-    assert "Col A: val1" in result
-    assert "Col B: val2" in result
-    assert "|" not in result  # La tabla desapareció
-
-def test_table_flattener_preserva_texto():
-    """El texto fuera de tablas no se modifica."""
-    md = "# Título\n\nTexto normal sin tablas."
-    result = TableFlattener.flatten(md, {})
-    assert result == md
+**Ejecutar:**
+```bash
+uv run pytest tests/backend/integration/test_dual_parser.py::TestParserRouter -v
 ```
 
 **Criterios de éxito:**
-- [X] ≥90% de tablas en el corpus son detectadas y aplanadas.
-- [X] Las oraciones generadas son gramaticalmente coherentes.
-- [X] El texto fuera de tablas no se modifica.
+- [ ] PDF + artículo científico → selecciona `opendataloader`.
+- [ ] PDF + no científico → selecciona `markitdown`.
+- [ ] DOCX / PPTX / XLSX / HTML → selecciona `markitdown`.
+- [ ] Extensión desconocida → selecciona `markitdown` (fallback).
 
 ---
 
