@@ -96,6 +96,7 @@ AGENTS.md
 PLAN.md
 Plan.md
 todo.md
+.ignore
 *plan.md
 *scratch*
 skills-lock.json
@@ -126,9 +127,13 @@ test_output.txt
 *.docx
 *.pptx
 *.xlsx
+docs/process/
+docs/investigation/
+docs/papers/
 
 # --- Project Specific ---
 **/plan_a_seguir.md
 
 # --- graphify ---
 /graphify-out/
+.graphifyignore
