@@ -14,6 +14,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import re
 import unicodedata
+import logging
+
+logger = logging.getLogger(__name__)
 
 def sanitize_folder_name(name: str) -> str:
     """Sanitizes strings for folder names (removes accents, spaces -> underscores)."""
@@ -51,17 +54,26 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def force_root_db(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Force use of root database with absolute path or respect provided URL."""
+        """Force use of database in backend/data/ directory."""
         # Si se pasó una URL explícita (desde .env), la respetamos
         if data.get("database_url") and not data["database_url"].endswith("agrisearch.db"):
              return data
 
         # El archivo config.py está en backend/app/core/config.py
-        # La raíz está 3 niveles arriba: core -> app -> backend -> root
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        db_path = project_root / "agrisearch.db"
+        # backend/ está 3 niveles arriba: core -> app -> backend
+        backend_root = Path(__file__).resolve().parent.parent.parent
+        data_dir = backend_root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        db_path = data_dir / "agrisearch.db"
         
-        # Fallback a la raíz si no hay configuración especial
+        # Si existe la BD antigua en la raíz del proyecto, migrarla
+        old_db_path = backend_root.parent / "agrisearch.db"
+        if old_db_path.exists() and not db_path.exists():
+            import shutil
+            shutil.copy2(old_db_path, db_path)
+            logger.info(f"Migrated database from {old_db_path} to {db_path}")
+        
+        # Fallback a backend/data/ si no hay configuración especial
         if not data.get("database_url") or "agrisearch.db" in data.get("database_url", ""):
             data["database_url"] = f"sqlite+aiosqlite:///{db_path.as_posix()}"
             
