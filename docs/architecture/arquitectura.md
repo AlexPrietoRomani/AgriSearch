@@ -8,91 +8,245 @@ La aplicación se compone de tres bloques fundamentales:
 
 ### **A. Interfaz de Usuario (Frontend: Astro + React + TypeScript + Tailwind)**
 Ubicación: `/frontend`
-- **Astro (`src/pages/*.astro`)**: Administra las páginas estáticas y el ruteo base de la app. Por ejemplo, `index.astro`, `project.astro`, `search.astro`, `screening.astro`.
-- **Componentes React (`src/components/*.tsx`)**: Proveen toda la experiencia visual e interacciones dinámicas. 
-  - *ProjectList.tsx / ProjectDashboard.tsx / SearchWizard.tsx / ScreeningApp.tsx*.
-- **Cliente API (`src/lib/api.ts`)**: Archivo central de TypeScript que realiza todas las peticiones `fetch()` HTTP hacia el backend y tipa firmemente los datos de entrada/salida.
+
+**Páginas Astro** (`src/pages/*.astro`) — ruteo estático base, cada una renderiza un React Island:
+
+| Archivo | Ruta | Componente React |
+|---|---|---|
+| `index.astro` | `/` | `<Dashboard />` |
+| `project.astro` | `/project` | `<ProjectDashboard />` |
+| `search.astro` | `/search` | `<SearchWizard />` |
+| `screening.astro` | `/screening` | `<ScreeningPage />` |
+
+**Componentes React** (`src/components/*.tsx`) — toda la lógica dinámica:
+
+| Componente | Propósito |
+|---|---|
+| `Dashboard.tsx` | Página principal: lista de proyectos con crear/eliminar. Modales de confirmación. |
+| `ProjectDashboard.tsx` | Detalle del proyecto: editar metadata, historial de búsquedas, historial de revisiones, eliminar con cascada. |
+| `SearchWizard.tsx` | Wizard multi-paso: `describe → review_query → searching → results`. Orquesta todo el ciclo de búsqueda AI. |
+| `SearchWizardDescribe.tsx` | Paso 1: formulario para tema, idioma, bases de datos, rango de años, modelo LLM. |
+| `SearchWizardReview.tsx` | Paso 2: revisar/editar la query booleana generada antes de ejecutar. |
+| `SearchWizardSearching.tsx` | Paso 3: spinner animado mientras se ejecuta la búsqueda en paralelo. |
+| `SearchWizardResults.tsx` | Paso 4: tabla ordenable de resultados con descarga, reparseo, subida de PDFs, y expansión de abstracts. |
+| `ScreeningPage.tsx` | Router de entrada: renderiza `ScreeningSetup` o `ScreeningSession` según el parámetro `?session`. |
+| `ScreeningSetup.tsx` | Configuración de sesión: selección de búsquedas, idioma, modelo de traducción, continuar/eliminar existentes. |
+| `ScreeningSession.tsx` | Interfaz de cribado artículo por artículo (estilo Rayyan.ai): atajos de teclado, traducción de abstracts, sugerencias AI, vista tarjeta/tabla. |
+| `ProgressModal.tsx` | Modal de progreso en tiempo real vía SSE para tareas de fondo (reparseo, enriquecimiento). |
+
+**Cliente API** (`src/lib/api.ts`) — 29 funciones exportadas, todas tipadas con TypeScript. Realiza peticiones `fetch()` HTTP hacia `http://localhost:8000/api/v1`. Maneja errores, parsing JSON, y multipart para subida de PDFs.
 
 ### **B. Lógica de Servidor y REST API (Backend: FastAPI + Python + SQLAlchemy)**
 Ubicación: `/backend/app`
-- **Enrutadores (`api/v1/*.py`)**: Son las vías de entrada. Definen los `endpoints` REST como `/projects`, `/search`, `/screening`. Extraen parámetros y llaman a la respectiva capa de servicio.
-- **Servicios (`services/*.py`)**: Donde sucede toda la lógica de negocio pesada, como procesamiento, orquestamiento de llamadas a LLM y limpieza de datos.
-- **Modelos y Schemas (`models/*.py`)**: 
-  - *project.py*, *screening.py*: Es donde SQLAlchemy define las tablas SQLite.
-  - *schemas.py*: Colección de clases Pydantic que aseguran la validación estricta de la información bidireccional cliente-servidor API REST.
+
+- **Enrutadores (`api/v1/*.py`)** — 5 módulos de rutas:
+
+| Módulo | Prefijo | Función |
+|---|---|---|
+| `projects.py` | `/projects` | CRUD de proyectos con conteos de artículos y revisiones. |
+| `search.py` | `/search` | Construcción de queries, ejecución multi-DB, descarga de PDFs, reparseo. |
+| `screening.py` | `/screening` | Sesiones de cribado, decisiones, sugerencias AI, reranking, traducción, análisis profundo. |
+| `events.py` | `/events` | Stream SSE para notificaciones de progreso en tiempo real. |
+| `system.py` | `/system` | Estado del sistema y modelos Ollama disponibles. |
+
+- **Servicios (`services/*.py`)** — lógica de negocio pesada:
+
+| Servicio | Responsabilidad principal |
+|---|---|
+| `search_service.py` | Orquesta búsqueda paralela en 9+ bases, deduplicación DOI + fuzzy title, almacenamiento. |
+| `llm_service.py` | Wrapper sobre LiteLLM: generación de queries, traducción, sugerencias de relevancia, análisis de artículos, descripción de imágenes (VLM). |
+| `download_service.py` | Descarga paralela de PDFs con rate-limiting, validación magic bytes, pipeline de enriquecimiento automático post-descarga. |
+| `query_builder.py` | Construcción determinista (sin LLM) de queries específicas por cada API de base de datos. |
+| `pdf_enrichment_service.py` | Coordinación del parseo dual-parser (OpenDataLoader + MarkItDown), extracción de metadatos, publicación de eventos SSE. |
+| `document_parser_service.py` | Motor dual de parseo PDF→Markdown: `ParserRouter` selecciona OpenDataLoader (PDFs científicos) o MarkItDown (resto). |
+| `vector_service.py` | Gestión de Qdrant: chunking semántico, embeddings nomic-embed-text, indexación y búsqueda vectorial. |
+| `active_learning_service.py` | Clasificador TF-IDF + LogisticRegression para priorización de artículos en screening (uncertainty sampling). |
+| `summarization_service.py` | Generación de resúmenes estructurados via LLM (objetivo, metodología, resultados, relevancia agrícola). |
+| `pdf_parser.py` | Parser Docling legacy para enriquecimiento (ruta alternativa). |
+
+- **Modelos y Schemas (`models/*.py`)**:
+  - `project.py`, `screening.py`: SQLAlchemy ORM — tablas SQLite (Project, SearchQuery, Article, ScreeningSession, ScreeningDecision).
+  - `schemas.py`: Clases Pydantic para validación estricta de request/response.
 
 ### **C. MCP Clients y LLM**
 Ubicación: `/backend/app/services/mcp_clients`
-- AgriSearch se abstrae a través del *Model Context Protocol* para poder mandar tareas especializadas de búsqueda y recuperación a repositorios científicos u otras herrmaientas conectadas.
-- **`Search Build LLM` (`query_builder.py`)**: Para procesar el prompt inicial que describe lo que quiere el usuario y convertirlo a representaciones booleanas/semánticas.
+
+AgriSearch se abstrae a través del *Model Context Protocol* para enviar tareas de búsqueda a repositorios científicos. Cada cliente implementa la interfaz específica de cada API:
+
+| Cliente | Base de Datos | Nota |
+|---|---|---|
+| `openalex_client.py` | OpenAlex | REST API, búsqueda full-text |
+| `semantic_scholar_client.py` | Semantic Scholar | REST API, abstracts enriquecidos |
+| `arxiv_client.py` | ArXiv | API Atom, formato `all:"term"` |
+| `crossref_client.py` | Crossref | REST API, metadatos de citación |
+| `core_client.py` | CORE | API v3, acceso abierto |
+| `scielo_client.py` | SciELO | REST API, literatura LATAM |
+| `redalyc_client.py` | Redalyc | API propia, revistas iberoamericanas |
+| `oai_pmh_client.py` | AgEcon + Organic Eprints | OAI-PMH harvesting, post-filtrado local |
+
+**Motor LLM** (`llm_service.py`): Abstracción sobre LiteLLM/Ollama para todas las inferencias:
+
+| Función | Modelo por defecto | Uso |
+|---|---|---|
+| `generate_search_query()` | Configurable (ej. `deepseek-r1:14b`) | Extraer conceptos PICO + sinónimos AGROVOC |
+| `translate_text()` | `llama3.1:8b` | Traducción de abstracts |
+| `generate_relevance_suggestion()` | `gemma4:e4b` | Sugerencia few-shot de incluir/excluir |
+| `analyze_article_content()` | `gemma4:e4b` | Análisis profundo (resumen, metodología, variables agrícolas) |
+| `describe_image_content()` | `gemma4:e4b` | Descripción de figuras vía VLM |
 
 ---
 
 ## 2. Flujo Completo - "Realizar una Búsqueda"
 
-Para ejemplificar, se describe detalladamente qué pasa tras bambalinas cuando un usuario ingresa y crea una búsqueda AI.
+El SearchWizard gestiona un ciclo de 5 pasos con estados bien definidos: `describe → review_query → searching → results → downloading`. A continuación se detalla cada transición con los archivos, funciones y llamadas API reales.
 
-### Paso 1: Seleccionar el Proyecto (Frontend)
-1. **Archivo Relevante:** `frontend/src/pages/index.astro` 
-2. **Acción:** El usuario hace click en crear o en abrir un proyecto. 
-3. **Redirección:** Entramos a `/project.astro -> <ProjectDashboard />`.
+### Paso 1: Definición del Tema (Frontend — Step `"describe"`)
+1. **Componente:** `SearchWizardDescribe.tsx` (renderizado por `SearchWizard.tsx`).
+2. **Acción del usuario:** Completa el formulario con:
+   - Tema en lenguaje natural (ej. "uso de biofertilizantes en soya para mejorar rendimiento").
+   - Áreas agrícolas (multi-select de 10 opciones: general, entomología, fitopatología, etc.).
+   - Idioma de búsqueda (`es` / `en`).
+   - Modelo LLM (dropdown dinámico de Ollama, default `deepseek-r1:14b`).
+   - Bases de datos a consultar (9 opciones, todas seleccionadas por defecto).
+   - Rango de años (opcional) y máximo de resultados por fuente (default 50).
+3. **Transición:** Al enviar, `SearchWizard` llama `handleGenerateQuery()` que invoca `buildQuery()` de `api.ts`.
 
-### Paso 2: Ir a "Búsqueda AI" 
-1. **Acción:** Click en "Búsqueda AI", nos lleva a `frontend/src/pages/search.astro`. Que a su vez renderiza `<SearchWizard />`.
-2. **Estado Inicial:** `step="describe"`. 
+### Paso 2: Generación de Query con LLM (Backend)
+1. **Endpoint:** `POST /api/v1/search/build-query` → `search.py::build_query()`.
+2. **Servicio:** `llm_service.py::generate_search_query(user_input, agri_area, language, year_from, year_to, model)`.
+3. **Proceso:**
+   - Se inyecta un **prompt de sistema** al LLM que actúa como "bibliotecario agrícola para revisiones sistemáticas".
+   - El LLM extrae: `concepts`, `sinonyms` (con terminos AGROVOC), `boolean_query`, `suggested_terms`, `pico_breakdown`, y `explanation`.
+   - Temperature: 0.3, max_tokens: 1500, response_format: json_object.
+4. **Respuesta:** Objeto `GeneratedQuery` con la tabla PICO interactiva y la query booleana formateada.
 
-### Paso 3: Definición del Prompt (Generar Queries)
-1. **Archivo Relevante:** `frontend/src/components/SearchWizard.tsx`
-2. **Acción:** El usuario escribe su consulta en lenguaje natural (ej., "uso de biofertilizantes en soya") y hace click en "Generar Sugerencias".
-3. **Llamada API (`api.ts`):** Envia un POST a `buildQuery(data)` hacia la ruta base del backend `POST /api/v1/search/build-query`.
+### Paso 3: Revisión y Confirmación (Frontend — Step `"review_query"`)
+1. **Componente:** `SearchWizardReview.tsx`.
+2. **Acción del usuario:**
+   - Visualiza la query booleana generada en un editor.
+   - Puede **editar manualmente** la query (campo `editedQuery`).
+   - Confirma presionando "Ejecutar Búsqueda en Bases de Datos".
+3. **Transición:** Llama `handleExecuteSearch()` que invoca `executeSearch()` de `api.ts`.
 
-### Paso 4: Backend construye la Búsqueda
-1. **Entrada Backend:** `backend/app/api/v1/search.py` (Endpoint `/build-query`).
-2. **Capa Funcional (`services/search_service.py`):**
-   - El servicio llama a `generate_search_concepts(user_input, language)`.
-   - Esto inyecta un *Prompt de Sistema* a un modelo LLM (Ollama) para extraer conceptos clave y descomponer la petición en PICO.
-3. **Respuesta:** Retorna el objeto `GeneratedQuery` de vuelta al UI.
+### Paso 4: Ejecución Paralela y Deduplicación (Backend)
+1. **Endpoint:** `POST /api/v1/search/execute` → `search.py::execute_search_endpoint()`.
+2. **Servicio:** `search_service.py::execute_search(db, project_id, query, databases, ...)`.
+3. **Proceso paso a paso:**
+   - **Persistencia inicial:** Crea registro `SearchQuery` en SQLite con el prompt raw y la query generada.
+   - **Extracción de conceptos:** `_extract_concepts_from_query()` parsea la query booleana en conceptos limpios (max 10).
+   - **Construcción de queries por DB:** `query_builder.py::build_all_queries(concepts, synonyms, databases)` — función **determinista** (sin LLM) que adapta los conceptos a la sintaxis específica de cada API:
+     - OpenAlex: `build_openalex_query()` → términos separados por espacio, max 2 sinónimos.
+     - ArXiv: `build_arxiv_query()` → formato `all:"término"`, sinónimos con OR, conceptos con AND.
+     - Semantic Scholar, Crossref, CORE, SciELO, Redalyc: `build_*_query()` → separados por espacio.
+     - AgEcon, Organic Eprints: `build_oaipmh_query()` → harvesting OAI-PMH con post-filtrado local.
+   - **Consultas paralelas:** `asyncio.gather()` ejecuta simultáneamente los 9+ MCP clients (`mcp_clients/*_client.py`).
+   - **Deduplicación en 3 pasadas:**
+     1. DOI exacto: `_normalize_doi()` estandariza y compara.
+     2. Título fuzzy: `_is_duplicate_title()` con RapidFuzz ratio >= 0.85.
+     3. Contra artículos existentes del proyecto (evita duplicados entre búsquedas).
+   - **Almacenamiento:** INSERT de objetos `Article` en SQLite con `project_id` + `search_query_id`.
+4. **Respuesta:** JSON `SearchResultsResponse` con `articles`, `counts_by_source`, `adapted_queries`, `duplicates_removed`.
 
-### Paso 5: Vista Previa y Confirmación (Frontend)
-1. **Estado (`SearchWizard.tsx`):** Pasa al `step="review"`.
-2. **Acción:** El usuario verifica e incluso puede cambiar las BD a consultar (Redalyc, arXiv, OpenAlex, Semantic Scholar, etc.). Luego da click en "Ejecutar Búsqueda en Bases de Datos".
+### Paso 4.5: Visualización de Resultados (Frontend — Step `"results"`)
+1. **Componente:** `SearchWizardResults.tsx`.
+2. **Transición:** El estado `step` cambia a `"results"`, se muestra la tabla de artículos.
+3. **Elementos UI:**
+   - **Accordion** con el Prompt de Usuario y las Queries Adaptadas por base de datos.
+   - **Tabla ordenable** por título, año, fuente, estado de descarga.
+   - **Badges de estado** por cada base de datos (colores diferenciados vía `sourceColor()`).
+   - **Expansión de abstracts** in-place.
+   - **Indicador de duplicados removidos** y conteo por fuente.
 
-### Paso 6: Orquestar las Bases de Datos 
-1. **Llamada (`executeSearch` en `api.ts`):** Apunta al POST `/api/v1/search/execute`.
-2. **Capa de Servicio Orquestadora (`search_service.py` -> `execute_search`):**
-   - Guarda el `SearchQuery` inicial en la base de datos (junto con el string del prompt).
-   - A través de la función de `build_all_queries`, transforma la búsqueda general a las sintaxis requeridass de cada Base de Datos seleccionada (JSON final almacenado en el registro).
-   - Genera Tareas Asíncronas (`asyncio.gather`) y paraleliza las llamadas a cada Base de datos a través de los diversos *MCP/Clients* situados en `backend/app/services/mcp_clients/*_client.py`.
-
-### Paso 7: Procesamiento y Unificación 
-1. **Regreso de Tareas:** Todos los *clients* retornan su lista de artículos.
-2. **Filtrado Centralizado:**
-   - Estandarización de `doi` e IDs unicos.
-   - Eliminación de Duplicados intrafuente e inter-fuente mediante coincidencia estricta y comparativa difusa de títulos (Fuzzy Match / RapidFuzz).
-   - Construcción y almacenamiento de objetos SQLAlchemy clase `Article` en la Base de Datos asociadas al Proyecto (`project_id`) y Búsqueda (`search_query_id`).
-3. **Retorno GUI:** FastAPI responde el objeto JSON del esquema de Respuesta SearchResult.
-
-### Paso 8: Visualizar y Descargar (Resultados)
-1. **Estado:** `SearchWizard` pasa a `step="results"` y muestra `<SearchWizardResults />`.
-2. **Nuevos Cambios Incorporados:** 
-   - Se pinta un panel tipo Accordion con el **Prompt de Usuario** y las **Queries Adaptadas** específicas que fueron tiradas por comando a cada Base de Datos gracias a los atributos `prompt_used` y `adapted_queries` proveidos.
-3. **Acción Descarga (`downloadArticles`):** La descarga extrae todos los URLs abiertos/DOIs de sus fuentes Open Access y guarda localmente dentro del directorio del proyecto respetando metadatos.
+### Paso 5: Descarga de PDFs y Enriquecimiento (Backend + Frontend)
+1. **Trigger:** El usuario presiona "Descargar PDFs" → `handleDownload()` cambia `step = "downloading"`.
+2. **Endpoint:** `POST /api/v1/search/download` → `search.py::download_pdfs()`.
+3. **Servicio:** `download_service.py::download_articles(db, project_id, article_ids)`.
+4. **Proceso de descarga:**
+   - Filtra artículos con `download_status == PENDING` y `open_access_url` no nula.
+   - Descarga paralela con `asyncio.gather()` acotada por `Semaphore` (rate-limit configurable).
+   - Valida **magic bytes `%PDF`** en el contenido descargado.
+   - Nombra archivos: `{año}_{autorApellido}_{títuloSlug}.pdf` → `data/projects/{id}/pdfs/`.
+   - Estados posibles: `SUCCESS`, `PAYWALL` (403/401), `FAILED`, `NOT_FOUND`.
+5. **Pipeline de enriquecimiento automático** (post-descarga, por cada artículo exitoso):
+   - **PDF → Markdown:** `pdf_parser.parse_article()` con ParserRouter (OpenDataLoader para científicos, MarkItDown para otros).
+   - **Markdown → LLM:** `llm_service::analyze_article_content()` → extrae `llm_summary`, `relevance_score`, `methodology_type`, `agri_variables` (cultivos, plagas, tratamientos, factores ambientales).
+   - **Indexación RAG:** `vector_service.index_article()` → chunking semántico por secciones + embeddings nomic-embed-text → upsert a Qdrant.
+6. **Retorno:** El frontend recibe `DownloadProgress` con conteos de éxito/fallo/paywall, y refresca la lista de artículos con `listArticles()`.
 
 ---
 
 ## 3. Flujo - Historial e Interacción entre Páginas
 
-- **Historial de Búsquedas (`ProjectDashboard.tsx`):**
-  - Solicita `GET /projects/{id}/searches`.
-  - Presenta un panel de tarjetas. Al hacer click en una, viaja a la URL `/search?query_id=ABC`.
-  - El `<SearchWizard />` captura ese ID en el `useEffect()`, cambia directamente a `results` e infla el estado recuperando todo desde SQLite.
-- **Historial de Revisiones (`ProjectDashboard.tsx` -> Screening):**
-  - Solicita `GET /screening/eligibility/{project_id}` antes de permitir crear una revisión. El servidor valida artículos disponibles cruzando datos con sesiones activas.
-  - Al hacer click en "Revisiones", el usuario puede crear una nueva (`new=true`) si cumple elegibilidad.
-  - Igual metodología en acceso histórico (`setup_session=...`). La presentación dinámica redirige hacia `<ScreeningApp />` en otra URL aislada por ID de sesión.
-- **Eliminaciones Inteligentes (`DELETE /projects`, `DELETE /search`, o `DELETE /screening/session`):**
-  - **Eliminar Proyecto/Búsqueda**: Se orquestan en Cascada estricta (Cascading Delete). Al eliminar desde el Dashboard, emerge un **Modal Interactivo de Alerta** pidiendo confirmación explícita para evitar errores destructivos. Un `SearchQuery` o proyecto eliminado erradica su metadata en BD (incluyendo forzados a artículos huérfanos), y mediante hooks y servicios **se destruyen todos los archivos PDF locales** asociados junto con los registros de Screening que dependían de ellos. El sistema re-calcula sumas dinámicamente post-borrado.
-  - **Eliminar Revisión (Screening Session)**: "Eliminación Segura". Se destruye la revisión y todas sus decisiones de inclusión/exclusión, pero **los PDFs descargados no sufren ninguna alteración**. Permanecen listos y disponibles subyacentemente en su carpeta sanitizada o para ser asignados a una nueva revisión concurrente.
+### Navegación General
+
+El ruteo de Astro sirve las 4 páginas base. Cada una delega en un React Island que gestiona su propio estado:
+
+```
+/ (index.astro)  →  <Dashboard />           →  click proyecto  →  /project?id=X
+/project          →  <ProjectDashboard />    →  click "BUSQUEDA IA"  →  /search?id=X
+                                        →  click "REVISIONES"  →  /screening?id=X&new=true
+/search           →  <SearchWizard />        ←  /search?id=X&query_id=Y (histórico)
+/screening        →  <ScreeningPage />       →  <ScreeningSetup /> o <ScreeningSession />
+```
+
+### Historial de Búsquedas (`ProjectDashboard.tsx`)
+
+1. **Carga:** Al montar, llama `GET /projects/{id}/searches` y `GET /screening/sessions/project/{id}` en paralelo.
+2. **Presentación:** Grid de tarjetas de búsqueda. Cada tarjeta muestra:
+   - Fecha de creación, prompt original (`raw_input`), total de resultados.
+   - Conteo de bases de datos utilizadas y artículos descargados.
+   - Artículos no asignados a ninguna sesión de screening.
+3. **Acceso a histórico:** Al hacer click en una tarjeta de búsqueda, navega a `/search?id={projectId}&query_id={queryId}`.
+4. **Rehidratación en SearchWizard:** El componente detecta el parámetro `?query_id=` en `useEffect()`, salta directamente al `step="results"`, y llama:
+   - `getProject(id)` → `GET /projects/{id}` para metadata del proyecto.
+   - `listArticles(projectId, 0, 1000, undefined, queryId)` → `GET /search/articles/{projectId}?search_query_id=...` para recuperar los artículos almacenados en SQLite.
+5. **Resultado:** El usuario ve exactamente los mismos resultados que generó originalmente, sin re-ejecutar la búsqueda.
+
+### Historial de Revisiones (Screening)
+
+1. **Verificación de elegibilidad:** Antes de crear una nueva revisión, el usuario presiona "REVISIONES" → `ProjectDashboard` llama `GET /screening/eligibility/{projectId}`.
+2. **Respuesta del servidor:** `ScreeningEligibility` contiene:
+   - `total_downloaded`: artículos con `download_status=SUCCESS`.
+   - `assigned_articles`: artículos ya asignados a sesiones existentes.
+   - `eligible_articles`: descargados menos asignados (disponibles para nueva sesión).
+   - `screening_names`: nombres de sesiones existentes.
+3. **Creación de sesión:** Si `eligible_articles > 0`, navega a `/screening?id={projectId}&new=true`.
+4. **Setup (`ScreeningSetup.tsx`):**
+   - Selecciona qué búsquedas incluir (multi-select con conteos).
+   - Configura idioma de lectura y modelo de traducción.
+   - Al confirmar: `POST /screening/sessions` con `search_query_ids`, `reading_language`, `translation_model`.
+   - El backend ejecuta `enrich_articles_from_pdfs()` (parseo dual si hay PDFs sin Markdown) y crea `ScreeningDecision` para cada artículo no asignado.
+5. **Acceso a histórico:** Si ya existe una sesión, se muestra un resumen con Continue/Delete. Click en "Continue" navega a `/screening?id={projectId}&setup_session={sessionId}`.
+
+### Loop de Screening (`ScreeningSession.tsx`)
+
+1. **Carga:** `GET /screening/sessions/{sessionId}` + `GET /screening/sessions/{sessionId}/articles?skip=0&limit=50`.
+2. **Interfaz estilo Rayyan.ai:**
+   - Vista de tarjeta o tabla (toggle).
+   - Abstract traducido bajo demanda: `POST /screening/translate` con `decision_id` y `target_language`.
+   - Sugerencia AI por artículo: `GET /screening/sessions/{sessionId}/articles/{articleId}/suggestion`.
+   - Atajos de teclado para incluir/excluir/marcar tal vez.
+3. **Decisión:** `PUT /screening/decisions/{decisionId}` con `decision` (include/exclude/maybe) y `exclusion_reason` cuando aplica.
+4. **Active Learning:** Cada 10 decisiones, el sistema re-entrena el clasificador TF-IDF + LogisticRegression para re-priorizar artículos pendientes (uncertainty sampling). Also disponible vía `POST /screening/sessions/{sessionId}/rerank?mode=uncertainty|most_relevant|balanced`.
+5. **Estadísticas en vivo:** `GET /screening/sessions/{sessionId}/stats` → barras de progreso y contadores.
+
+### Eliminaciones Inteligentes
+
+**Eliminar Proyecto** (`DELETE /projects/{id}`):
+- **Cascada estricta:** Elimina el directorio completo del proyecto en disco (`shutil.rmtree`) y todos los registros asociados en BD (SearchQuery → Article → ScreeningSession → ScreeningDecision).
+- **Modal de confirmación:** `Dashboard.tsx` muestra un modal con advertencia explícita sobre la destrucción de PDFs, datos y revisiones.
+- **Post-borrado:** La lista de proyectos se refresca automáticamente y los contadores se recalculan.
+
+**Eliminar Búsqueda** (`DELETE /search/{projectId}/{queryId}`):
+- Elimina el `SearchQuery` y todos sus `Article` asociados.
+- **Destruye archivos PDF y Markdown locales** del directorio de esa búsqueda.
+- Las sesiones de screening que referenciaban esos artículos pierden las referencias (los artículos desaplican de las decisiones).
+- `ProjectDashboard` refresca las listas de búsquedas y revisiones post-borrado.
+
+**Eliminar Revisión (Screening Session)** (`DELETE /screening/sessions/{sessionId}`):
+- **"Eliminación Segura":** Destruye la sesión y todas sus `ScreeningDecision`, pero **los PDFs descargados no se alteran**.
+- Los artículos permanecen en la tabla `Article` y siguen disponibles para ser asignados a una nueva sesión de screening.
+- `ProjectDashboard` refresca la lista de revisiones post-borrado.
 
 ---
 
@@ -192,7 +346,21 @@ block
 Este diagrama muestra los 6 macro-procesos del sistema alineados con las fases de PRISMA 2020. Cada fase se desglosa en micro-procesos en las secciones subsiguientes.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
 graph TD
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
+    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
+    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
+    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
+    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
+    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
+
     A(["🚀 Inicio: Crear Proyecto"]):::user --> B
 
     subgraph FASE1 ["📋 FASE 1: IDENTIFICACIÓN"]
@@ -240,6 +408,7 @@ graph TD
     style FASE1 fill:#e8edf3,stroke:#5b7fa5,stroke-width:2px,color:#2d3142
     style FASE2 fill:#e8f2ec,stroke:#5a8f7b,stroke-width:2px,color:#2d3142
     style FASE3 fill:#f2efe5,stroke:#c9a94e,stroke-width:2px,color:#2d3142
+    style FASE4 fill:#ede5f0,stroke:#7e6b99,stroke-width:2px,color:#2d3142
     style FASE4 fill:#ede5f0,stroke:#7e6b99,stroke-width:2px,color:#2d3142
 ```
 
@@ -355,7 +524,21 @@ sequenceDiagram
 Micro-proceso entre Fase 1 y Fase 2: Descarga de textos completos open access y trigger automático del pipeline de enriquecimiento (parseo → LLM → indexación).
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
 graph TD
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
+    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
+    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
+    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
+    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
+    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
+
     A["Articulos de Busqueda<br/>(DOIs + URLs Open Access)"]:::external --> B{"Tiene URL<br/>Open Access?"}
     B -->|"Si"| C["Descarga asincrona<br/>aiohttp + rate-limit<br/>max 10 req/seg"]:::backend
     B -->|"No"| D["Marcar download_status<br/>= paywall / not_found"]:::warning
@@ -375,9 +558,9 @@ graph TD
     J --> L["Generar Resumen LLM<br/>(summary + relevance)"]
     J --> M["Indexar en Qdrant<br/>(Ver 4.9)"]
 
-    style K fill:#e8edf3,stroke:#4a7ab5,stroke-width:2px
-    style L fill:#ede5f0,stroke:#7b6199,stroke-width:2px
-    style M fill:#f0ead5,stroke:#c49a4a,stroke-width:2px
+    style K fill:#e8edf3,stroke:#4a7ab5,stroke-width:2px,color:#2d3142
+    style L fill:#ede5f0,stroke:#7b6199,stroke-width:2px,color:#2d3142
+    style M fill:#f0ead5,stroke:#c49a4a,stroke-width:2px,color:#2d3142
 ```
 
 ---
@@ -387,7 +570,21 @@ graph TD
 Micro-proceso de Fase 2: Cada documento se procesa con el parser óptimo según su tipo. OpenDataLoader (Java, benchmark #1) para PDFs científicos; MarkItDown (CPU, Microsoft) para todo lo demás. Ambos pipelines convergen en TableFlattener y front-matter YAML.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
 graph TD
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
+    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
+    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
+    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
+    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
+    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
+
     A(["Documento Descargado"]):::user --> B{"Tipo de<br/>archivo?"}
 
     B -- "PDF articulo cientifico" --> C["OpenDataLoader PDF Parser<br/>(Layout XY-Cut++, tablas cluster)<br/>Benchmark #1: 0.907"]:::parser_odl
@@ -499,7 +696,21 @@ sequenceDiagram
 Micro-proceso del sistema de cribado: Cada 10 decisiones del usuario, el sistema re-entrena un clasificador ligero para priorizar los artículos con mayor incertidumbre (uncertainty sampling), maximizando la información ganada por cada decisión humana.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
 graph TD
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
+    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
+    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
+    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
+    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
+    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
+
     A["Pool de Decisiones del Usuario<br/>(Incluidos + Excluidos)<br/>10+ decisiones"]:::user --> B["Vectorizacion TF-IDF<br/>de abstracts decididos"]:::llm
     B --> C["Entrenar LogisticRegression<br/>(scikit-learn)<br/>Balanceo de clases"]:::llm
     C --> D["Predecir P incluir<br/>para cada articulo pendiente"]:::llm
@@ -519,9 +730,9 @@ graph TD
     L --> M["Comparar sugerencia<br/>vs decision real<br/>accuracy tracking"]:::common
     M --> A
 
-    style A fill:#e8edf3,stroke:#7a7a7a,stroke-width:2px
-    style J fill:#f0ead5,stroke:#c49a4a,stroke-width:2px
-    style K fill:#e8f2ec,stroke:#5a8f7b,stroke-width:2px
+    style A fill:#e8edf3,stroke:#7a7a7a,stroke-width:2px,color:#2d3142
+    style J fill:#f0ead5,stroke:#c49a4a,stroke-width:2px,color:#2d3142
+    style K fill:#e8f2ec,stroke:#5a8f7b,stroke-width:2px,color:#2d3142
 ```
 
 ---
@@ -531,7 +742,21 @@ graph TD
 Micro-proceso de Fase 4: Los Markdown procesados de artículos incluidos se fragmentan semánticamente por secciones, se enriquecen con metadatos de procedencia y se vectorizan para habilitar recuperación semántica precisa en el chat RAG.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
 graph TD
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
+    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
+    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
+    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
+    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
+    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
+
     A["Markdown Procesados<br/>(articulos incluidos en screening)<br/>Sub-fase 2.0"]:::common --> B["Leer .md + parsear<br/>front-matter YAML<br/>(doi, authors, year, section)"]:::backend
     B --> C["Detectar secciones<br/>por headers ##/###<br/>Markdown structure-aware"]:::backend
     C --> D{"Seccion ><br/>800 tokens?"}
@@ -638,32 +863,52 @@ erDiagram
 Vista técnica de los servicios y puertos que componen la infraestructura local de AgriSearch.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
 graph LR
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
+    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
+    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
+    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
+    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
+    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
+
     subgraph Usuario ["🖥️ Estación del Usuario"]
-        Browser["Navegador Web\nChrome / Firefox / Edge"]:::user
+        direction TB
+        Browser["Navegador Web<br/>Chrome / Firefox / Edge"]:::user
     end
 
     subgraph FrontendLayer ["🌐 Frontend — localhost:4321"]
-        Astro["Astro SSR\nPages: index, project,\nsearch, screening"]:::frontend
-        React["React Islands\nDashboard, SearchWizard,\nScreeningSession"]:::frontend
+        direction TB
+        Astro["Astro SSR<br/>Pages: index, project,<br/>search, screening"]:::frontend
+        React["React Islands<br/>Dashboard, SearchWizard,<br/>ScreeningSession"]:::frontend
     end
 
     subgraph BackendLayer ["⚙️ Backend — localhost:8000"]
-        FastAPI["FastAPI Server\n5 route modules:\nprojects, search, screening,\nevents, system"]:::backend
-        Services["Servicios Core\nsearch_service, llm_service,\nquery_builder, download_service,\nvector_service, active_learning"]:::backend
-        MCPClients["MCP Clients (9)\nOpenAlex, Semantic Scholar,\nArXiv, Crossref, CORE,\nSciELO, Redalyc, OAI-PMH"]:::external
-        Parsers["Dual Parser\nOpenDataLoader (Java)\nMarkItDown (Python)"]:::common
+        direction TB
+        FastAPI["FastAPI Server<br/>5 route modules:<br/>projects, search, screening,<br/>events, system"]:::backend
+        Services["Servicios Core<br/>search_service, llm_service,<br/>query_builder, download_service,<br/>vector_service, active_learning"]:::backend
+        MCPClients["MCP Clients (9)<br/>OpenAlex, Semantic Scholar,<br/>ArXiv, Crossref, CORE,<br/>SciELO, Redalyc, OAI-PMH"]:::external
+        Parsers["Dual Parser<br/>OpenDataLoader (Java)<br/>MarkItDown (Python)"]:::common
     end
 
-    subgraph DataLayer ["💾 Almacenamiento Local"]
-        SQLite[("SQLite\nagrisearch.db")]:::database
-        Qdrant[("Qdrant\nVector DB\nlocalhost:6333")]:::database
-        PDFs["📁 data/projects/{id}/\npdfs/ + parsed/"]:::database
-    end
+    subgraph Infrastructure ["💾 Almacenamiento & IA"]
+        direction LR
+        subgraph DataLayer ["Almacenamiento Local"]
+            SQLite[("SQLite<br/>agrisearch.db")]:::database
+            Qdrant[("Qdrant<br/>Vector DB<br/>localhost:6333")]:::database
+            PDFs["📁 data/projects/{id}/<br/>pdfs/ + parsed/"]:::database
+        end
 
-    subgraph LLLayer ["🧠 Inferencia Local"]
-        Ollama["Ollama\nlocalhost:11434"]:::llm
-        Models["Modelos:\nllama3.1:8b (chat)\naya:8b (multilingual)\nnomic-embed-text (768d)\ngemma4:e4b (VLM)"]:::llm
+        subgraph LLLayer ["Inferencia Local"]
+            Ollama["Ollama<br/>localhost:11434"]:::llm
+            Models["Modelos:<br/>llama3.1:8b (chat)<br/>aya:8b (multilingual)<br/>nomic-embed-text (768d)<br/>gemma4:e4b (VLM)"]:::llm
+        end
     end
 
     Browser <-->|"HTTP/REST"| Astro
@@ -686,28 +931,54 @@ graph LR
 Diagrama de estados que muestra cómo evoluciona un proyecto a través del flujo PRISMA 2020, desde la identificación inicial hasta la inclusión final.
 
 ```mermaid
-graph LR
-    A["📋 Proyecto\nCreado"]:::user -->|"Crear búsquedas"| B["🔍 Búsquedas\nGeneradas"]:::frontend
-    B -->|"Ejecutar search"| C["📚 Artículos\nIdentificados\n(N de cada base)"]:::external
-    C -->|"Deduplicación"| D["🔄 Duplicados\nRemovidos\n(N únicos)"]:::warning
-    D -->|"Descargar PDFs"| E["⬇️ Texto Completo\nDescargado\n(N con PDF)"]:::backend
-    D -->|"Paywall/Error"| F["❌ Sin Texto\nCompleto"]:::error
-    E -->|"Parseo MD"| G["📄 Markdown\nProcesado\n(N con MD)"]:::common
-    G -->|"Screening"| H["🔍 Screeneados\n(Incluidos / Excluidos)"]:::llm
-    H -->|"Incluidos"| I["✅ Artículos\nIncluidos\n(Base del conocimiento)"]:::success
-    H -->|"Excluidos"| J["❌ Artículos\nExcluidos\n(con motivo PRISMA)"]:::error
-    I -->|"Indexar RAG"| K["🧠 Qdrant\nVectorizado\n(listo para Chat)"]:::database
-    K -->|"Chat RAG"| L["💬 Chat + Redacción\nCitación APA"]:::llm
-    K -->|"Explorar"| M["🕸️ Grafos de Citación\ny Relación Temática"]:::common
-    I -->|"Exportar"| N["📤 PRISMA\nChecklist + CSV"]:::success
-    L --> N
-    M --> N
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
+graph TD
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
+    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
+    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
+    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
+    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
+    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
 
-    style A fill:#e8e8e8,stroke:#7a7a7a,stroke-width:2px
-    style C fill:#f0ead5,stroke:#c49a4a,stroke-width:2px
-    style D fill:#f0ead5,stroke:#c49a4a,stroke-width:2px
-    style I fill:#e8f2ec,stroke:#5a8f7b,stroke-width:2px
-    style J fill:#f5e0e0,stroke:#b85c5c,stroke-width:2px
-    style K fill:#ede5f0,stroke:#7e6b99,stroke-width:2px
-    style N fill:#e8f2ec,stroke:#5a8f7b,stroke-width:2px
+    subgraph F1 ["📋 IDENTIFICACIÓN"]
+        A["📋 Proyecto<br/>Creado"]:::user -->|"Crear búsquedas"| B["🔍 Búsquedas<br/>Generadas"]:::frontend
+        B -->|"Ejecutar search"| C["📚 Artículos<br/>Identificados<br/>(N de cada base)"]:::external
+        C -->|"Deduplicación"| D["🔄 Duplicados<br/>Removidos<br/>(N únicos)"]:::warning
+    end
+
+    subgraph F2 ["⬇️ RECOLECCIÓN"]
+        D -->|"Descargar PDFs"| E["⬇️ Texto Completo<br/>Descargado<br/>(N con PDF)"]:::backend
+        D -->|"Paywall/Error"| F["❌ Sin Texto<br/>Completo"]:::error
+        E -->|"Parseo MD"| G["📄 Markdown<br/>Procesado<br/>(N con MD)"]:::common
+    end
+
+    subgraph F3 ["🔍 CRIBADO"]
+        G -->|"Extracción y Traducción"| G2["🌐 Resumen y Palabras Clave<br/>(En idioma preferido)"]:::llm
+        G2 -->|"Screening"| H["🔍 Screeneados<br/>(Incluidos / Excluidos)"]:::llm
+        H -->|"Incluidos"| I["✅ Artículos<br/>Incluidos<br/>(Base del conocimiento)"]:::success
+        H -->|"Excluidos"| J["❌ Artículos<br/>Excluidos<br/>(con motivo PRISMA)"]:::error
+    end
+
+    subgraph F4 ["📊 ANÁLISIS"]
+        I -->|"Indexar RAG"| K["🧠 Qdrant<br/>Vectorizado<br/>(listo para Chat)"]:::database
+        K -->|"Chat RAG"| L["💬 Chat + Redacción<br/>Citación APA"]:::llm
+        K -->|"Explorar"| M["🕸️ Grafos de Citación<br/>y Relación Temática"]:::common
+        I -->|"Exportar"| N["📤 PRISMA<br/>Checklist + CSV"]:::success
+        L --> N
+        M --> N
+    end
+
+    style A fill:#e8e8e8,stroke:#7a7a7a,stroke-width:2px,color:#2d3142
+    style C fill:#f5e0e0,stroke:#b85c5c,stroke-width:2px,color:#2d3142
+    style D fill:#f2efe5,stroke:#c9a94e,stroke-width:2px,color:#2d3142
+    style I fill:#e8f5ed,stroke:#5a9e6f,stroke-width:2px,color:#2d3142
+    style J fill:#f5e0e0,stroke:#b85c5c,stroke-width:2px,color:#2d3142
+    style K fill:#f0ead5,stroke:#c49a4a,stroke-width:2px,color:#2d3142
+    style N fill:#e8f5ed,stroke:#5a9e6f,stroke-width:2px,color:#2d3142
 ```
