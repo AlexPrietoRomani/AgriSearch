@@ -186,12 +186,28 @@ async def delete_project(
     project_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Delete a project and all its associated data."""
+    """Delete a project and all its associated data (DB records + files on disk)."""
+    import os
+    import shutil
+    from app.core.config import get_settings
+    
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # 1. Delete project directory (PDFs, MDs, raw data)
+    settings = get_settings()
+    project_dir = settings.get_project_data_dir(project_id, project.name)
+    if project_dir.exists():
+        try:
+            shutil.rmtree(project_dir)
+            logger.info("Deleted project directory: %s", project_dir)
+        except Exception as e:
+            logger.warning("Failed to delete project directory %s: %s", project_dir, e)
+
+    # 2. Delete DB record (cascade will handle articles, sessions, etc.)
     await db.delete(project)
+    await db.commit()
     logger.info("Deleted project: %s", project_id)
 
 

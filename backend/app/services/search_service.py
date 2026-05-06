@@ -342,7 +342,7 @@ async def delete_search_query(
 ):
     """
     Deletes a search query and all its associated articles from the database.
-    Also deletes any locally downloaded PDF files for those articles.
+    Also deletes any locally downloaded PDF files and generated .md files for those articles.
     """
     import os
     import shutil
@@ -358,25 +358,29 @@ async def delete_search_query(
     if not search_query:
         raise ValueError("Search Query not found.")
         
-    # Get associated articles to locate PDF files
+    # Get associated articles to locate PDF and MD files
     articles_result = await db.execute(
-        select(Article.local_pdf_path).where(
+        select(Article.local_pdf_path, Article.local_md_path).where(
             Article.search_query_id == query_id,
             Article.project_id == project_id,
-            Article.local_pdf_path.is_not(None)
         )
     )
-    pdf_paths = [row[0] for row in articles_result.fetchall()]
+    file_pairs = articles_result.fetchall()
     
-    # Delete PDF files
-    for pdf_path in pdf_paths:
+    # Delete PDF and MD files
+    for pdf_path, md_path in file_pairs:
         try:
-            if os.path.exists(pdf_path):
+            if pdf_path and os.path.exists(pdf_path):
                 os.remove(pdf_path)
         except Exception as e:
             logger.warning(f"Failed to delete PDF {pdf_path}: {e}")
+        try:
+            if md_path and os.path.exists(md_path):
+                os.remove(md_path)
+        except Exception as e:
+            logger.warning(f"Failed to delete MD {md_path}: {e}")
             
-    # Delete the search query and explicitely delete the articles due to lack of relationship schema cascade.
+    # Delete the search query and explicitly delete the articles due to lack of relationship schema cascade.
     await db.execute(delete(Article).where(Article.search_query_id == query_id))
     await db.delete(search_query)
     await db.commit()
