@@ -693,6 +693,8 @@ sequenceDiagram
 
 ### 4.8 Flujo de Active Learning
 
+#### Implementación actual
+
 Micro-proceso del sistema de cribado: Cada 10 decisiones del usuario, el sistema re-entrena un clasificador ligero para priorizar los artículos con mayor incertidumbre (uncertainty sampling), maximizando la información ganada por cada decisión humana.
 
 ```mermaid
@@ -733,6 +735,93 @@ graph TD
     style A fill:#e8edf3,stroke:#7a7a7a,stroke-width:2px,color:#2d3142
     style J fill:#f0ead5,stroke:#c49a4a,stroke-width:2px,color:#2d3142
     style K fill:#e8f2ec,stroke:#5a8f7b,stroke-width:2px,color:#2d3142
+```
+
+#### Implementación propuesta
+
+##### Stack Tecnológico Propuesto (Ecosistema Rust)
+
+Para materializar esta fusión prescindiendo de dependencias pesadas, el stack óptimo se conforma de la siguiente manera:
+
+- **Servidor Web (API):** `axum` o `actix-web`. Son frameworks web en Rust capaces de procesar cientos de miles de peticiones por segundo.
+- **Runtime Asíncrono:** `tokio`. Gestionará el hilo principal (HTTP) y lanzará el entrenamiento en hilos secundarios (background workers) sin bloquear la red.
+- **Base de Datos y Búsqueda Vectorial:** `rusqlite` integrado con la extensión `sqlite-vec`. Esto transforma un archivo SQLite estático en una base de datos vectorial extremadamente rápida. Todo reside en un archivo local (`.sqlite`), ideal para un proyecto de 100 artículos.
+- **Machine Learning (Inferencia de Embeddings):** `ort` (ONNX Runtime bindings para Rust). Permite cargar el modelo `all-MiniLM-L6-v2` (convertido a formato ONNX) directamente en el proceso de Rust para pre-calcular vectores o inferir nuevo texto si es necesario.
+- **Machine Learning (Active Learning):** `linfa` (el equivalente a scikit-learn en Rust) o `smartcore`. Ambos soportan modelos lineales de actualización rápida (como SVM o Regresión Logística). Para distancias de Redes Prototípicas, la biblioteca nativa `ndarray` (el equivalente a NumPy) maneja el álgebra lineal.
+
+##### Guía de Implementación Paso a Paso
+
+**1. Preparación de los Datos (El script pre-vuelo)**
+Antes de iniciar la interfaz, un script (puede ser en Python por comodidad, o en Rust) procesa el corpus:
+- Toma los 100 artículos y sus resúmenes.
+- Pasa los textos por el modelo MiniLM exportando un vector de 384 dimensiones por artículo.
+- Analiza las citas y crea una lista de adyacencia (Ej: `Art1 -> [Art4, Art9]`).
+- Guarda todo en una base de datos `datos_cribado.sqlite` utilizando `sqlite-vec` para los vectores y tablas relacionales estándar para los metadatos y el estado (Pendiente, Aceptado, Rechazado).
+
+**2. Levantamiento de la API (Rust/Axum)**
+El binario de Rust arranca y abre una conexión en memoria o persistente a la base de datos SQLite.
+- Se instancia un canal asíncrono: `let (tx, mut rx) = tokio::sync::mpsc::channel(100);`. El `tx` (transmisor) se inyecta en el estado de la API web, y el `rx` (receptor) se entrega a un hilo en segundo plano dedicado al Machine Learning.
+
+**3. El Bucle Síncrono (Respuesta en 2ms)**
+- El usuario envía `POST /decide { id: 12, status: "accepted" }`.
+- El endpoint de Axum actualiza el registro 12 en SQLite.
+- Verifica si el recuento de artículos decididos es múltiplo de 10. Si lo es, envía un mensaje no bloqueante al canal: `tx.send(TriggerTraining).await`.
+- Inmediatamente, consulta SQLite para obtener el siguiente ID de artículo en la "Tabla de Prioridad" y lo devuelve en formato JSON al frontend. Todo este bloque se ejecuta en el orden de microsegundos.
+
+**4. El Worker Asíncrono (Active Learning sin bloqueos)**
+- El hilo en segundo plano que escucha `rx` recibe la señal.
+- Extrae los vectores de los documentos ya etiquetados. Entrena el modelo lineal utilizando la biblioteca `linfa`.
+- Extrae los vectores de los documentos pendientes (los ~90 restantes). Pasa esta matriz por el modelo recién entrenado para obtener probabilidades.
+- Aplica la función matemática elegida:
+  - Si es Incertidumbre, ordena acercando los valores probabilísticos a 0.5.
+  - Si aplica Grafos, suma un bonus matemático de relevancia a los artículos que sean citados por los documentos que el usuario acaba de aceptar.
+- Sobreescribe la "Tabla de Prioridad" en SQLite de un solo golpe (transacción SQL en bloque).
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#2b4c7e', 'primaryTextColor': '#fff', 'lineColor': '#565c77', 'textColor': '#1e212b'}}}%%
+graph TD
+    classDef offline fill:#4a536b,stroke:#2b3245,color:#ffffff,stroke-width:2px,stroke-dasharray: 5 5
+    classDef frontend fill:#3b6978,stroke:#204051,color:#ffffff,stroke-width:2px
+    classDef api fill:#84a9ac,stroke:#3b6978,color:#ffffff,stroke-width:2px
+    classDef db fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef worker fill:#8b5a5a,stroke:#5e3a3a,color:#ffffff,stroke-width:2px
+    classDef model fill:#6b5b95,stroke:#4a3f6b,color:#ffffff,stroke-width:2px
+    classDef logic fill:#6b8e23,stroke:#556b2f,color:#ffffff,stroke-width:2px
+
+    subgraph Fase_Offline ["1. Preparación Pre-Cribado Offline"]
+        O1["Dataset de Artículos<br/>(Abstracts + Metadatos)"]:::offline --> O2["Generación de Embeddings<br/>(LLM Local Cuantizado)"]:::model
+        O1 --> O4["Topología de Citaciones<br/>(Matriz de Adyacencia)"]:::offline
+        O2 --> O3["Almacenamiento Persistente"]:::db
+        O4 --> O3
+    end
+
+    O3 --> DB[("Base de Datos Embebida<br/>(SQLite + sqlite-vec)<br/>Estado | Vectores | Prioridades")]:::db
+
+    subgraph Fase_Online ["2. Flujo Síncrono de Usuario - Latencia < 5ms"]
+        UI["Frontend<br/>(SPA React/Vue)"]:::frontend -->|"1. Acepta/Rechaza"| API["API REST<br/>(Rust / Axum)"]:::api
+        API -->|"2. Actualiza Etiqueta"| DB
+        DB -->|"3. Lee Artículo N+1 en Caché"| API
+        API -->|"4. Respuesta Inmediata"| UI
+    end
+
+    subgraph Fase_Asincrona ["3. Worker de Aprendizaje Activo"]
+        API -.->|"5. Dispara Evento en Memoria<br/>(Si N % 10 == 0)"| RQ["Cola de Tareas<br/>(Rust mpsc Channels)"]:::worker
+        RQ --> W["Thread en Segundo Plano<br/>(Tokio Spawn)"]:::worker
+        
+        W -->|"6. Carga Tensores y Grafos"| DB
+        W --> M1["7. Entrenamiento Incremental<br/>(SGD / Ridge / Prototypical)"]:::model
+        M1 --> M2["8. Inferencia Predictiva<br/>sobre pool pendiente"]:::model
+        
+        M2 --> C{"9. Función de Adquisición"}:::logic
+        C -->|"Uncertainty Sampling"| L1["Exploración (Dudosos)"]:::logic
+        C -->|"Max Probability"| L2["Explotación (Prometedores)"]:::logic
+        
+        L1 --> M3["10. Recálculo de Ranking<br/>+ Propagación de Grafo"]:::model
+        L2 --> M3
+        
+        M3 -->|"11. Sobreescribe Lista de Sugerencias"| DB
+    end
+    
+    UI -.->|"Siguiente ciclo lee la nueva lista"| UI
 ```
 
 ---
@@ -960,9 +1049,11 @@ graph TD
 
     subgraph F3 ["🔍 CRIBADO"]
         G -->|"Extracción y Traducción"| G2["🌐 Resumen y Palabras Clave<br/>(En idioma preferido)"]:::llm
-        G2 -->|"Screening"| H["🔍 Screeneados<br/>(Incluidos / Excluidos)"]:::llm
+        G2 -->|"Ranking Semántico"| AL["🤖 Active Learning<br/>(Rust / Axum)"]:::backend
+        AL -->|"Priorización"| H["🔍 Screening<br/>(Decisión Humana)"]:::user
         H -->|"Incluidos"| I["✅ Artículos<br/>Incluidos<br/>(Base del conocimiento)"]:::success
         H -->|"Excluidos"| J["❌ Artículos<br/>Excluidos<br/>(con motivo PRISMA)"]:::error
+        H -.->|"Feedback Loop<br/>(N % 10 == 0)"| AL
     end
 
     subgraph F4 ["📊 ANÁLISIS"]

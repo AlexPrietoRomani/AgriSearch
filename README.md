@@ -4,110 +4,199 @@
 
 El sistema integra **9 Bases de Datos Científicas** y Modelos de Lenguaje Grandes (LLMs) (vía Ollama/LiteLLM) en Arquitecturas de Generación Aumentada por Recuperación (RAG).
 
-### Bases de Datos Integradas
+---
 
-| Base | Tipo | API Key |
-|------|------|---------|
-| OpenAlex | REST | Opcional (gratis) |
-| Semantic Scholar | REST | Opcional (gratis) |
-| ArXiv | Atom/REST | No |
-| Crossref | REST (`habanero`) | No |
-| CORE | REST v3 | Sí (gratis) |
-| SciELO | REST | No |
-| Redalyc | REST | Sí (gratis) |
-| AgEcon Search | OAI-PMH | No |
-| Organic Eprints | OAI-PMH | No |
+## Arquitectura General
 
-> 📌 Ver `backend/.env.example` para instrucciones de registro y links.
+AgriSearch se organiza en **4 capas principales**:
 
-### Flujo de Búsqueda
+| Capa | Tecnología | Puerto |
+|------|------------|--------|
+| **Frontend** | Astro + React + TypeScript + Tailwind | 4321 |
+| **Backend** | FastAPI + Python + SQLAlchemy Async | 8000 |
+| **Procesamiento IA** | Ollama Local + LiteLLM | — |
+| **Almacenamiento** | SQLite + Qdrant (vectorial) | — |
 
-1. **Describir** — El usuario describe su tema en lenguaje natural.
-2. **Elegir Modelo** — Selecciona un modelo optimizado para GPU (ej. `llama3.1:8b`) o CPU (ej. `phi3:3.8b`), o ingresa uno manualmente.
-3. **Extraer conceptos** — Un LLM local (Ollama) extrae conceptos clave, sinónimos y desglose PICO/PEO.
-4. **Construir queries** — Un módulo determinista (`query_builder.py`) genera la query óptima para cada API, sin depender de un LLM para la adaptación.
-4. **Buscar en paralelo** — Las queries se ejecutan concurrentemente contra las 9 bases de datos.
-5. **Deduplicar** — Se eliminan duplicados por DOI y título (fuzzy matching ≥85%).
-6. **Presentar** — El usuario ve los resultados en una tabla interactiva con la query enviada a cada API para transparencia.
+```
+┌─────────────────┐    HTTP/JSON     ┌─────────────────┐    Prompts    ┌─────────────────┐
+│   Frontend      │ ──────────────── │   Backend       │ ──────────── │   LLM / IA      │
+│   Astro+React   │                  │   FastAPI        │              │   Ollama Local   │
+│   :4321         │                  │   :8000          │              │                  │
+└─────────────────┘                  └─────────────────┘              └─────────────────┘
+                                         │           │
+                                    SQL  │           │  Vector
+                                         ▼           ▼
+                                   ┌───────────┐ ┌───────────┐
+                                   │  SQLite   │ │  Qdrant   │
+                                   │  agrisearch│ │  Embeddings│
+                                   └───────────┘ └───────────┘
+                                         │
+                                   MCP   │  Consultas Paralelas
+                                         ▼
+                                   ┌─────────────────────────┐
+                                   │  Red Científica         │
+                                   │  9+ Bases de Datos      │
+                                   │  OpenAlex / S.Scholar   │
+                                   │  ArXiv / Crossref / ... │
+                                   └─────────────────────────┘
+```
 
 ---
 
-## 🚀 Tecnologías Principales
+## Bases de Datos Integradas
 
-*   **Frontend**: Astro (SSR Híbrido), React, CSS Vanilla (Vite).
-*   **Backend**: FastAPI (Python 3.11), SQLAlchemy, aiosqlite (SQLite local).
-*   **Parsing de Documentos**: OpenDataLoader PDF (artículos científicos, #1 en benchmarks), Microsoft MarkItDown (DOCX, PPTX, XLSX, HTML, EPUB).
-*   **IA e Integración**: LiteLLM, Ollama, Qdrant (Base de datos Vectorial local).
-*   **Gestión de Agentes**: Herramientas integradas en Model Context Protocol (MCP) creados para interconectar búsquedas en la web y descargar referencias.
-*   **Gestión de Dependencias**: [uv](https://docs.astral.sh/uv/) (recomendado) o pip como alternativa.
+| Base | Tipo | API Key | Acceso |
+|------|------|---------|--------|
+| OpenAlex | REST | Opcional (gratis) | [openalex.org](https://openalex.org/settings/api) |
+| Semantic Scholar | REST | Opcional (gratis) | [semanticscholar.org](https://www.semanticscholar.org/product/api) |
+| ArXiv | Atom/REST | No | — |
+| Crossref | REST (`habanero`) | No (email recomendado) | — |
+| CORE | REST v3 | Sí (gratis) | [core.ac.uk](https://core.ac.uk/api-keys/register) |
+| SciELO | REST | No | — |
+| Redalyc | REST | Sí (gratis) | [redalyc.org](https://redalyc.org) |
+| AgEcon Search | OAI-PMH | No | — |
+| Organic Eprints | OAI-PMH | No | — |
 
-## 📥 Estructura del Proyecto
+> 📌 Ver `backend/.env.example` para instrucciones de registro y configuración.
 
-El proyecto está separado en dos contenedores lógicos principales:
+---
 
-1.  `/backend`: Lógica del servidor, API REST (FastAPI), modelos Pydantic, conexión a bases de datos SQLite y Qdrant, y procesamiento RAG/LLM.
-2.  `/frontend`: Interfaz de usuario (Astro SSR híbrido + React para componentes dinámicos de cliente), estilizada con CSS Vanilla.
+## Ciclo de Vida de una Revisión Sistemática (PRISMA 2020)
 
-## 🛠 Instalación y Ejecución Local
+### Fase 1: Identificación
 
-### Requisitos Previos
+1. **Describir** — El usuario describe su tema en lenguaje natural.
+2. **Elegir Modelo** — Selecciona un modelo LLM optimizado para su hardware.
+3. **Extraer conceptos** — Un LLM local (Ollama) extrae conceptos clave, sinónimos AGROVOC y desglose PICO.
+4. **Construir queries** — Un módulo determinista (`query_builder.py`) genera la query óptima para cada API.
+5. **Buscar en paralelo** — Las queries se ejecutan concurrentemente contra las 9 bases de datos.
+6. **Deduplicar** — Se eliminan duplicados por DOI exacto y título (fuzzy matching ≥85% con RapidFuzz).
+
+### Fase 2: Recolección
+
+7. **Descargar PDFs** — Descarga automática de Open Access con rate-limiting y validación magic bytes.
+8. **Parseo Dual-Parser** — OpenDataLoader (PDFs científicos, benchmark #1: 0.907) + MarkItDown (DOCX, PPTX, HTML).
+9. **Enriquecimiento LLM** — Extracción de metadatos, metodología, variables agrícolas y descripción VLM de figuras.
+
+### Fase 3: Cribado
+
+10. **Screening Interactivo** — Interfaz estilo Rayyan.ai con atajos de teclado, traducción de abstracts y sugerencias AI.
+11. **Active Learning** — Clasificador TF-IDF + LogisticRegression para priorización por incertidumbre (uncertainty sampling).
+
+### Fase 4: Análisis
+
+12. **Indexación RAG** — Chunking semántico por secciones + embeddings nomic-embed-text → Qdrant.
+13. **Chat RAG** — Conversación multi-documento con citación APA estricta.
+
+---
+
+## Tecnologías Principales
+
+| Componente | Tecnología |
+|------------|------------|
+| **Frontend** | Astro (SSR Híbrido), React, TypeScript, Tailwind CSS |
+| **Backend** | FastAPI (Python 3.11), SQLAlchemy Async, aiosqlite |
+| **Parsing PDF** | OpenDataLoader (artículos científicos), MarkItDown (multi-formato) |
+| **IA** | LiteLLM, Ollama, Qdrant (vectorial local) |
+| **Búsqueda** | MCP Clients para 9 APIs científicas |
+| **Gestión Python** | [uv](https://docs.astral.sh/uv/) (recomendado) o pip |
+
+---
+
+## Estructura del Proyecto
+
+```
+AgriSearch/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/          # Endpoints REST (projects, search, screening, events, system)
+│   │   ├── services/        # Lógica de negocio (search, llm, download, query_builder, vector, etc.)
+│   │   │   └── mcp_clients/ # Clientes para 9 APIs científicas
+│   │   └── models/          # SQLAlchemy ORM + Pydantic schemas
+│   └── temp/                # Scripts CLI para DB (create_tables, dump_schema, check_db)
+├── frontend/
+│   ├── src/
+│   │   ├── pages/           # Rutas Astro (index, project, search, screening)
+│   │   ├── components/      # React Islands (Dashboard, SearchWizard, ScreeningSession, etc.)
+│   │   └── lib/             # Cliente API (api.ts — 29 funciones tipadas)
+│   └── public/
+├── data/                    # Datos locales (SQLite, PDFs por proyecto)
+├── docs/                    # Documentación técnica y diagramas
+└── start_agrisearch.bat     # Launcher automático (Windows)
+```
+
+---
+
+## Requisitos Previos
 
 | Requisito | Versión | Propósito |
 |-----------|---------|-----------|
-| **Python** | 3.11.x | Backend (FastAPI) |
+| **Python** | 3.11+ | Backend (FastAPI) |
 | **Node.js** | 18+ | Frontend (Astro) |
-| **Java (JDK)** | 11+ | OpenDataLoader PDF (parser de artículos científicos) |
-| **Ollama** | Última | LLM local para búsqueda asistida y screening |
-| **uv** *(recomendado)* | Última | Gestión de dependencias Python (alternativa: pip) |
+| **Java (JDK)** | 11+ | OpenDataLoader PDF (parser científico) |
+| **Ollama** | Última | LLM local para búsqueda y screening |
+| **uv** *(recomendado)* | Última | Gestión de dependencias Python |
 
-> ⚠️ **Java es necesario** para el parsing de PDFs científicos con OpenDataLoader PDF. Verifica con `java -version`. Si no lo tienes, instálalo desde [Adoptium](https://adoptium.net/).
+> ⚠️ **Java es necesario** para el parsing de PDFs científicos con OpenDataLoader. Verifica con `java -version`. Si no lo tienes, instálalo desde [Adoptium](https://adoptium.net/).
 
-> ⚠️ **Ollama debe estar ejecutándose** para que AgriSearch pueda orquestar las búsquedas y asistir en el cribado.
-
-Para la configuración detallada de los modelos, descarga y optimización (CPU vs GPU), por favor consulta primero la **[Guía de Ejecución (ejecucion.md)](ejecucion.md)**.
-
-A continuación el **Modelo Generalista** recomendado según tu perfil de hardware:
-
-| Perfil | Hardware | Modelo Ideal | Comando |
-| :--- | :--- | :--- | :--- |
-| **CPU Baja** | < 8GB RAM | `gemma2:2b` | `ollama pull gemma2:2b` |
-| **CPU Media** | 16GB RAM | `phi4-mini:3.8b`| `ollama pull phi4-mini:3.8b`|
-| **CPU Alta** | 32GB+ RAM | `gemma4:e4b` | `ollama pull gemma4:e4b` |
-| **GPU Baja** | 4GB VRAM | `qwen2.5:3b` | `ollama pull qwen2.5:3b` |
-| **GPU Media** | 8GB VRAM | `llama3.1:8b` | `ollama pull llama3.1:8b` |
-| **GPU Alta** | 16GB VRAM | `gemma4:e4b` | `ollama pull gemma4:e4b` |
- 
-> 📊 **Matriz de Especialidad Avanzada:** Para configuraciones optimizadas por tarea basándose en benchmarks (MMLU, Human-Eval), consulta la **[Matriz de 24 Modelos con Métricas y RAM](docs/documentation.md#2-matriz-de-especialidad-24-modelos-recomendados)**.
-
-*(Mantén Ollama corriendo en segundo plano antes de iniciar la aplicación).*
-
-### ▶️ Ejecución Rápida (Recomendado para Windows)
-Hemos incluido un script inteligente en la raíz del proyecto para facilitar el arranque y **su primera ejecución**.
-
-Simplemente haz doble clic en el archivo:
-> `start_agrisearch.bat`
-
-Al hacer esto por primera vez, el script se encargará automáticamente de:
-- Verificar o instalar el entorno virtual en `backend/` usando `uv` (o recurriendo a `pip` tradicional si no tienes `uv` instalado).
-- Descargar e instalar todas las dependencias de Python y Node (`npm install`).
-- Crear las carpetas de datos locales para SQLite y Qdrant.
-- Abrir las terminales independientes y lanzar el navegador.
+> ⚠️ **Ollama debe estar ejecutándose** antes de iniciar el backend.
 
 ---
 
-### Instalación Manual Paso a Paso
+## Configuración de Modelos (Ollama)
 
-> 💡 **Nota:** Para una guía visual y detallada paso a paso, por favor lee **[ejecucion.md](ejecucion.md)**.
+### Modelo Generalista por Hardware
 
-#### 1. Configuración del Backend (con `uv` — Recomendado)
+| Perfil | Hardware | Modelo Ideal | Comando |
+| :--- | :--- | :--- | :--- |
+| **CPU Baja** | < 8GB RAM | `qwen3:1.5b` | `ollama pull qwen3:1.5b` |
+| **CPU Media** | 16GB RAM | `phi4-mini:3.8b` | `ollama pull phi4-mini:3.8b` |
+| **CPU Alta** | 32GB+ RAM | `gemma4:e4b` | `ollama pull gemma4:e4b` |
+| **GPU Baja** | 4-6GB VRAM | `phi4-mini:3.8b` | `ollama pull phi4-mini:3.8b` |
+| **GPU Media** | 8-12GB VRAM | `llama4:8b` | `ollama pull llama4:8b` |
+| **GPU Alta** | 16GB+ VRAM | `gemma4:e4b` | `ollama pull gemma4:e4b` |
+
+### Modelos por Tarea (Matriz de 24 Configuraciones)
+
+| Tarea | CPU Baja | CPU Media | CPU Alta | GPU Baja | GPU Media | GPU Alta |
+|-------|----------|-----------|----------|----------|-----------|----------|
+| **Traducción** | `qwen3:0.6b` | `gemma3:2b` | `llama4:8b` | `phi4-mini:3.8b` | `aya-expanse:8b` | `aya-expanse:32b` |
+| **Queries** | `deepseek-r1:1.5b` | `phi4-mini:3.8b` | `deepseek-r1:8b` | `qwen3:3b` | `deepseek-r1:14b` | `gpt-oss:20b` |
+| **Screening** | `deepseek-r1:1.5b` | `phi4-mini:3.8b` | `phi4:14b` | `deepseek-r1:7b` | `deepseek-r1:14b` | `gpt-oss:20b` |
+| **RAG** | `gemma3:1b` | `phi4-mini:3.8b` | `llama4:8b` | `deepseek-r1:8b` | `gpt-oss:20b` | `qwen3:30b-moe` |
+
+> 💡 **Tip:** Los modelos **DeepSeek-R1** son ideales para Queries y Screening gracias a su modo `<think>` que reduce alucinaciones lógicas. Para RAG masivo, busca arquitecturas MoE (`qwen3`, `gpt-oss`).
+
+> 📌 **Obligatorio:** Instalar el modelo de embeddings para RAG: `ollama pull nomic-embed-text-v2-moe:latest`
+
+---
+
+## Ejecución Rápida (Windows)
+
+Haz doble clic en:
+```
+start_agrisearch.bat
+```
+
+El script automáticamente:
+- Verifica/instala el entorno virtual con `uv`
+- Descarga dependencias de Python y Node
+- Crea carpetas de datos locales
+- Abre terminales independientes y lanza el navegador
+
+---
+
+## Instalación Manual
+
+### 1. Backend (con `uv` — Recomendado)
 
 ```bash
 cd backend
-uv sync                                    # Crea el .venv e instala todas las dependencias
+uv sync                                    # Crea .venv e instala dependencias
 uv run uvicorn app.main:app --port 8000    # Inicia el servidor
 ```
 
-#### 1b. Configuración del Backend (con `pip` — Alternativa)
+### 1b. Backend (con `pip` — Alternativa)
 
 ```bash
 cd backend
@@ -117,52 +206,109 @@ pip install -e .           # Instala desde pyproject.toml
 uvicorn app.main:app --port 8000
 ```
 
-La API estará disponible en `http://localhost:8000` (documentación Swagger en `/docs`).
+La API estará disponible en `http://localhost:8000` (Swagger en `/docs`).
 
-#### 2. Configuración del Frontend
+### 2. Frontend
 
-1. Abre una nueva terminal y navega al directorio del frontend:
-   ```bash
-   cd frontend
-   ```
-2. Instala las dependencias NPM:
-   ```bash
-   npm install
-   ```
-3. Inicia el servidor de desarrollo Astro:
-   ```bash
-   npm run dev
-   ```
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 La plataforma estará disponible en `http://localhost:4321`.
 
 ---
 
-## 📝 Documentación Interna
-
-Puedes encontrar el roadmap y proceso de planeamiento completo de diseño en el archivo [`plan_a_seguir.md`](plan_a_seguir.md).
-
-Para consultar el registro técnico de cada funcionalidad implementada, revisa [`documentation.md`](documentation.md).
-
-En la carpeta `.agents/workflows/` encontrarás reglas definidas de comportamiento de commits y creación de nuevos endpoints/pantallas para la estandarización de código.
-
-### 🔬 Screening (Cribado PRISMA)
+## Módulo de Screening (Cribado PRISMA)
 
 Una vez completada la búsqueda y descarga de PDFs, el módulo de **Screening** permite:
 
-- **Sesión con identidad:** Cada sesión tiene un nombre y objetivo definidos por el usuario.
-- **Solo artículos con PDF:** Únicamente los artículos cuyo PDF fue descargado exitosamente entran al screening.
-- **1 sesión activa por proyecto:** Si ya existe, el usuario puede continuar o eliminarla para crear una nueva.
-- **Extracción de Abstract desde PDF:** Extrae y corrige el abstract leyendo directamente el documento PDF descargado si el proporcionado por la API es insuficiente o erróneo.
-- **Visualizador PDF integrado:** Permite ver el documento completo sin salir de la interfaz, mediante un iframe in-app, sin problemas de extensiones que forzaban descarga gracias a inline disposition headers.
-- **Traducción automática de abstracts:** Vía modelos Ollama locales configurables (`gemma4:e4b`, `llama3.1:8b`, `qwen2.5:7b`), actualizables durante la fase iterativa de cribado o al continuar sesiones antiguas.
-- **Decisiones PRISMA:** Incluir / Excluir (con motivo) / Tal Vez, con atajos de teclado completos (incluye "P" para abrir/cerrar PDF).
-- **Vista dual:** Tarjeta individual o tabla completa con todos los artículos.
+- **Sesión con identidad:** Cada sesión tiene nombre y objetivo definidos por el usuario.
+- **Solo artículos con PDF:** Únicamente artículos con PDF descargado exitosamente entran al screening.
+- **Multi-Screening:** Soporte para múltiples sesiones concurrentes por proyecto (revisión por varios investigadores).
+- **Extracción de Abstract desde PDF:** Lee directamente el documento si el abstract de la API es insuficiente.
+- **Visualizador PDF integrado:** Iframe in-app con atajo `P` para abrir/cerrar.
+- **Traducción automática:** Vía modelos Ollama configurables, actualizable durante la sesión.
+- **AI Assist:** Sugerencias de relevancia PICO cada 10 decisiones (few-shot learning).
+- **Active Learning:** Re-priorización automática por incertidumbre (uncertainty sampling).
+- **Decisiones PRISMA:** Incluir / Excluir (con motivo) / Tal Vez, con atajos de teclado.
+- **Vista dual:** Tarjeta individual o tabla completa.
 
-## 🧑‍💻 Autoría
+---
 
-Desarrollado y mantenido por **ALEX** (@alex).
+## Roadmap: Migración a Rust (Active Learning)
 
-## 📄 Licencia
+> **Estado:** 🔴 Pendiente
 
-Este proyecto se distribuye bajo la licencia **MIT**. Eres libre de usar, modificar y distribuir el código, manteniendo siempre el reconocimiento al autor original.
-Licencia abierta con fines investigativos y educativos.
+### Objetivo
+
+Migrar el módulo de Active Learning desde Python (scikit-learn) hacia un microservicio independiente en **Rust (Axum + Tokio)** para reducir la latencia del bucle síncrono de **~100ms a <5ms**.
+
+### Stack Propuesto
+
+| Componente | Tecnología Rust | Propósito |
+|------------|-----------------|-----------|
+| **API Web** | `axum` | Framework HTTP de alto rendimiento |
+| **Runtime** | `tokio` | Async multi-hilo + workers en background |
+| **Base de Datos** | `rusqlite` + `sqlite-vec` | SQLite embebido con búsqueda vectorial |
+| **ML (Inferencia)** | `ort` (ONNX Runtime) | Embeddings densos pre-computados |
+| **ML (Active Learning)** | `linfa` / `ndarray` | Clasificadores lineales + Redes Prototípicas |
+
+### Arquitectura Migrada
+
+```
+┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+│  Astro Frontend │      │  FastAPI Backend │      │  Rust AL Worker │
+│  :4321          │      │  :8000           │      │  :3001          │
+│                 │      │                  │      │                 │
+│  Screening UI ──┼──────┼▶ /screening/*    │      │  POST /decide   │
+│                 │      │  /search/*       │      │  GET  /next     │
+│  AL Decisions ──┼──────┼──────────────────┼──────┼▶ GET  /status   │
+│                 │      │                  │      │  GET  /progress │
+└─────────────────┘      └─────────────────┘      └─────────────────┘
+                                                               │
+                                                     ┌─────────┴─────────┐
+                                                     │  datos_cribado    │
+                                                     │  .sqlite          │
+                                                     │  (sqlite-vec)     │
+                                                     └───────────────────┘
+```
+
+### Beneficios Esperados
+
+| Métrica | Implementación Actual (Python) | Implementación Propuesta (Rust) |
+|---------|-------------------------------|--------------------------------|
+| Latencia de respuesta | ~100ms | <5ms |
+| Re-entrenamiento | Síncrono (bloquea UI) | Asíncrono (background worker) |
+| Vectorización | TF-IDF en tiempo real | Embeddings densos pre-computados (ONNX) |
+| Cold Start | Muestreo aleatorio | Redes Prototípicas (centroide geométrico) |
+
+### Fases de Implementación
+
+1. **Preparación del Entorno** (1-2 días) — Instalar Rust, crear `active_learning_worker/`, configurar `Cargo.toml`
+2. **Script Pre-vuelo** (1-2 días) — Generar embeddings con `all-MiniLM-L6-v2`, exportar a ONNX, popular SQLite
+3. **API REST en Axum** (2-3 días) — Endpoints: `POST /decide`, `GET /next`, `GET /status`, CORS
+4. **Motor ML** (2-3 días) — Redes Prototípicas, clasificador lineal, funciones de adquisición
+5. **Integración Frontend** (1-2 días) — Apuntar screening al puerto 3001, fallback a Python
+6. **Documentación** (1 día) — Actualizar README, ejecucion.md, documentación
+
+---
+
+## Documentación
+
+| Documento | Contenido |
+|-----------|-----------|
+| [`docs/architecture/arquitectura.md`](docs/architecture/arquitectura.md) | Arquitectura completa, diagramas Mermaid, flujos de datos, modelo ER |
+| [`docs/documentation.md`](docs/documentation.md) | Registro técnico de funcionalidades, dependencias, matriz de modelos |
+| [`ejecucion.md`](ejecucion.md) | Guía visual de ejecución paso a paso |
+
+---
+
+## Autoría
+
+Desarrollado y mantenido por **Alex Prieto Romani** (@AlexPrietoRomani).
+
+## Licencia
+
+Este proyecto se distribuye bajo la licencia **MIT**. Eres libre de usar, modificar y distribuir el código, manteniendo siempre el reconocimiento al autor original. Licencia abierta con fines investigativos y educativos.
