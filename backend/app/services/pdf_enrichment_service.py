@@ -71,13 +71,15 @@ def scan_and_match_pdfs(pdf_dir: Path, articles: list) -> dict[str, str]:
     return matched
 
 
-async def process_and_enrich_pdf(db, article: Article, parsers: dict, vector_service, publish_event = None, project_id: str = None) -> bool:
+async def process_and_enrich_pdf(db, article: Article, parsers: dict, publish_event = None, project_id: str = None) -> bool:
     """
     Processes a single article:
     1. Converts PDF to Markdown via dual-parser router.
     2. Saves Markdown to disk.
     3. Updates article model with Markdown path and status.
     4. Extracts basic metadata (abstract/keywords) if missing.
+    
+    NOTE: Vector indexing is NOT done here. It's a separate step.
     """
     if not article.local_pdf_path or not Path(article.local_pdf_path).exists():
         logger.warning(f"No PDF path found for article {article.id}")
@@ -133,29 +135,10 @@ async def process_and_enrich_pdf(db, article: Article, parsers: dict, vector_ser
         article.local_md_path = str(md_path)
         article.parsed_status = 'success'
         
-        # 5. Generate Enriched Summary (Disabled by user: "con el LLM solo las imagenes")
-        try:
-            # We skip the heavy summarization of the entire document text.
-            article.enriched_summary = None 
-        except Exception as es:
-            logger.warning(f"Summarization block skipped/failed: {es}")
-
-        # 6. Index in Qdrant (Vector RAG)
-        try:
-            if publish_event:
-                await publish_event(project_id, {"type": "sub_progress", "msg": "2/2: Vectorizando e indexando para Búsqueda Semántica..."})
-            await vector_service.index_article(
-                project_id=article.project_id,
-                article=article,
-                md_content=final_md
-            )
-        except Exception as ev:
-            logger.warning(f"Vector indexing failed for {article.id[:8]}: {ev}")
-
         quality = "alta" if len(final_md) > 10000 else "media" if len(final_md) > 2000 else "baja"
         article.parsed_status = f"success_{quality}"
 
-        logger.info(f"Processed, Summarized and Indexed article {article.id[:8]} -> {md_path.name}")
+        logger.info(f"Processed article {article.id[:8]} -> {md_path.name} ({quality})")
         return {"success": True, "quality": quality, "md_len": len(final_md)}
 
     except Exception as e:
@@ -180,8 +163,6 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
 
     # Initialize Services
     try:
-        vector_service = VectorService()
-        
         from app.services.document_parser_service import (
             OpenDataLoaderParser, MarkItDownParser, OPENDATALOADER_AVAILABLE
         )
@@ -203,8 +184,6 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
         ollama_url = "http://localhost:11434/v1"
         parsers["markitdown"] = MarkItDownParser(llm_client=ollama_url, llm_model=vlm_model)
         logger.info(f"MarkItDownParser inicializado (CPU) | VLM: {'activo' if vlm_model else 'inactivo'}")
-        
-        vlm = None  # MarkItDown maneja VLM internamente
     except Exception as e:
         logger.error(f"Could not initialize Services: {e}")
         return {"error": str(e)}
@@ -253,7 +232,7 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
             "current": idx + 1,
             "total": len(articles)
         })
-        res = await process_and_enrich_pdf(db, article, parsers, vector_service, publish_event, project_id)
+        res = await process_and_enrich_pdf(db, article, parsers, publish_event, project_id)
         
         # No se requiere GC manual con MarkItDown
 
