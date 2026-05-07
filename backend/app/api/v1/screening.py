@@ -1,7 +1,38 @@
 """
-AgriSearch Backend - Screening API endpoints.
+Archivo: screening.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Handles screening session creation, article decisions, and abstract translation.
+Descripción:
+Endpoints de la API para la gestión del proceso de cribado (screening).
+Maneja la creación de sesiones de revisión, decisiones de inclusión/exclusión,
+y la traducción de abstracts de los artículos seleccionados.
+
+Acciones Principales:
+    - Crea y gestiona sesiones de screening.
+    - Maneja decisiones sobre artículos (incluir, excluir, quizás).
+    - Provee sugerencias de Active Learning basadas en decisiones previas.
+    - Traduce abstracts utilizando modelos LLM configurados.
+
+Estructura Interna:
+    - `check_screening_eligibility`: Verifica elegibilidad para nuevas sesiones.
+    - `create_screening_session`: Crea una sesión desde búsquedas guardadas.
+    - `get_article_suggestion`: Ofrece sugerencias predictivas mediante Machine Learning.
+    - `rerank_session_articles`: Reordena artículos por incertidumbre/relevancia.
+    - `update_decision`: Actualiza y persiste la decisión del revisor.
+    - `analyze_session_articles`: Ejecuta RAG/Extracción LLM sobre PDFs parseados.
+
+Entradas / Dependencias:
+    - `ActiveLearningService` y `LLM_Service`.
+    - Datos persistidos de artículos y proyectos en la base de datos.
+
+Salidas / Efectos:
+    - Modifica las tablas `ScreeningSession` y `ScreeningDecision`.
+    - Interactúa con el vector store (Qdrant) para RAG.
+
+Integración UI:
+    - Provee los datos consumidos por la interfaz "Screening Workspace" en el frontend,
+      incluyendo contadores en tiempo real, modales de traducción y paneles de sugerencias.
 """
 
 import json
@@ -42,7 +73,15 @@ router = APIRouter(prefix="/screening", tags=["Screening"])
 # ── Helpers ──
 
 def _session_to_response(session: ScreeningSession) -> ScreeningSessionResponse:
-    """Convert a ScreeningSession ORM object to a response schema."""
+    """
+    Convierte un objeto ORM ScreeningSession a un esquema de respuesta Pydantic.
+
+    Args:
+        session (ScreeningSession): Objeto de base de datos.
+
+    Returns:
+        ScreeningSessionResponse: El esquema serializable para la API.
+    """
     return ScreeningSessionResponse(
         id=session.id,
         project_id=session.project_id,
@@ -67,8 +106,17 @@ def _session_to_response(session: ScreeningSession) -> ScreeningSessionResponse:
 async def check_screening_eligibility(
     project_id: str,
     db: AsyncSession = Depends(get_db),
-):
-    """Check how many articles are downloaded and if they are all assigned already."""
+) -> ScreeningEligibilityResponse:
+    """
+    Verifica cuántos artículos están listos (descargados) y cuántos faltan por asignar.
+
+    Args:
+        project_id (str): Identificador único del proyecto.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        ScreeningEligibilityResponse: Estadísticas de elegibilidad para crear una sesión.
+    """
     from app.models.project import DownloadStatus
     
     # 1. Get total downloaded articles for project
@@ -128,11 +176,20 @@ async def enrich_project_articles(
 async def create_screening_session(
     req: CreateScreeningSessionRequest,
     db: AsyncSession = Depends(get_db),
-):
-    """Create a new screening session from selected search queries.
+) -> ScreeningSessionResponse:
+    """
+    Crea una nueva sesión de cribado a partir de las búsquedas seleccionadas.
     
-    Rules:
-    - Only articles with download_status=SUCCESS are included
+    Reglas de negocio:
+    - Solo se incluyen artículos cuyo PDF haya sido descargado exitosamente (`SUCCESS`).
+    - Excluye artículos que ya estén asignados a otra sesión de screening.
+
+    Args:
+        req (CreateScreeningSessionRequest): Petición con el ID del proyecto y parámetros.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        ScreeningSessionResponse: Los detalles de la sesión recién creada.
     """
     logger.info("Creating screening session for project %s with %d searches",
                 req.project_id, len(req.search_query_ids))
@@ -339,8 +396,22 @@ async def get_article_suggestion(
     session_id: str,
     article_id: str,
     db: AsyncSession = Depends(get_db),
-):
-    """Generate an AI suggestion based on Active Learning (decision patterns)."""
+) -> ScreeningSuggestionResponse:
+    """
+    Genera una sugerencia de IA basada en Aprendizaje Activo (Active Learning).
+
+    Entrena rápidamente un modelo ligero de clasificación (ej. Random Forest) usando
+    las decisiones previas del usuario en el proyecto, y lo aplica al artículo actual.
+    Si no hay datos suficientes, recurre a un enfoque Few-Shot con LLM.
+
+    Args:
+        session_id (str): El ID de la sesión de screening.
+        article_id (str): El ID del artículo objetivo.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        ScreeningSuggestionResponse: La sugerencia predictiva (incluir/excluir) con su justificación.
+    """
     # 1. Get Session for Goal
     res_session = await db.execute(select(ScreeningSession).where(ScreeningSession.id == session_id))
     session = res_session.scalar_one_or_none()
@@ -413,8 +484,19 @@ async def rerank_session_articles(
     session_id: str,
     mode: str = Query("uncertainty", pattern="^(uncertainty|most_relevant|balanced)$"),
     db: AsyncSession = Depends(get_db),
-):
-    """Rerank all pending articles in the session using Active Learning."""
+) -> dict:
+    """
+    Reordena dinámicamente los artículos pendientes usando Aprendizaje Activo.
+
+    Args:
+        session_id (str): ID de la sesión.
+        mode (str): El modo de reordenamiento ('uncertainty' para explorar áreas grises, 
+                    'most_relevant' para priorizar positivos seguros).
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        dict: Mensaje de confirmación del reordenamiento.
+    """
     res_session = await db.execute(select(ScreeningSession).where(ScreeningSession.id == session_id))
     session = res_session.scalar_one_or_none()
     if not session:

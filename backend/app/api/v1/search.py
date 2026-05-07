@@ -1,7 +1,40 @@
 """
-AgriSearch Backend - Search & Download API endpoints.
+Archivo: search.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Endpoints for building queries, executing searches, listing articles, and downloading PDFs.
+Descripción:
+Endpoints de la API para las funcionalidades de búsqueda y descarga en AgriSearch.
+Gestiona la construcción de consultas optimizadas por IA, la ejecución de búsquedas
+en bases de datos científicas, el listado de artículos y la descarga de PDFs.
+
+Acciones Principales:
+    - Genera consultas booleanas optimizadas a partir de lenguaje natural (con PICO).
+    - Ejecuta búsquedas en OpenAlex, Semantic Scholar y ArXiv.
+    - Descarga PDFs de acceso abierto.
+    - Permite la carga manual de PDFs.
+    - Maneja la eliminación de búsquedas y el re-procesamiento (parsing) de documentos.
+
+Estructura Interna:
+    - `build_query`: Usa el LLM para construir la consulta.
+    - `execute_search_endpoint`: Ejecuta la búsqueda federada.
+    - `list_articles`: Retorna los artículos encontrados y guardados.
+    - `download_pdfs`: Lanza el servicio de descarga de PDFs.
+    - `upload_pdf`: Recibe un archivo PDF manual y lo vincula a un artículo.
+    - `delete_search_endpoint`: Borra un historial de búsqueda.
+    - `reparse_pdfs` / `cancel_reparse`: Gestionan tareas en segundo plano para convertir PDFs.
+
+Entradas / Dependencias:
+    - `llm_service`, `search_service` y `download_service`.
+    - Pydantic models para validación de entrada/salida.
+
+Salidas / Efectos:
+    - Consulta APIs externas y guarda metadatos en la base de datos local.
+    - Descarga archivos PDF y los guarda en el disco.
+
+Integración UI:
+    - Consumido intensivamente por la pantalla de "Búsqueda Científica" (Research Search)
+      del frontend.
 """
 
 import logging
@@ -34,8 +67,14 @@ router = APIRouter(prefix="/search", tags=["Search"])
 )
 async def build_query(payload: SearchBuildQueryRequest) -> GeneratedQuery:
     """
-    Use the LLM to transform a natural language research question
-    into an optimized boolean search query with AGROVOC terms and PICO breakdown.
+    Utiliza el LLM para transformar una pregunta de investigación en lenguaje natural
+    en una consulta de búsqueda booleana optimizada con términos AGROVOC y desglose PICO.
+
+    Args:
+        payload (SearchBuildQueryRequest): Datos de la petición con el input del usuario.
+
+    Returns:
+        GeneratedQuery: La consulta estructurada devuelta por el modelo de IA.
     """
     logger.info(
         "[build-query] received llm_model=%r agri_area=%r years=%s-%s",
@@ -74,8 +113,21 @@ async def execute_search_endpoint(
     db: AsyncSession = Depends(get_db),
 ) -> SearchResultsResponse:
     """
-    Execute the search query across selected databases (OpenAlex, Semantic Scholar, ArXiv).
-    Deduplicates by DOI and fuzzy title matching. Stores results in the project database.
+    Ejecuta la consulta de búsqueda a través de las bases de datos seleccionadas
+    (OpenAlex, Semantic Scholar, ArXiv).
+    
+    Elimina duplicados basados en el DOI y coincidencias difusas (fuzzy matching)
+    del título. Almacena los resultados en la base de datos del proyecto.
+
+    Args:
+        payload (SearchExecuteRequest): Los parámetros de la búsqueda a ejecutar.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        SearchResultsResponse: Estadísticas y lista de artículos encontrados.
+
+    Raises:
+        HTTPException: Si el proyecto no existe (404) o hay un error en la búsqueda (500).
     """
     try:
         result = await execute_search(
@@ -123,7 +175,23 @@ async def list_articles(
     search_query_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Get paginated articles for a project, optionally filtered by download status or search query id."""
+    """
+    Obtiene los artículos de un proyecto con paginación.
+    
+    Permite el filtrado opcional por el estado de descarga del PDF o 
+    el ID de la consulta de búsqueda que los originó.
+
+    Args:
+        project_id (str): ID del proyecto.
+        skip (int): Número de registros a saltar (paginación).
+        limit (int): Número máximo de registros a devolver.
+        download_status (str | None, opcional): Filtrar por estado de descarga.
+        search_query_id (str | None, opcional): Filtrar por búsqueda específica.
+        db (AsyncSession): Sesión asíncrona de base de datos.
+
+    Returns:
+        dict: Un diccionario con la lista de artículos, total y metadatos de paginación.
+    """
     articles, total = await get_project_articles(
         db=db,
         project_id=project_id,
@@ -151,8 +219,20 @@ async def download_pdfs(
     db: AsyncSession = Depends(get_db),
 ) -> DownloadProgressResponse:
     """
-    Download open access PDFs for articles in a project.
-    If article_ids is not provided, downloads all pending articles with OA URLs.
+    Descarga los PDFs de acceso abierto (Open Access) para los artículos de un proyecto.
+    
+    Si no se proporciona un array `article_ids`, intenta descargar todos los 
+    artículos pendientes que posean una URL de Open Access.
+
+    Args:
+        payload (DownloadRequest): Petición con el ID del proyecto y opcionalmente IDs de artículos.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        DownloadProgressResponse: Estadísticas del proceso de descarga.
+
+    Raises:
+        HTTPException: Si el proceso de descarga falla estrepitosamente (500).
     """
     try:
         result = await download_articles(
@@ -183,7 +263,22 @@ async def upload_pdf(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> ArticleResponse:
-    """Manually upload a PDF and link it to the given article ID."""
+    """
+    Permite subir manualmente un archivo PDF y vincularlo al ID de un artículo específico.
+
+    Ideal para artículos bajo muro de pago (paywall) que el usuario obtuvo externamente.
+
+    Args:
+        article_id (str): El ID del artículo a vincular.
+        file (UploadFile): El archivo binario cargado por el usuario (debe ser .pdf).
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        ArticleResponse: Los detalles del artículo con su estado de descarga actualizado.
+
+    Raises:
+        HTTPException: Si el archivo no es PDF (400), no existe el artículo (404), o falla el guardado (500).
+    """
     from sqlalchemy import select
     from app.models.project import Article, Project, SearchQuery, DownloadStatus
     from app.core.config import get_settings
@@ -243,7 +338,21 @@ async def delete_search_endpoint(
     query_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Delete a search query and its associated articles and files."""
+    """
+    Borra una consulta de búsqueda específica junto con todos sus artículos asociados y 
+    archivos físicos (PDFs descargados).
+
+    Args:
+        project_id (str): ID del proyecto contenedor.
+        query_id (str): ID de la búsqueda a eliminar.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        dict: Un diccionario con el estado de la operación.
+
+    Raises:
+        HTTPException: Si la búsqueda no existe (404) o hay error de eliminación (500).
+    """
     try:
         await delete_search_query(db=db, project_id=project_id, query_id=query_id)
         return {"status": "success", "message": "Search query deleted"}
@@ -262,7 +371,20 @@ async def reparse_pdfs(
     background_tasks: BackgroundTasks,
     article_id: str | None = Query(None, description="ID del artículo específico a reparsar (opcional)"),
 ) -> dict:
-    """Forces all previously downloaded PDFs in the project to be re-parsed to MD via Background Task."""
+    """
+    Fuerza el re-procesamiento de todos los PDFs descargados en el proyecto 
+    hacia formato Markdown a través de una tarea en segundo plano.
+
+    Útil si hubo errores previos en la extracción o se actualizaron los extractores.
+
+    Args:
+        project_id (str): El ID del proyecto.
+        background_tasks (BackgroundTasks): Cola de tareas en segundo plano de FastAPI.
+        article_id (str | None, opcional): ID de un artículo específico si solo se desea reparsar ese.
+
+    Returns:
+        dict: Mensaje de confirmación de inicio de la tarea.
+    """
     from app.services.pdf_enrichment_service import enrich_articles_from_pdfs
     from app.api.v1.events import publish_event
     from app.db.database import async_session_factory
@@ -288,7 +410,16 @@ async def reparse_pdfs(
 
 @router.post("/cancel-reparse/{project_id}")
 async def cancel_reparse(project_id: str):
-    """Signals to stop any active re-parsing for this project."""
+    """
+    Emite una señal para detener cualquier proceso de re-procesamiento (reparse)
+    activo para este proyecto en particular.
+
+    Args:
+        project_id (str): ID del proyecto cuyo proceso se desea cancelar.
+
+    Returns:
+        dict: Estado de la operación de cancelación.
+    """
     from app.services.pdf_enrichment_service import cancel_enrichment
     cancel_enrichment(project_id)
     return {"status": "cancelled"}

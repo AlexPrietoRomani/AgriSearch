@@ -1,7 +1,39 @@
 """
-AgriSearch Backend - Project API endpoints.
+Archivo: projects.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-CRUD operations for research projects (systematic reviews).
+Descripción:
+Endpoints de la API para la gestión de proyectos de AgriSearch.
+Maneja las operaciones CRUD (Crear, Leer, Actualizar, Borrar) para los
+proyectos de revisión sistemática.
+
+Acciones Principales:
+    - Creación y listado de proyectos con almacenamiento aislado.
+    - Actualización de metadatos de proyectos.
+    - Eliminación completa de proyectos (base de datos y archivos físicos).
+    - Apertura del directorio físico del proyecto.
+
+Estructura Interna:
+    - `create_project`: Crea un nuevo proyecto.
+    - `list_projects`: Obtiene la lista de proyectos con sus conteos.
+    - `get_project`: Retorna el detalle de un proyecto específico.
+    - `update_project`: Actualiza campos del proyecto.
+    - `delete_project`: Borra el proyecto y sus archivos.
+    - `open_project_folder`: Abre el explorador de archivos local en la carpeta del proyecto.
+    - `list_project_searches`: Lista las búsquedas ejecutadas bajo un proyecto.
+
+Entradas / Dependencias:
+    - Modelos SQLAlchemy y Pydantic asociados a proyectos.
+    - Dependencia de sesión de base de datos (`get_db`).
+
+Salidas / Efectos:
+    - Modifica la tabla de proyectos en la base de datos.
+    - Puede borrar directorios físicos del disco.
+
+Integración UI:
+    - Estos endpoints son consumidos por las vistas de gestión de proyectos del frontend,
+      incluyendo la tabla de proyectos, el panel de configuración y los modales de borrado.
 """
 
 import logging
@@ -23,7 +55,18 @@ async def create_project(
     payload: ProjectCreate,
     db: AsyncSession = Depends(get_db),
 ) -> ProjectResponse:
-    """Create a new systematic review project with isolated data storage."""
+    """
+    Crea un nuevo proyecto de revisión sistemática con almacenamiento aislado.
+
+    Inicializa un registro de proyecto en la base de datos con los parámetros proporcionados.
+
+    Args:
+        payload (ProjectCreate): Datos de creación del proyecto.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        ProjectResponse: El objeto del proyecto recién creado.
+    """
     project = Project(
         name=payload.name,
         description=payload.description,
@@ -53,7 +96,20 @@ async def create_project(
 async def list_projects(
     db: AsyncSession = Depends(get_db),
 ) -> ProjectListResponse:
-    # Get projects with article counts and reviewed counts
+    """
+    Obtiene la lista de todos los proyectos con estadísticas agregadas.
+
+    Ejecuta subconsultas para calcular eficientemente el conteo de artículos
+    y el progreso de la revisión para cada proyecto sin causar una explosión
+    cartesiana.
+
+    Args:
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        ProjectListResponse: Lista paginada/completa de proyectos y el total.
+    """
+    # Obtiene proyectos con conteos de artículos y artículos revisados
     # Using scalar subqueries to avoid Cartesian product explosion
     article_count_subq = (
         select(func.count(Article.id))
@@ -105,7 +161,22 @@ async def get_project(
     project_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> ProjectResponse:
-    """Get details of a specific project including article count."""
+    """
+    Obtiene los detalles de un proyecto específico, incluyendo estadísticas.
+
+    Calcula el conteo de artículos descargados y el número de artículos revisados
+    asociados a las sesiones de cribado del proyecto.
+
+    Args:
+        project_id (str): El identificador único del proyecto.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        ProjectResponse: El objeto del proyecto solicitado.
+
+    Raises:
+        HTTPException: Si el proyecto no es encontrado (404).
+    """
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -141,7 +212,20 @@ async def update_project(
     payload: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> ProjectResponse:
-    """Update project metadata."""
+    """
+    Actualiza los metadatos de un proyecto existente.
+
+    Args:
+        project_id (str): El identificador único del proyecto.
+        payload (ProjectUpdate): Los campos parciales a actualizar.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        ProjectResponse: El proyecto actualizado.
+
+    Raises:
+        HTTPException: Si el proyecto no es encontrado (404).
+    """
     logger.info(f"Updating project {project_id} with payload: {payload.dict(exclude_unset=True)}")
     project = await db.get(Project, project_id)
     if not project:
@@ -186,7 +270,22 @@ async def delete_project(
     project_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Delete a project and all its associated data (DB records + files on disk)."""
+    """
+    Borra de manera permanente un proyecto y todos sus datos asociados.
+
+    Elimina el registro de la base de datos (y sus cascadas) y también
+    borra físicamente el directorio de datos del proyecto en disco.
+
+    Args:
+        project_id (str): El identificador único del proyecto a borrar.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        None
+
+    Raises:
+        HTTPException: Si el proyecto no es encontrado (404).
+    """
     import os
     import shutil
     from app.core.config import get_settings
@@ -213,7 +312,21 @@ async def delete_project(
 
 @router.post("/{project_id}/open-folder", summary="Open the local PDF folder on the server")
 async def open_project_folder(project_id: str, db: AsyncSession = Depends(get_db)):
-    """Open the host OS file explorer at the project's PDF directory."""
+    """
+    Abre el explorador de archivos del sistema operativo en el directorio de PDFs del proyecto.
+
+    Ideal para revisión manual de descargas en entornos locales.
+
+    Args:
+        project_id (str): El identificador único del proyecto.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        dict: Diccionario indicando el estado y la ruta abierta.
+
+    Raises:
+        HTTPException: Si ocurre un error abriendo la carpeta (500).
+    """
     import os
     import subprocess
     from app.core.config import get_settings
@@ -239,7 +352,19 @@ async def list_project_searches(
     project_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> list[SearchQueryResponse]:
-    """Get all executed searches within a project with their screening availability stats."""
+    """
+    Obtiene todas las búsquedas ejecutadas dentro de un proyecto.
+
+    Calcula también las estadísticas de disponibilidad para el cribado 
+    (cuántos artículos fueron descargados y cuántos faltan por asignar).
+
+    Args:
+        project_id (str): El identificador único del proyecto.
+        db (AsyncSession): Sesión asíncrona de base de datos inyectada.
+
+    Returns:
+        list[SearchQueryResponse]: Lista de búsquedas y sus estadísticas.
+    """
     from app.models.project import Article, DownloadStatus, ScreeningDecision
 
     query = (
