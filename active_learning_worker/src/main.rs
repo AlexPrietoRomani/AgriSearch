@@ -1,4 +1,6 @@
+pub mod api;
 pub mod db;
+pub mod ml;
 
 use axum::{routing::get, Router, Json};
 use serde_json::json;
@@ -31,6 +33,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health_check))
+        .merge(api::router())
         .layer(cors)
         .with_state(db);
 
