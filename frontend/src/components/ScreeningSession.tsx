@@ -20,6 +20,7 @@ import {
     type ScreeningStats,
     type ScreeningSuggestion,
 } from "../lib/api";
+import { AL_WORKER_URL } from "../config";
 
 const EXCLUSION_REASONS = [
     "Fuera de alcance",
@@ -69,8 +70,36 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
     const [suggestion, setSuggestion] = useState<ScreeningSuggestion | null>(null);
     const [loadingSuggestion, setLoadingSuggestion] = useState(false);
     const [error, setError] = useState("");
+    const [rustWorkerAvailable, setRustWorkerAvailable] = useState(true);
 
     const containerRef = useRef<HTMLDivElement>(null);
+
+    /**
+     * Fire-and-forget: sync decision to Rust Active Learning worker.
+     * Falls back silently if worker is unreachable.
+     */
+    const syncToRustWorker = async (articleId: string, status: string) => {
+        try {
+            const res = await fetch(`${AL_WORKER_URL}/decide`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: articleId, status }),
+                signal: AbortSignal.timeout(2000),
+            });
+            if (!res.ok) {
+                console.warn("[AL] Rust worker returned", res.status);
+                setRustWorkerAvailable(false);
+                return;
+            }
+            const data = await res.json();
+            if (data.retraining_triggered) {
+                console.log("[AL] Retraining triggered on Rust worker");
+            }
+            setRustWorkerAvailable(true);
+        } catch {
+            setRustWorkerAvailable(false);
+        }
+    };
 
     // Load session data
     useEffect(() => {
@@ -196,6 +225,8 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                 exclusion_reason: decision === "exclude" ? excludeReason : undefined,
                 reviewer_note: noteText || undefined,
             });
+            // Fire-and-forget to Rust Active Learning worker
+            syncToRustWorker(currentArticle.id, decision);
             // Update local state
             const newArticles = [...articles];
             newArticles[currentIndex] = updated;
