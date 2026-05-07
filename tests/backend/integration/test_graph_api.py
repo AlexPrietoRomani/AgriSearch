@@ -1,13 +1,26 @@
-# -*- coding: utf-8 -*-
 """
-Tests de integración para los endpoints REST de la API de Grafos.
+Archivo: test_graph_api.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Fase 4 — Sub-fase 4.4: API REST para Consulta de Grafos
-Valida que los endpoints retornen datos correctos en el formato esperado
-para ser consumidos por el frontend (vis-network).
+Descripción:
+Pruebas de integración para los endpoints REST de la API de Grafos de AgriSearch.
+Valida que las respuestas de los servicios de grafos cumplan con el esquema
+requerido por el frontend (vis-network), incluyendo nodos, aristas y metadatos.
 
-Ejecución:
-    pytest tests/integration/test_graph_api.py -v
+Acciones Principales:
+    - Validación de la estructura de respuesta para grafos de citación.
+    - Validación de la estructura de respuesta para grafos temáticos.
+    - Verificación del formato de nodos (id, label, color, size) y aristas (from, to, arrows).
+    - Comprobación de la lógica de colores basada en el estado del artículo (incluido vs externo).
+    - Test de parámetros de consulta (filtros por año, status y profundidad).
+
+Entradas / Dependencias:
+    - Respuestas simuladas (Mocks) que imitan el comportamiento de `CitationGraphService` 
+      y `ThematicGraphService`.
+
+Ejemplo de Ejecución:
+    pytest tests/backend/integration/test_graph_api.py
 """
 
 import pytest
@@ -197,9 +210,8 @@ class TestThematicGraphEndpoint:
         assert meta["similarity_threshold"] == 0.75
 
     def test_all_thematic_nodes_are_included(self):
-        """En el grafo temático, todos los nodos deben ser artículos incluidos (no externos)."""
+        """En el grafo temático, todos los nodos deben ser artículos incluidos."""
         for node in MOCK_THEMATIC_GRAPH_RESPONSE["nodes"]:
-            # Los nodos temáticos solo son artículos incluidos
             assert node["color"]["background"] == "#22c55e"
 
 
@@ -232,6 +244,5 @@ class TestGraphQueryParameters:
     def test_depth_parameter_limits_expansion(self):
         """El parámetro depth limita cuántos niveles de citas se expanden."""
         depth = 1
-        # Con depth=1, solo se muestran las citas directas, no las citas de las citas
         assert isinstance(depth, int)
         assert depth >= 0

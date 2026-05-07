@@ -1,26 +1,45 @@
 """
-Test de integracion completo para el Dual-Parser Pipeline.
-Incluye: ParserRouter, OpenDataLoader, MarkItDown, TableFlattener, YAML front-matter.
+Archivo: test_dual_parser_run.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Ejecutar manualmente:
-    backend\.venv\Scripts\python.exe tests\backend\integration\test_dual_parser_run.py
+Descripción:
+Script de ejecución completa para el pipeline de integración Dual-Parser.
+Automatiza la validación de componentes críticos: ParserRouter, OpenDataLoader,
+MarkItDown, TableFlattener y la generación de metadatos YAML. 
+Diseñado para ser ejecutado como un proceso independiente para pruebas rápidas de humo.
+
+Acciones Principales:
+    - Validación de ruteo de archivos por extensión y contexto científico.
+    - Ejecución de pipelines reales de conversión para MarkItDown y OpenDataLoader.
+    - Verificación de la integridad de los metadatos YAML inyectados en el Markdown.
+    - Medición de tiempos de ejecución para control de performance.
+
+Entradas / Dependencias:
+    - Archivos PDF en `tests/backend/integration/fixtures/sample_inputs/`.
+    - Servicios de backend (document_parser_service).
+
+Ejemplo de Uso:
+    python tests/backend/integration/test_dual_parser_run.py
 """
+
 import asyncio
 import sys
 import time
-import tempfile
 import yaml
 from pathlib import Path
-from unittest.mock import MagicMock
 
+# Configurar path del backend
 backend_dir = Path(__file__).resolve().parent.parent.parent.parent / "backend"
 sys.path.insert(0, str(backend_dir))
 
+# Configuración de fixtures
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 SAMPLE_INPUTS = FIXTURES_DIR / "sample_inputs"
 EXPECTED_OUTPUTS = FIXTURES_DIR / "expected_outputs"
 EXPECTED_OUTPUTS.mkdir(parents=True, exist_ok=True)
 
+# Metadatos de prueba
 SAMPLE_META_SCIENTIFIC = {
     "id": "test-palm-001",
     "doi": "10.1234/uav.palm.2025",
@@ -44,8 +63,13 @@ SAMPLE_META_NONSCIENTIFIC = {
 }
 
 
-def find_arxiv_pdf():
-    """Encuentra un PDF para testing."""
+def find_arxiv_pdf() -> Path | None:
+    """
+    Busca un PDF válido para las pruebas de integración.
+
+    Returns:
+        Path | None: Ruta al archivo PDF o None si no se encuentra ninguno.
+    """
     for pdf in SAMPLE_INPUTS.rglob("*.pdf"):
         return pdf
     data_dir = backend_dir / "data" / "projects"
@@ -60,7 +84,7 @@ def find_arxiv_pdf():
 # ==============================================================================
 
 def test_router_pdf_cientifico_usa_opendataloader():
-    """PDF + fuente arxiv -> OpenDataLoader."""
+    """Valida ruteo: PDF + fuente arxiv -> OpenDataLoader."""
     from app.services.document_parser_service import ParserRouter
     
     router = ParserRouter()
@@ -79,7 +103,7 @@ def test_router_pdf_cientifico_usa_opendataloader():
 
 
 def test_router_docx_siempre_markitdown():
-    """DOCX siempre usa MarkItDown, aunque source sea arxiv."""
+    """Valida ruteo: DOCX siempre usa MarkItDown."""
     from app.services.document_parser_service import ParserRouter
     
     router = ParserRouter()
@@ -98,7 +122,7 @@ def test_router_docx_siempre_markitdown():
 
 
 def test_router_pdf_no_cientifico_usa_markitdown():
-    """PDF sin source cientifico -> MarkItDown fallback."""
+    """Valida ruteo: PDF sin source cientifico -> MarkItDown fallback."""
     from app.services.document_parser_service import ParserRouter
     
     router = ParserRouter()
@@ -117,7 +141,7 @@ def test_router_pdf_no_cientifico_usa_markitdown():
 
 
 def test_router_formato_desconocido_usa_markitdown():
-    """Extension desconocida -> MarkItDown con warning."""
+    """Valida ruteo: Extensión desconocida -> MarkItDown con warning."""
     from app.services.document_parser_service import ParserRouter
     
     router = ParserRouter()
@@ -136,7 +160,7 @@ def test_router_formato_desconocido_usa_markitdown():
 
 
 def test_router_parametrizado():
-    """Test parametrizado de todas las extensiones."""
+    """Prueba exhaustiva de ruteo para diversas extensiones."""
     from app.services.document_parser_service import ParserRouter
     
     router = ParserRouter()
@@ -167,8 +191,13 @@ def test_router_parametrizado():
 #  PIPELINE TESTS: Conversion real con PDF
 # ==============================================================================
 
-async def pipeline_markitdown():
-    """Pipeline completo con MarkItDown sobre PDF real."""
+async def pipeline_markitdown() -> bool:
+    """
+    Ejecuta el pipeline completo con MarkItDown sobre un PDF real.
+
+    Returns:
+        bool: True si el test pasó exitosamente.
+    """
     from app.services.document_parser_service import MarkItDownParser, ParserRouter
     
     print("\n" + "="*70)
@@ -226,8 +255,13 @@ async def pipeline_markitdown():
     return True
 
 
-async def pipeline_opendataloader():
-    """Pipeline completo con OpenDataLoader sobre PDF real."""
+async def pipeline_opendataloader() -> bool:
+    """
+    Ejecuta el pipeline completo con OpenDataLoader sobre un PDF real.
+
+    Returns:
+        bool: True si el test pasó exitosamente.
+    """
     from app.services.document_parser_service import (
         OpenDataLoaderParser, MarkItDownParser, ParserRouter, OPENDATALOADER_AVAILABLE
     )
@@ -305,7 +339,13 @@ async def pipeline_opendataloader():
 #  MAIN
 # ==============================================================================
 
-async def main():
+async def main() -> bool:
+    """
+    Función principal de ejecución de los tests de integración.
+
+    Returns:
+        bool: True si todos los tests críticos pasaron.
+    """
     results = {}
     
     print("\n" + "=" * 70)

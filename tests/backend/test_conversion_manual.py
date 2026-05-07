@@ -1,25 +1,56 @@
+"""
+Archivo: test_conversion_manual.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
+
+Descripción:
+Script de prueba manual para validar la conversión de documentos PDF a Markdown.
+Permite ejecutar el pipeline de parseo sobre un archivo específico sin necesidad 
+de levantar toda la infraestructura de pruebas automatizadas.
+
+Acciones Principales:
+    - Validación de la existencia de archivos PDF de prueba.
+    - Inicialización de los motores de parseo (MarkItDown).
+    - Simulación de objetos de base de datos (Article) para el contexto del parser.
+    - Ejecución de la conversión y guardado del resultado en archivos temporales.
+
+Entradas / Dependencias:
+    - Un archivo PDF real en la ruta especificada.
+    - `MarkItDownParser` del servicio de documentos.
+
+Ejemplo de Uso:
+    python tests/backend/test_conversion_manual.py
+"""
+
 import asyncio
 import sys
-import os
+import traceback
 from pathlib import Path
 
-# Fix unicode output in windows console
+from sqlalchemy import select
+
+# Configurar la salida de la consola para soportar caracteres Unicode en Windows
 sys.stdout.reconfigure(encoding='utf-8')
 
-# Add backend to path
+# Agregar el directorio backend al path para resolver importaciones
 backend_path = Path(__file__).parent.parent / "backend"
 sys.path.append(str(backend_path))
 
 from app.services.document_parser_service import MarkItDownParser
-from app.services.pdf_enrichment_service import process_and_enrich_pdf
 from app.db.database import async_session_factory
 from app.models.project import Article
-from sqlalchemy import select
+
 
 async def test_single_pdf_conversion():
+    """
+    Ejecuta una prueba de conversión simple sobre un PDF real.
+
+    Busca un PDF en el sistema de archivos, lo procesa con MarkItDown y guarda
+    el Markdown resultante en el directorio 'outputs'.
+    """
     print("🚀 Iniciando test de conversión simple...")
     
-    # 1. Buscar un PDF real existente (Se usa uno muy grande para testear el chunking de Docling)
+    # 1. Buscar un PDF real existente (Se usa uno representativo para el test)
     pdf_path = Path(r"C:\Users\ALEX\Github\AgriSearch\backend\data\projects\Investigacion_CNN_vs_Vision_Attention\Busqueda_1\descargas\2025_Hanyu_Multimodal_Learning_for_Visual_Perception_and_Robo.pdf")
     
     if not pdf_path.exists():
@@ -90,8 +121,8 @@ async def test_single_pdf_conversion():
             
         except Exception as e:
             print(f"❌ Error durante la conversión: {e}")
-            import traceback
             traceback.print_exc()
+
 
 if __name__ == "__main__":
     asyncio.run(test_single_pdf_conversion())

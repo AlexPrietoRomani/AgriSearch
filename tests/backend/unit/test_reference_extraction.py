@@ -1,19 +1,31 @@
-# -*- coding: utf-8 -*-
 """
-Tests unitarios para la extracción de referencias bibliográficas.
+Archivo: test_reference_extraction.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Fase 4 — Sub-fase 4.1: Extracción de Referencias Bibliográficas
-Valida que el servicio de extracción de citas pueda obtener, normalizar
-y almacenar las referencias de cada artículo desde OpenAlex, Semantic Scholar
-y GROBID.
+Descripción:
+Pruebas unitarias para la extracción y normalización de referencias bibliográficas.
+Valida que el sistema pueda obtener citas desde OpenAlex, Semantic Scholar y GROBID,
+normalizando los DOIs y detectando si los artículos citados ya forman parte
+del proyecto actual.
 
-Ejecución:
-    pytest tests/unit/test_reference_extraction.py -v
+Acciones Principales:
+    - Validación del parseo de IDs de trabajos desde la API de OpenAlex.
+    - Comprobación de la extracción de metadatos (DOI, autores, año) desde Semantic Scholar.
+    - Prueba de normalización de variantes de DOI (URLs, prefijos, etc.) a formato canónico.
+    - Verificación de la integridad de los registros de referencia en el modelo de datos.
+    - Validación de la lógica de detección de duplicados y artículos internos al proyecto.
+
+Entradas / Dependencias:
+    - Datos simulados (Fixtures) de respuestas JSON de OpenAlex y Semantic Scholar.
+    - Expresiones regulares para normalización de DOIs.
+
+Ejemplo de Ejecución:
+    pytest tests/backend/unit/test_reference_extraction.py
 """
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-
 
 # ──────────────────────────────────────────────
 # Fixtures de datos de prueba
@@ -69,20 +81,19 @@ class TestOpenAlexReferenceExtraction:
     """Tests para la obtención de referenced_works desde OpenAlex API."""
 
     def test_parse_openalex_work_ids(self):
-        """Verifica que los IDs de OpenAlex se extraigan correctamente."""
+        """Verifica que los IDs de OpenAlex se extraigan correctamente de las URLs."""
         raw = SAMPLE_OPENALEX_REFERENCES["referenced_works"]
-        # Cada URL debe parsearse a un ID tipo W########
         parsed = [url.split("/")[-1] for url in raw]
         assert len(parsed) == 3
         assert all(p.startswith("W") for p in parsed)
 
     def test_openalex_empty_references(self):
-        """Un artículo sin referenced_works debe retornar lista vacía."""
+        """Verifica el comportamiento ante un artículo sin referencias citadas."""
         empty = {"referenced_works": []}
         assert len(empty["referenced_works"]) == 0
 
     def test_openalex_deduplication(self):
-        """Referencias duplicadas deben eliminarse."""
+        """Verifica que se eliminen duplicados en la lista de trabajos referenciados."""
         duplicated = {
             "referenced_works": [
                 "https://openalex.org/W2741809807",
@@ -102,27 +113,27 @@ class TestSemanticScholarReferenceExtraction:
     """Tests para la obtención de references desde Semantic Scholar API."""
 
     def test_parse_references_with_doi(self):
-        """Verifica que las referencias con DOI se parseen correctamente."""
+        """Verifica la extracción de referencias que cuentan con DOI válido."""
         refs = SAMPLE_SEMANTIC_SCHOLAR_REFERENCES["references"]
         with_doi = [r for r in refs if r["externalIds"].get("DOI")]
         assert len(with_doi) == 2
         assert with_doi[0]["externalIds"]["DOI"] == "10.1109/CVPR.2016.91"
 
     def test_handle_references_without_doi(self):
-        """Referencias sin DOI deben marcarse pero no descartarse."""
+        """Verifica que las referencias sin DOI no sean descartadas totalmente."""
         refs = SAMPLE_SEMANTIC_SCHOLAR_REFERENCES["references"]
         without_doi = [r for r in refs if not r["externalIds"].get("DOI")]
         assert len(without_doi) == 1
         assert without_doi[0]["title"] == "An obscure paper without DOI"
 
     def test_extract_author_names(self):
-        """Los autores deben extraerse como texto plano separado por comas."""
+        """Verifica la conversión de la lista de autores a una cadena formateada."""
         ref = SAMPLE_SEMANTIC_SCHOLAR_REFERENCES["references"][0]
         authors_str = ", ".join(a["name"] for a in ref["authors"])
         assert authors_str == "Kaiming He, Xiangyu Zhang"
 
     def test_year_extraction(self):
-        """El año debe ser un entero válido."""
+        """Verifica que el año sea extraído como un entero dentro de un rango válido."""
         ref = SAMPLE_SEMANTIC_SCHOLAR_REFERENCES["references"][0]
         assert isinstance(ref["year"], int)
         assert 1900 <= ref["year"] <= 2030
@@ -133,7 +144,7 @@ class TestSemanticScholarReferenceExtraction:
 # ──────────────────────────────────────────────
 
 class TestDOINormalization:
-    """Tests para asegurar que los DOIs se normalizan correctamente."""
+    """Tests para asegurar la normalización canónica de DOIs."""
 
     @pytest.mark.parametrize(
         "raw_doi, expected",
@@ -145,15 +156,14 @@ class TestDOINormalization:
         ],
     )
     def test_normalize_doi_variants(self, raw_doi, expected):
-        """Diversas representaciones de DOI deben normalizarse al formato canónico."""
+        """Verifica que diversas variantes de entrada de DOI se normalicen correctamente."""
         import re
-        # Normalización simple: extraer patrón 10.XXXX/YYYY
         match = re.search(r"(10\.\d{4,}/\S+)", raw_doi)
         normalized = match.group(1) if match else None
         assert normalized == expected
 
     def test_invalid_doi_returns_none(self):
-        """Un DOI inválido debe retornar None."""
+        """Verifica que una cadena que no contiene un DOI válido retorne None."""
         import re
         invalid = "not-a-doi-at-all"
         match = re.search(r"(10\.\d{4,}/\S+)", invalid)
@@ -165,10 +175,10 @@ class TestDOINormalization:
 # ──────────────────────────────────────────────
 
 class TestArticleReferencesModel:
-    """Tests para validar la estructura del modelo article_references."""
+    """Tests para validar la estructura del modelo de datos de referencias."""
 
     def test_reference_record_structure(self):
-        """Un registro de referencia debe tener los campos obligatorios."""
+        """Verifica que los registros de referencia posean todos los campos obligatorios."""
         record = {
             "id": "ref-uuid-001",
             "source_article_id": SAMPLE_ARTICLE["id"],
@@ -187,7 +197,7 @@ class TestArticleReferencesModel:
             assert field in record
 
     def test_is_in_project_flag(self):
-        """El flag is_in_project debe ser True si el DOI citado existe en el proyecto."""
+        """Verifica la detección de si un DOI citado ya existe en el proyecto actual."""
         project_dois = {"10.1109/CVPR.2016.91", "10.3390/rs14153690"}
         cited_doi = "10.1109/CVPR.2016.91"
         assert cited_doi in project_dois
