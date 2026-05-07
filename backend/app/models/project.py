@@ -1,7 +1,35 @@
 """
-AgriSearch Backend - SQLAlchemy models for Projects, Articles, and Screening.
+Archivo: project.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-All data is scoped by project_id to ensure isolation between reviews.
+Descripción:
+Define los modelos relacionales (SQLAlchemy) para la persistencia de datos en AgriSearch.
+Incluye las definiciones para Proyectos, Consultas de Búsqueda, Artículos, 
+Sesiones de Cribado y Decisiones de Revisión.
+
+Acciones Principales:
+    - Define la estructura de las tablas de la base de datos.
+    - Establece las relaciones entre entidades (uno a muchos, cascadas).
+    - Provee utilidades para la generación de UUIDs y marcas de tiempo UTC.
+
+Estructura Interna:
+    - `Project`: Entidad raíz que aisla todas las revisiones.
+    - `SearchQuery`: Registra los términos y resultados de las búsquedas ejecutadas.
+    - `Article`: Almacena metadatos bibliográficos y estados de descarga/procesamiento.
+    - `ScreeningSession`: Agrupa una revisión manual específica.
+    - `ScreeningDecision`: Registra la decisión individual del revisor por artículo.
+
+Entradas / Dependencias:
+    - Clase base declarativa desde `app.db.database`.
+    - Tipos de datos de SQLAlchemy.
+
+Salidas / Efectos:
+    - Define el esquema que `init_db` utiliza para crear las tablas en SQLite.
+
+Ejemplo de Integración:
+    from app.models.project import Project, Article
+    new_project = Project(name="Estudio Suelos")
 """
 
 import uuid
@@ -25,17 +53,29 @@ from app.db.database import Base
 
 
 def generate_uuid() -> str:
-    """Generate a new UUID4 string."""
+    """
+    Genera una cadena de texto representando un UUID4 único.
+
+    Returns:
+        str: UUID único aleatorio.
+    """
     return str(uuid.uuid4())
 
 
 def utcnow() -> datetime:
-    """Return current UTC datetime."""
+    """
+    Retorna el objeto datetime actual con zona horaria UTC.
+
+    Returns:
+        datetime: Marca de tiempo actual en UTC.
+    """
     return datetime.now(timezone.utc)
 
 
 class AgriArea(str, PyEnum):
-    """Agricultural area categories."""
+    """
+    Categorías de áreas agrícolas para clasificar proyectos.
+    """
     GENERAL = "general"
     ENTOMOLOGY = "entomology"
     PHYTOPATHOLOGY = "phytopathology"
@@ -49,7 +89,9 @@ class AgriArea(str, PyEnum):
 
 
 class DownloadStatus(str, PyEnum):
-    """Article download status."""
+    """
+    Estados posibles de la descarga de un artículo científico.
+    """
     PENDING = "pending"
     SUCCESS = "success"
     FAILED = "failed"
@@ -59,15 +101,20 @@ class DownloadStatus(str, PyEnum):
 
 
 class ScreeningDecisionStatus(str, PyEnum):
-    """Screening decision labels (PRISMA-aligned)."""
-    PENDING = "pending"      # Not yet reviewed
-    INCLUDE = "include"      # ✅ Relevant
-    EXCLUDE = "exclude"      # ❌ Not relevant (requires reason)
-    MAYBE = "maybe"          # 🟡 Uncertain, review later
+    """
+    Etiquetas de decisión para el proceso de cribado (alineadas con PRISMA).
+    """
+    PENDING = "pending"      # No revisado aún
+    INCLUDE = "include"      # ✅ Relevante
+    EXCLUDE = "exclude"      # ❌ No relevante (requiere motivo)
+    MAYBE = "maybe"          # 🟡 Incierto, revisar después
 
 
 class Project(Base):
-    """A systematic review project. Each project is fully isolated."""
+    """
+    Representa un proyecto de revisión sistemática. 
+    Cada proyecto es un contenedor aislado para búsquedas y artículos.
+    """
 
     __tablename__ = "projects"
 
@@ -75,38 +122,42 @@ class Project(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     agri_area = Column(String(500), default="general")
-    language = Column(String(10), default="es")  # BCP-47
-    llm_model = Column(String(100), nullable=True)  # Preferred LLM model
+    language = Column(String(10), default="es")  # Formato BCP-47
+    llm_model = Column(String(100), nullable=True)  # Modelo LLM preferido
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    # Relationships
+    # Relaciones
     articles = relationship("Article", back_populates="project", cascade="all, delete-orphan")
     search_queries = relationship("SearchQuery", back_populates="project", cascade="all, delete-orphan")
     screening_sessions = relationship("ScreeningSession", back_populates="project", cascade="all, delete-orphan")
 
 
 class SearchQuery(Base):
-    """A stored search query executed in a project."""
+    """
+    Almacena una consulta de búsqueda ejecutada dentro de un proyecto.
+    """
 
     __tablename__ = "search_queries"
 
     id = Column(String, primary_key=True, default=generate_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
-    raw_input = Column(Text, nullable=False)  # User's natural language input
-    generated_query = Column(Text, nullable=False)  # LLM-generated boolean query
-    databases_used = Column(String(500), nullable=False)  # Comma-separated
+    raw_input = Column(Text, nullable=False)  # Entrada en lenguaje natural del usuario
+    generated_query = Column(Text, nullable=False)  # Consulta booleana generada por LLM
+    databases_used = Column(String(500), nullable=False)  # Bases de datos separadas por coma
     total_results = Column(Integer, default=0)
     duplicates_removed = Column(Integer, default=0)
-    adapted_queries_json = Column(Text, nullable=True)  # JSON representation of adapted queries
+    adapted_queries_json = Column(Text, nullable=True)  # Representación JSON de consultas adaptadas
     created_at = Column(DateTime, default=utcnow)
 
-    # Relationships
+    # Relaciones
     project = relationship("Project", back_populates="search_queries")
 
 
 class Article(Base):
-    """A scientific article identified during a systematic search."""
+    """
+    Representa un artículo científico identificado durante una búsqueda sistemática.
+    """
 
     __tablename__ = "articles"
 
@@ -114,79 +165,83 @@ class Article(Base):
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
     search_query_id = Column(String, ForeignKey("search_queries.id"), nullable=True)
 
-    # --- Bibliographic metadata ---
+    # --- Metadatos bibliográficos ---
     doi = Column(String(255), nullable=True, index=True)
     title = Column(Text, nullable=False)
-    authors = Column(Text, nullable=True)  # Comma-separated
+    authors = Column(Text, nullable=True)  # Separados por comas
     year = Column(Integer, nullable=True)
     abstract = Column(Text, nullable=True)
     journal = Column(String(500), nullable=True)
     url = Column(String(1000), nullable=True)
     keywords = Column(Text, nullable=True)
 
-    # --- Source tracking ---
+    # --- Seguimiento de origen ---
     source_database = Column(String(100), nullable=False)  # openalex, semantic_scholar, arxiv, manual
-    external_id = Column(String(500), nullable=True)  # ID in the source database
+    external_id = Column(String(500), nullable=True)  # ID en la base de datos original
     is_duplicate = Column(Boolean, default=False)
     duplicate_of_id = Column(String, nullable=True)
 
-    # --- Download and Parsing status ---
+    # --- Estado de Descarga y Procesamiento ---
     download_status = Column(Enum(DownloadStatus), default=DownloadStatus.PENDING)
     local_pdf_path = Column(String(1000), nullable=True)
     local_md_path = Column(String(1000), nullable=True)
     parsed_status = Column(String(20), default="pending")  # pending, success, failed
     
-    # --- Phase 2 Enrichment ---
+    # --- Enriquecimiento de Fase 2 ---
     llm_summary = Column(Text, nullable=True)
     relevance_score = Column(Float, default=0.0)
     methodology_type = Column(String(100), nullable=True)
-    agri_variables_json = Column(Text, nullable=True)  # Store variables extracted by LLM
+    agri_variables_json = Column(Text, nullable=True)  # Variables extraídas por el LLM
     open_access_url = Column(String(1000), nullable=True)
 
-    # --- Timestamps ---
+    # --- Marcas de tiempo ---
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    # Relationships
+    # Relaciones
     project = relationship("Project", back_populates="articles")
     screening_decisions = relationship("ScreeningDecision", back_populates="article", cascade="all, delete-orphan")
 
 
 class ScreeningSession(Base):
-    """A screening session grouping decisions across selected searches."""
+    """
+    Representa una sesión de cribado que agrupa decisiones sobre búsquedas seleccionadas.
+    """
 
     __tablename__ = "screening_sessions"
 
     id = Column(String, primary_key=True, default=generate_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
 
-    # --- Identity ---
-    name = Column(String(255), nullable=True, default="Sesión de Screening")  # Descriptive name
-    goal = Column(Text, nullable=True)  # Session objective / goal
+    # --- Identidad ---
+    name = Column(String(255), nullable=True, default="Sesión de Screening")
+    goal = Column(Text, nullable=True)  # Objetivo o meta de la sesión
 
-    # --- Configuration ---
-    search_query_ids = Column(Text, nullable=False)  # JSON array of selected search query IDs
-    reading_language = Column(String(10), default="es")  # Target language for abstract translation
-    translation_model = Column(String(100), default="gemma4:e4b")  # Ollama model for translation
-    total_articles = Column(Integer, default=0)  # Total articles in this session
+    # --- Configuración ---
+    search_query_ids = Column(Text, nullable=False)  # Array JSON de IDs de búsqueda seleccionados
+    reading_language = Column(String(10), default="es")  # Idioma objetivo para traducción de abstracts
+    translation_model = Column(String(100), default="gemma4:e4b")  # Modelo de Ollama para traducción
+    total_articles = Column(Integer, default=0)  # Total de artículos en esta sesión
 
-    # --- Progress ---
+    # --- Progreso ---
     reviewed_count = Column(Integer, default=0)
     included_count = Column(Integer, default=0)
     excluded_count = Column(Integer, default=0)
     maybe_count = Column(Integer, default=0)
 
-    # --- Timestamps ---
+    # --- Marcas de tiempo ---
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    # Relationships
+    # Relaciones
     project = relationship("Project", back_populates="screening_sessions")
     decisions = relationship("ScreeningDecision", back_populates="session", cascade="all, delete-orphan")
 
 
 class ScreeningDecision(Base):
-    """A single screening decision for an article within a session."""
+    """
+    Registra una decisión individual de cribado para un artículo dentro de una sesión.
+    """
 
     __tablename__ = "screening_decisions"
 
@@ -194,26 +249,26 @@ class ScreeningDecision(Base):
     session_id = Column(String, ForeignKey("screening_sessions.id"), nullable=False)
     article_id = Column(String, ForeignKey("articles.id"), nullable=False)
 
-    # --- Decision ---
+    # --- Decisión ---
     decision = Column(
         Enum(ScreeningDecisionStatus),
         default=ScreeningDecisionStatus.PENDING,
     )
-    exclusion_reason = Column(String(255), nullable=True)  # Required when decision=exclude
-    reviewer_note = Column(Text, nullable=True)  # Optional free-text note
+    exclusion_reason = Column(String(255), nullable=True)  # Obligatorio si decision=exclude
+    reviewer_note = Column(Text, nullable=True)  # Nota de texto libre opcional
+    
+    # --- Caché de abstract traducido ---
+    translated_abstract = Column(Text, nullable=True)  # Traducción cacheada por LLM
+    original_language = Column(String(10), nullable=True)  # Idioma detectado del abstract original
 
-    # --- Translated abstract cache ---
-    translated_abstract = Column(Text, nullable=True)  # Cached LLM translation
-    original_language = Column(String(10), nullable=True)  # Detected language of original abstract
+    # --- Ordenamiento ---
+    display_order = Column(Integer, default=0)  # Orden en que se muestra el artículo
 
-    # --- Ordering ---
-    display_order = Column(Integer, default=0)  # Order in which article is shown
-
-    # --- Timestamps ---
-    decided_at = Column(DateTime, nullable=True)  # When the decision was made
+    # --- Marcas de tiempo ---
+    decided_at = Column(DateTime, nullable=True)  # Momento en que se tomó la decisión
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    # Relationships
+    # Relaciones
     session = relationship("ScreeningSession", back_populates="decisions")
     article = relationship("Article", back_populates="screening_decisions")

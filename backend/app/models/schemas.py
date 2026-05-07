@@ -1,27 +1,51 @@
 """
-AgriSearch Backend - Pydantic schemas for API request/response validation.
+Archivo: schemas.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Separated from SQLAlchemy models to maintain clean boundaries.
+Descripción:
+Esquemas de Pydantic para la validación de peticiones (request) y respuestas (response) de la API.
+Mantiene una separación clara entre los modelos de la base de datos y las interfaces de comunicación.
+
+Acciones Principales:
+    - Define estructuras de datos para creación y actualización de proyectos.
+    - Valida parámetros de búsqueda y descarga de artículos.
+    - Estructura las respuestas de las sesiones de cribado y estadísticas.
+    - Configura la compatibilidad con objetos ORM mediante `from_attributes`.
+
+Estructura Interna:
+    - `ProjectSchemas`: Creación, actualización y respuesta de proyectos.
+    - `SearchSchemas`: Generación de consultas, ejecución de búsquedas y resultados.
+    - `DownloadSchemas`: Peticiones de descarga y progreso.
+    - `ScreeningSchemas`: Sesiones, decisiones, estadísticas y sugerencias de IA.
+
+Entradas / Dependencias:
+    - `pydantic.BaseModel` y `pydantic.Field`.
+    - Tipos nativos de Python y `datetime`.
+
+Ejemplo de Integración:
+    from app.models.schemas import ProjectCreate
+    payload = ProjectCreate(name="Nueva Revisión", agri_area="agronomy")
 """
 
 from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-# ──────────────────── Project Schemas ────────────────────
+# ──────────────────── Esquemas de Proyecto ────────────────────
 
 
 class ProjectCreate(BaseModel):
-    """Schema for creating a new project."""
-    name: str = Field(..., min_length=1, max_length=255, description="Project name")
-    description: str | None = Field(None, description="Optional project description")
-    agri_area: str = Field("general", description="Agricultural area focus")
-    language: str = Field("es", description="Primary language (BCP-47)")
-    llm_model: str | None = Field(None, description="Preferred LLM model for this project")
+    """Esquema para la creación de un nuevo proyecto."""
+    name: str = Field(..., min_length=1, max_length=255, description="Nombre del proyecto")
+    description: str | None = Field(None, description="Descripción opcional")
+    agri_area: str = Field("general", description="Área agrícola de enfoque")
+    language: str = Field("es", description="Idioma principal (BCP-47)")
+    llm_model: str | None = Field(None, description="Modelo LLM preferido para este proyecto")
 
 
 class ProjectUpdate(BaseModel):
-    """Schema for updating an existing project."""
+    """Esquema para actualizar un proyecto existente."""
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = Field(None)
     agri_area: str | None = Field(None)
@@ -30,7 +54,7 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectResponse(BaseModel):
-    """Schema for project API responses."""
+    """Esquema para las respuestas de la API de proyectos."""
     id: str
     name: str
     description: str | None
@@ -46,35 +70,36 @@ class ProjectResponse(BaseModel):
 
 
 class ProjectListResponse(BaseModel):
-    """Schema for listing projects."""
+    """Esquema para el listado de proyectos."""
     projects: list[ProjectResponse]
     total: int
 
 
-# ──────────────────── Search Schemas ────────────────────
+# ──────────────────── Esquemas de Búsqueda ────────────────────
 
 
 class SearchBuildQueryRequest(BaseModel):
-    """Schema for requesting query generation from natural language."""
-    user_input: str = Field(..., min_length=5, description="Natural language description of the research topic")
-    agri_area: str = Field("general", description="Agricultural area for context")
-    year_from: int | None = Field(None, description="Start year filter")
-    year_to: int | None = Field(None, description="End year filter")
-    language: str = Field("es", description="Language preference for query generation")
-    llm_model: str | None = Field(None, description="Specific model to use for this query")
+    """Esquema para solicitar la generación de consultas a partir de lenguaje natural."""
+    user_input: str = Field(..., min_length=5, description="Descripción del tema de investigación")
+    agri_area: str = Field("general", description="Área agrícola para contexto")
+    year_from: int | None = Field(None, description="Año inicial del filtro")
+    year_to: int | None = Field(None, description="Año final del filtro")
+    language: str = Field("es", description="Idioma preferido para la generación")
+    llm_model: str | None = Field(None, description="Modelo específico a usar para esta consulta")
 
 
 class GeneratedQuery(BaseModel):
-    """Schema for a generated search query."""
-    boolean_query: str = Field(..., description="Generated boolean/semantic query for display")
-    concepts: list[str] = Field(default_factory=list, description="Extracted search concepts")
-    synonyms: dict[str, list[str]] = Field(default_factory=dict, description="Synonyms per concept")
-    suggested_terms: list[str] = Field(default_factory=list, description="Suggested AGROVOC/MeSH terms")
-    pico_breakdown: dict[str, str] = Field(default_factory=dict, description="PICO/PEO breakdown")
-    explanation: str = Field("", description="Explanation of the generated query")
+    """Esquema para una consulta de búsqueda generada."""
+    boolean_query: str = Field(..., description="Consulta booleana/semántica generada")
+    concepts: list[str] = Field(default_factory=list, description="Conceptos de búsqueda extraídos")
+    synonyms: dict[str, list[str]] = Field(default_factory=dict, description="Sinónimos por concepto")
+    suggested_terms: list[str] = Field(default_factory=list, description="Términos sugeridos (AGROVOC/MeSH)")
+    pico_breakdown: dict[str, str] = Field(default_factory=dict, description="Desglose PICO/PEO")
+    explanation: str = Field("", description="Explicación de la consulta generada")
 
 
 class SearchQueryResponse(BaseModel):
+    """Esquema para la respuesta de una consulta de búsqueda guardada."""
     id: str
     project_id: str
     raw_input: str
@@ -91,22 +116,22 @@ class SearchQueryResponse(BaseModel):
 
 
 class SearchExecuteRequest(BaseModel):
-    """Schema for executing a search across databases."""
-    project_id: str = Field(..., description="Project UUID")
-    query: str = Field(..., description="Search query to execute")
-    raw_prompt: str | None = Field(None, description="Original natural language prompt typed by user")
+    """Esquema para ejecutar una búsqueda en las bases de datos científicas."""
+    project_id: str = Field(..., description="UUID del proyecto")
+    query: str = Field(..., description="Consulta de búsqueda a ejecutar")
+    raw_prompt: str | None = Field(None, description="Prompt original del usuario")
     databases: list[str] = Field(
         default=["openalex", "semantic_scholar", "arxiv", "crossref",
                  "core", "scielo", "redalyc", "agecon", "organic_eprints"],
-        description="Databases to search",
+        description="Bases de datos donde buscar",
     )
-    max_results_per_source: int = Field(50, ge=10, le=500, description="Max results per DB")
+    max_results_per_source: int = Field(50, ge=10, le=500, description="Máximo de resultados por fuente")
     year_from: int | None = None
     year_to: int | None = None
 
 
 class ArticleResponse(BaseModel):
-    """Schema for an article in API responses."""
+    """Esquema para un artículo científico en las respuestas de la API."""
     id: str
     doi: str | None
     title: str
@@ -132,29 +157,29 @@ class ArticleResponse(BaseModel):
 
 
 class SearchResultsResponse(BaseModel):
-    """Schema for search execution results."""
+    """Esquema para los resultados de la ejecución de una búsqueda."""
     project_id: str
     query_id: str
     total_found: int
     duplicates_removed: int
     articles: list[ArticleResponse]
     counts_by_source: dict[str, int]
-    adapted_queries: dict[str, str] = Field(default_factory=dict, description="Query sent to each API")
-    prompt_used: str | None = Field(None, description="Original NLP prompt typed by user")
-    master_query: str | None = Field(None, description="Generated boolean query")
+    adapted_queries: dict[str, str] = Field(default_factory=dict, description="Consulta enviada a cada API")
+    prompt_used: str | None = Field(None, description="Prompt NLP original")
+    master_query: str | None = Field(None, description="Consulta booleana maestra")
 
 
-# ──────────────────── Download Schemas ────────────────────
+# ──────────────────── Esquemas de Descarga ────────────────────
 
 
 class DownloadRequest(BaseModel):
-    """Schema for requesting article downloads."""
+    """Esquema para solicitar la descarga de artículos."""
     project_id: str
-    article_ids: list[str] | None = Field(None, description="Specific articles to download. None = all pending.")
+    article_ids: list[str] | None = Field(None, description="Artículos específicos a descargar. None = todos los pendientes.")
 
 
 class DownloadProgressResponse(BaseModel):
-    """Schema for download progress updates."""
+    """Esquema para las actualizaciones del progreso de descarga."""
     total: int
     downloaded: int
     failed: int
@@ -164,10 +189,10 @@ class DownloadProgressResponse(BaseModel):
     articles: list[ArticleResponse] = []
 
 
-# ──────────────────── Screening Schemas ────────────────────
+# ──────────────────── Esquemas de Cribado (Screening) ────────────────────
 
 class ScreeningEligibilityResponse(BaseModel):
-    """Schema for checking if new screenings can be created."""
+    """Esquema para verificar si se pueden crear nuevos cribados."""
     total_downloaded: int = 0
     assigned_articles: int = 0
     eligible_articles: int = 0
@@ -175,27 +200,27 @@ class ScreeningEligibilityResponse(BaseModel):
 
 
 class CreateScreeningSessionRequest(BaseModel):
-    """Schema for creating a new screening session."""
-    project_id: str = Field(..., description="Project UUID")
-    name: str = Field("Sesión de Screening", description="Descriptive session name")
-    goal: str = Field("", description="Session objective / goal")
-    search_query_ids: list[str] = Field(..., min_length=1, description="Selected search query IDs to include")
-    reading_language: str = Field("es", description="Target language for abstract reading (es/en/pt)")
-    translation_model: str = Field("aya:8b", description="Ollama model for translation")
+    """Esquema para crear una nueva sesión de cribado."""
+    project_id: str = Field(..., description="UUID del proyecto")
+    name: str = Field("Sesión de Screening", description="Nombre descriptivo de la sesión")
+    goal: str = Field("", description="Objetivo o meta de la sesión")
+    search_query_ids: list[str] = Field(..., min_length=1, description="IDs de consultas de búsqueda seleccionadas")
+    reading_language: str = Field("es", description="Idioma para la lectura de abstracts (es/en/pt)")
+    translation_model: str = Field("aya:8b", description="Modelo de Ollama para traducción")
 
 
 class UpdateScreeningSessionRequest(BaseModel):
-    """Schema for updating an existing session."""
-    translation_model: str | None = Field(None, description="Ollama model for translation")
+    """Esquema para actualizar una sesión existente."""
+    translation_model: str | None = Field(None, description="Modelo de Ollama para traducción")
 
 
 class ScreeningSessionResponse(BaseModel):
-    """Schema for screening session API responses."""
+    """Esquema para las respuestas de la API de sesiones de cribado."""
     id: str
     project_id: str
     name: str | None = None
     goal: str | None = None
-    search_query_ids: list[str]  # Parsed from JSON
+    search_query_ids: list[str]
     reading_language: str
     translation_model: str
     total_articles: int
@@ -208,7 +233,7 @@ class ScreeningSessionResponse(BaseModel):
 
 
 class ScreeningDecisionResponse(BaseModel):
-    """Schema for a single screening decision."""
+    """Esquema para una decisión individual de cribado."""
     id: str
     session_id: str
     article_id: str
@@ -225,8 +250,8 @@ class ScreeningDecisionResponse(BaseModel):
 
 
 class ScreeningArticleResponse(BaseModel):
-    """Schema for an article within a screening session (article + decision)."""
-    # Article fields
+    """Esquema para un artículo dentro de una sesión de cribado (artículo + decisión)."""
+    # Campos del Artículo
     id: str
     doi: str | None
     title: str
@@ -246,7 +271,7 @@ class ScreeningArticleResponse(BaseModel):
     relevance_score: float = 0.0
     methodology_type: str | None = None
     agri_variables_json: str | None = None
-    # Decision fields
+    # Campos de la Decisión
     decision_id: str
     decision: str = "pending"
     exclusion_reason: str | None = None
@@ -257,14 +282,14 @@ class ScreeningArticleResponse(BaseModel):
 
 
 class UpdateDecisionRequest(BaseModel):
-    """Schema for updating a screening decision."""
-    decision: str = Field(..., description="Decision: include, exclude, or maybe")
-    exclusion_reason: str | None = Field(None, description="Required when decision=exclude")
-    reviewer_note: str | None = Field(None, description="Optional reviewer note")
+    """Esquema para actualizar una decisión de cribado."""
+    decision: str = Field(..., description="Decisión: include, exclude, o maybe")
+    exclusion_reason: str | None = Field(None, description="Obligatorio si decision=exclude")
+    reviewer_note: str | None = Field(None, description="Nota opcional del revisor")
 
 
 class ScreeningStatsResponse(BaseModel):
-    """Schema for screening session progress stats."""
+    """Esquema para las estadísticas de progreso de la sesión de cribado."""
     total: int
     reviewed: int
     pending: int
@@ -275,13 +300,13 @@ class ScreeningStatsResponse(BaseModel):
 
 
 class TranslateAbstractRequest(BaseModel):
-    """Schema for requesting abstract translation."""
-    decision_id: str = Field(..., description="ScreeningDecision UUID")
-    target_language: str = Field("es", description="Target language for translation")
+    """Esquema para solicitar la traducción de un abstract."""
+    decision_id: str = Field(..., description="UUID de la ScreeningDecision")
+    target_language: str = Field("es", description="Idioma destino para la traducción")
 
 
 class ScreeningSuggestionResponse(BaseModel):
-    """Schema for AI relevance suggestion."""
+    """Esquema para la sugerencia de relevancia generada por IA."""
     decision_id: str
     suggested_status: str  # include | exclude
     justification: str
