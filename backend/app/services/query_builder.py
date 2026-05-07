@@ -1,8 +1,30 @@
 """
-AgriSearch Backend - Deterministic Query Builder.
+Archivo: query_builder.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Constructs API-specific search queries from structured concepts and synonyms.
-No LLM calls — pure deterministic functions that format queries for each database API.
+Descripción:
+Constructor determinista de consultas para múltiples APIs de bases de datos científicas.
+Transforma conceptos y sinónimos estructurados en cadenas de búsqueda optimizadas
+según las reglas sintácticas de cada proveedor (OpenAlex, ArXiv, Crossref, etc.).
+No realiza llamadas a LLM; es una capa lógica pura.
+
+Acciones Principales:
+    - Generación de consultas booleanas para ArXiv (con prefijos de campo).
+    - Optimización de términos de búsqueda para motores de texto completo (OpenAlex, Semantic Scholar).
+    - Manejo de sinónimos para expandir la cobertura de búsqueda sin introducir ruido.
+    - Adaptación de sintaxis para recolectores OAI-PMH.
+
+Estructura Interna:
+    - `build_openalex_query`: Optimizado para búsqueda por relevancia.
+    - `build_arxiv_query`: Utiliza lógica booleana estricta (AND/OR).
+    - `build_all_queries`: Orquestador que retorna un mapeo de consultas por base de datos.
+
+Entradas / Dependencias:
+    - Conceptos y sinónimos extraídos previamente (vía `llm_service`).
+
+Ejemplo de Integración:
+    queries = build_all_queries(concepts=["maíz", "sequía"], databases=["arxiv", "openalex"])
 """
 
 import logging
@@ -13,12 +35,17 @@ logger = logging.getLogger(__name__)
 
 def build_openalex_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
     """
-    Build a query for the OpenAlex API.
+    Construye una consulta para la API de OpenAlex.
 
-    OpenAlex uses a simple full-text `search` parameter. Complex boolean operators
-    are NOT supported. Best results come from clean keyword phrases separated by spaces.
+    OpenAlex utiliza un parámetro `search` de texto completo. No soporta operadores booleanos
+    complejos, por lo que se priorizan frases clave limpias separadas por espacios.
 
-    Strategy: join main concepts with their top synonyms as space-separated terms.
+    Args:
+        concepts (list[str]): Conceptos principales.
+        synonyms (dict[str, list[str]] | None): Sinónimos para expandir conceptos.
+
+    Returns:
+        str: Cadena de búsqueda optimizada.
     """
     terms: list[str] = []
     for concept in concepts:
@@ -36,13 +63,16 @@ def build_openalex_query(concepts: list[str], synonyms: dict[str, list[str]] | N
 
 def build_semantic_scholar_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
     """
-    Build a query for the Semantic Scholar API.
+    Construye una consulta para la API de Semantic Scholar.
 
-    Semantic Scholar's search endpoint accepts a simple text query.
-    It does NOT support nested boolean logic. Keep it simple: primary keywords
-    joined with `+` (URL-encoded space) or just spaces.
+    Semantic Scholar funciona mejor con consultas concisas. No soporta lógica booleana anidada.
 
-    Strategy: use main concepts plus the single best synonym for each.
+    Args:
+        concepts (list[str]): Conceptos principales.
+        synonyms (dict[str, list[str]] | None): Sinónimos asociados.
+
+    Returns:
+        str: Cadena de búsqueda.
     """
     terms: list[str] = []
     for concept in concepts:
@@ -60,13 +90,17 @@ def build_semantic_scholar_query(concepts: list[str], synonyms: dict[str, list[s
 
 def build_arxiv_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
     """
-    Build a query for the ArXiv API.
+    Construye una consulta booleana para la API de ArXiv.
 
-    ArXiv requires field prefixes on every term: `all:"term"`.
-    Multiple terms are combined with AND/OR operators.
+    Requiere prefijos de campo (`all:`) y soporta operadores AND/OR. Los sinónimos
+    de un mismo concepto se agrupan con OR.
 
-    Strategy: each concept becomes `all:"concept"`, joined with AND.
-    Synonyms for a concept are grouped with OR.
+    Args:
+        concepts (list[str]): Conceptos principales (se unen con AND).
+        synonyms (dict[str, list[str]] | None): Sinónimos (se unen con OR dentro de cada concepto).
+
+    Returns:
+        str: Consulta booleana con prefijos ArXiv.
     """
     concept_groups: list[str] = []
 
@@ -90,10 +124,14 @@ def build_arxiv_query(concepts: list[str], synonyms: dict[str, list[str]] | None
 
 def build_crossref_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
     """
-    Build a query for the Crossref API (via habanero).
+    Construye una consulta para la API de Crossref (via habanero).
 
-    Crossref accepts simple keyword queries. Boolean operators are limited.
-    Strategy: join concepts with spaces, include top synonyms.
+    Args:
+        concepts (list[str]): Conceptos clave.
+        synonyms (dict[str, list[str]] | None): Sinónimos asociados.
+
+    Returns:
+        str: Cadena de búsqueda separada por espacios.
     """
     terms: list[str] = []
     for concept in concepts:
@@ -110,9 +148,14 @@ def build_crossref_query(concepts: list[str], synonyms: dict[str, list[str]] | N
 
 def build_core_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
     """
-    Build a query for the CORE API v3.
+    Construye una consulta para la API de CORE v3.
 
-    CORE supports basic keyword search. Strategy: join concepts with spaces.
+    Args:
+        concepts (list[str]): Conceptos clave.
+        synonyms (dict[str, list[str]] | None): Sinónimos asociados.
+
+    Returns:
+        str: Cadena de búsqueda.
     """
     terms: list[str] = []
     for concept in concepts:
@@ -129,10 +172,16 @@ def build_core_query(concepts: list[str], synonyms: dict[str, list[str]] | None 
 
 def build_scielo_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
     """
-    Build a query for SciELO search.
+    Construye una consulta optimizada para SciELO.
 
-    SciELO supports keyword search. Strategy: concepts with synonyms,
-    separated by spaces. Include both English and Spanish terms when available.
+    Incluye términos tanto en español como en inglés si están disponibles en los sinónimos.
+
+    Args:
+        concepts (list[str]): Conceptos clave.
+        synonyms (dict[str, list[str]] | None): Sinónimos.
+
+    Returns:
+        str: Cadena de búsqueda.
     """
     terms: list[str] = []
     for concept in concepts:
@@ -149,9 +198,14 @@ def build_scielo_query(concepts: list[str], synonyms: dict[str, list[str]] | Non
 
 def build_redalyc_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
     """
-    Build a query for Redalyc API.
+    Construye una consulta para la API de Redalyc.
 
-    Redalyc accepts keyword search. Strategy: clean concepts with synonyms.
+    Args:
+        concepts (list[str]): Conceptos clave.
+        synonyms (dict[str, list[str]] | None): Sinónimos.
+
+    Returns:
+        str: Cadena de búsqueda.
     """
     terms: list[str] = []
     for concept in concepts:
@@ -168,11 +222,14 @@ def build_redalyc_query(concepts: list[str], synonyms: dict[str, list[str]] | No
 
 def build_oaipmh_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
     """
-    Build a query for OAI-PMH harvesting (AgEcon Search, Organic Eprints).
+    Construye una cadena de términos para filtrado local de registros OAI-PMH.
 
-    OAI-PMH doesn't support search queries natively.
-    We use the terms for local post-filtering of harvested records.
-    Strategy: simple space-separated concepts for matching.
+    Args:
+        concepts (list[str]): Conceptos clave.
+        synonyms (dict[str, list[str]] | None): Sinónimos.
+
+    Returns:
+        str: Cadena de búsqueda.
     """
     terms: list[str] = []
     for concept in concepts:
@@ -193,10 +250,15 @@ def build_all_queries(
     databases: list[str] | None = None,
 ) -> dict[str, str]:
     """
-    Build optimized queries for all selected databases.
+    Orquesta la generación de consultas optimizadas para todas las bases de datos seleccionadas.
 
-    Returns a dict mapping database name to its specific query string.
-    Only builds queries for the databases in the `databases` list.
+    Args:
+        concepts (list[str]): Conceptos base de la investigación.
+        synonyms (dict[str, list[str]] | None): Sinónimos por concepto.
+        databases (list[str] | None): Lista de bases de datos objetivo. Si es None, genera para todas.
+
+    Returns:
+        dict[str, str]: Mapeo de {nombre_db: consulta_especifica}.
     """
     if not databases:
         databases = ["openalex", "semantic_scholar", "arxiv", "crossref",

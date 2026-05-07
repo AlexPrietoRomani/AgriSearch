@@ -1,8 +1,32 @@
 """
-AgriSearch Backend - PDF Processing and Enrichment Service.
+Archivo: pdf_enrichment_service.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Coordinates the conversion of PDFs to structured Markdown using Docling,
-and extracts/updates bibliographic metadata for better screening and RAG.
+Descripción:
+Servicio encargado de la orquestación del procesamiento y enriquecimiento de PDFs.
+Coordina la conversión de archivos PDF a Markdown estructurado y extrae metadatos bibliográficos
+faltantes (abstracts, keywords) para optimizar el cribado y la recuperación RAG.
+
+Acciones Principales:
+    - Escaneo y emparejamiento de archivos PDF locales con registros de la base de datos.
+    - Conversión masiva de documentos usando el motor de ruteo dual (OpenDataLoader/MarkItDown).
+    - Extracción de secciones de resumen (Abstract) directamente del contenido parseado.
+    - Publicación de eventos de progreso en tiempo real para la interfaz de usuario.
+    - Gestión de cancelación de tareas de procesamiento por proyecto.
+
+Estructura Interna:
+    - `scan_and_match_pdfs`: Algoritmo de emparejamiento por DOI y fragmentos de título.
+    - `process_and_enrich_pdf`: Pipeline individual para un artículo (Parseo -> MD -> Metadatos).
+    - `enrich_articles_from_pdfs`: Orquestador de procesamiento por lotes para un proyecto.
+
+Entradas / Dependencias:
+    - Motores de parseo (`OpenDataLoaderParser`, `MarkItDownParser`).
+    - Base de datos (SQLAlchemy AsyncSession).
+    - Sistema de eventos SSE.
+
+Ejemplo de Integración:
+    stats = await enrich_articles_from_pdfs(db, project_id)
 """
 
 import logging
@@ -11,19 +35,35 @@ import asyncio
 from pathlib import Path
 from typing import Set
 
-# Cancellation registry: project_id -> bool
+# Registro de cancelaciones: project_id -> bool
 _cancelled_projects: Set[str] = set()
 
+
 def cancel_enrichment(project_id: str):
-    """Mark a project enrichment task as cancelled."""
+    """
+    Marca una tarea de enriquecimiento de proyecto como cancelada.
+
+    Args:
+        project_id (str): ID del proyecto a cancelar.
+    """
     _cancelled_projects.add(project_id)
 
+
 def is_cancelled(project_id: str) -> bool:
-    """Check if project enrichment was cancelled."""
+    """
+    Verifica si el enriquecimiento del proyecto fue cancelado.
+
+    Args:
+        project_id (str): ID del proyecto a verificar.
+
+    Returns:
+        bool: True si fue cancelado, False en caso contrario.
+    """
     if project_id in _cancelled_projects:
         _cancelled_projects.remove(project_id)
         return True
     return False
+
 
 from app.services.summarization_service import SummarizationService
 from app.services.vector_service import VectorService
@@ -32,10 +72,20 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
 def scan_and_match_pdfs(pdf_dir: Path, articles: list) -> dict[str, str]:
     """
-    Scan a PDF directory and try to match files to articles by DOI or title fragments.
-    Returns a dict of {article_id: pdf_path_string}.
+    Escanea un directorio de PDFs e intenta emparejarlos con artículos existentes.
+
+    Utiliza una estrategia de búsqueda por DOI en el nombre y, opcionalmente, 
+    fragmentos de autor y año.
+
+    Args:
+        pdf_dir (Path): Directorio que contiene los archivos PDF crudos.
+        articles (list): Lista de instancias del modelo Article.
+
+    Returns:
+        dict[str, str]: Mapeo de {article_id: ruta_absoluta_pdf}.
     """
     if not pdf_dir.exists():
         return {}
@@ -73,13 +123,23 @@ def scan_and_match_pdfs(pdf_dir: Path, articles: list) -> dict[str, str]:
 
 async def process_and_enrich_pdf(db, article: Article, parsers: dict, publish_event = None, project_id: str = None) -> bool:
     """
-    Processes a single article:
-    1. Converts PDF to Markdown via dual-parser router.
-    2. Saves Markdown to disk.
-    3. Updates article model with Markdown path and status.
-    4. Extracts basic metadata (abstract/keywords) if missing.
-    
-    NOTE: Vector indexing is NOT done here. It's a separate step.
+    Procesa un único artículo: conversión a Markdown y extracción de metadatos básicos.
+
+    Flujo:
+    1. Convierte PDF a Markdown mediante el ruteador de parsers duales.
+    2. Guarda el Markdown resultante en disco.
+    3. Actualiza el modelo del artículo con la ruta del MD y el estado de calidad.
+    4. Intenta extraer el resumen (Abstract) si falta, usando expresiones regulares sobre el MD.
+
+    Args:
+        db: Sesión de base de datos.
+        article (Article): Artículo a procesar.
+        parsers (dict): Diccionario con instancias de parsers inicializados.
+        publish_event (callable): Función para notificar progreso.
+        project_id (str): ID del proyecto para eventos.
+
+    Returns:
+        dict: Resultado con clave 'success' y detalles de calidad.
     """
     if not article.local_pdf_path or not Path(article.local_pdf_path).exists():
         logger.warning(f"No PDF path found for article {article.id}")
@@ -148,7 +208,18 @@ async def process_and_enrich_pdf(db, article: Article, parsers: dict, publish_ev
 
 async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] | None = None, force_reparse: bool = False) -> dict:
     """
-    Dual-Parser enrichment: OpenDataLoader PDF para artículos científicos, MarkItDown para el resto.
+    Realiza el enriquecimiento masivo de artículos mediante el pipeline Dual-Parser.
+
+    Encamina artículos científicos hacia OpenDataLoader y documentos generales hacia MarkItDown.
+
+    Args:
+        db: Sesión de base de datos.
+        project_id (str): Identificador del proyecto.
+        article_ids (list[str] | None): Lista específica de artículos a procesar.
+        force_reparse (bool): Si True, vuelve a parsear artículos ya marcados como 'success'.
+
+    Returns:
+        dict: Estadísticas del proceso (total, procesados, fallidos, métricas de calidad).
     """
     from sqlalchemy import select
     from app.core.config import get_settings

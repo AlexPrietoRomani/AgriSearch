@@ -1,8 +1,31 @@
 """
-AgriSearch Backend - Download Service.
+Archivo: download_service.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Handles downloading full-text PDFs for articles with open access URLs.
-Includes rate limiting, DOI validation, and PDF verification.
+Descripción:
+Servicio encargado de la descarga automatizada de artículos científicos en formato PDF.
+Gestiona el acceso a URLs de acceso abierto, valida la integridad de los archivos
+y orquestra el procesamiento posterior (parseo, análisis y RAG).
+
+Acciones Principales:
+    - Descarga asíncrona de PDFs con control de concurrencia (Semáforos).
+    - Validación de tipos MIME y bytes mágicos de PDF.
+    - Sanitización de nombres de archivos basada en metadatos (Autor_Año_Título).
+    - Disparo automático del pipeline de enriquecimiento tras una descarga exitosa.
+
+Estructura Interna:
+    - `_download_single_pdf`: Lógica individual de descarga y validación.
+    - `download_articles`: Orquestador principal para múltiples descargas en un proyecto.
+    - `_sanitize_filename`: Utilidad para nombres de archivo seguros.
+
+Entradas / Dependencias:
+    - Librería `aiohttp`.
+    - Base de datos (SQLAlchemy AsyncSession).
+    - `ParserRouter` para el procesamiento post-descarga.
+
+Ejemplo de Integración:
+    results = await download_articles(db_session, project_id)
 """
 
 import asyncio
@@ -20,14 +43,22 @@ from app.models.project import Article, DownloadStatus
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Rate limiter semaphore
+# Semáforo para limitar la tasa de descargas concurrentes
 _download_semaphore = asyncio.Semaphore(settings.download_rate_limit)
 
 PDF_MAGIC_BYTES = b"%PDF"
 
 
 def _sanitize_filename(text: str) -> str:
-    """Create a safe filename from arbitrary text."""
+    """
+    Crea un nombre de archivo seguro eliminando caracteres inválidos.
+
+    Args:
+        text (str): Texto original (ej: título).
+
+    Returns:
+        str: Texto sanitizado limitado a 100 caracteres.
+    """
     safe = re.sub(r'[<>:"/\\|?*]', '_', text)
     safe = re.sub(r'\s+', '_', safe)
     return safe[:100]
@@ -39,13 +70,21 @@ async def _download_single_pdf(
     pdf_dir: Path,
 ) -> tuple[str, str, str]:
     """
-    Download a single PDF for an article.
+    Descarga un único PDF para un artículo específico.
 
-    Returns (article_id, status) where status is one of the DownloadStatus values.
+    Valida que el archivo descargado sea un PDF válido y lo guarda en el sistema de archivos.
+
+    Args:
+        session (aiohttp.ClientSession): Sesión HTTP.
+        article (Article): Instancia del modelo de artículo.
+        pdf_dir (Path): Directorio de destino.
+
+    Returns:
+        tuple[str, str, str]: (ID del artículo, Estado de descarga, Ruta del archivo).
     """
     url = article.open_access_url
     if not url:
-        return article.id, DownloadStatus.NOT_FOUND.value
+        return article.id, DownloadStatus.NOT_FOUND.value, ""
 
     # Build filename
     first_author = (article.authors or "unknown").split(",")[0].strip().split()[-1]
@@ -92,10 +131,18 @@ async def download_articles(
     article_ids: list[str] | None = None,
 ) -> dict:
     """
-    Download PDFs for articles in a project.
+    Orquesta la descarga de múltiples artículos dentro de un proyecto.
 
-    If article_ids is None, downloads all articles with status PENDING and an open_access_url.
-    Returns a summary of download results.
+    Automáticamente dispara el pipeline de enriquecimiento tras cada descarga exitosa:
+    Parseo → Análisis LLM → Indexación RAG.
+
+    Args:
+        db (AsyncSession): Sesión de base de datos.
+        project_id (str): Identificador del proyecto.
+        article_ids (list[str] | None): Lista opcional de artículos a descargar. Si es None, busca pendientes.
+
+    Returns:
+        dict: Resumen de resultados (total, descargados, fallidos, paywalls).
     """
     # Build query
     query = select(Article).where(

@@ -1,8 +1,32 @@
 """
-AgriSearch Backend - LLM Service.
+Archivo: llm_service.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Thin wrapper around LiteLLM for model-agnostic LLM calls.
-Handles query generation, summarization, and all LLM interactions.
+Descripción:
+Capa de abstracción para interacciones con Modelos de Lenguaje (LLM).
+Utiliza LiteLLM para proporcionar una interfaz agnóstica al proveedor (OpenAI, Ollama, etc.).
+Gestiona la generación de consultas, resúmenes, análisis de relevancia y visión artificial.
+
+Acciones Principales:
+    - Generación de consultas booleanas optimizadas a partir de lenguaje natural.
+    - Traducción técnica de términos y abstracts.
+    - Análisis profundo de artículos científicos (extracción de variables agrícolas).
+    - Descripción de imágenes y diagramas mediante modelos de visión (VLM).
+    - Sugerencias inteligentes de inclusión/exclusión para el cribado.
+
+Estructura Interna:
+    - `_extract_json_payload`: Utilidad robusta para extraer JSON de respuestas de texto.
+    - `generate_search_query`: Genera lógica booleana y desglose PICO.
+    - `analyze_article_content`: Extrae variables específicas (cultivos, plagas, tratamientos).
+    - `describe_image_content`: Genera descripciones y código Mermaid para figuras.
+
+Entradas / Dependencias:
+    - Librería `litellm`.
+    - Servidor Ollama local o API de OpenAI según configuración en `Settings`.
+
+Ejemplo de Integración:
+    query_data = await generate_search_query("impacto del glifosato en maíz")
 """
 
 import logging
@@ -16,12 +40,24 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Configure LiteLLM
+# Configurar LiteLLM
 litellm.set_verbose = settings.debug
+
 
 def _extract_json_payload(raw_content: Any) -> dict[str, Any]:
     """
-    Extract a JSON object from a model response content payload.
+    Extrae de forma robusta un objeto JSON del contenido de la respuesta del modelo.
+
+    Maneja bloques de código Markdown (```json ... ```) y texto plano.
+
+    Args:
+        raw_content (Any): Contenido crudo retornado por el LLM.
+
+    Returns:
+        dict[str, Any]: Objeto JSON parseado.
+
+    Raises:
+        ValueError: Si no se encuentra un JSON válido en la respuesta.
     """
     if isinstance(raw_content, dict):
         return raw_content
@@ -59,6 +95,7 @@ def _extract_json_payload(raw_content: Any) -> dict[str, Any]:
 
     raise ValueError("LLM response did not contain valid JSON")
 
+
 async def generate_search_query(
     user_input: str,
     agri_area: str = "general",
@@ -68,7 +105,18 @@ async def generate_search_query(
     model: str | None = None,
 ) -> dict[str, Any]:
     """
-    Generate an optimized boolean search query from natural language input.
+    Genera una consulta de búsqueda booleana optimizada a partir de una entrada en lenguaje natural.
+
+    Args:
+        user_input (str): Pregunta o tema de investigación del usuario.
+        agri_area (str): Área agrícola específica para contextualizar términos.
+        language (str): Idioma de la consulta original.
+        year_from (int | None): Filtro de año inicial.
+        year_to (int | None): Filtro de año final.
+        model (str | None): Modelo específico a utilizar (opcional).
+
+    Returns:
+        dict[str, Any]: Diccionario con la consulta booleana, sinónimos y desglose PICO.
     """
     year_filter = ""
     if year_from or year_to:
@@ -117,12 +165,23 @@ RESPOND IN JSON FORMAT:
         logger.error("Query generation failed: %s", str(e))
         return {"boolean_query": user_input, "explanation": str(e)}
 
+
 async def translate_text(
     text: str,
     target_language: str = "español",
     model: str = "llama3.1:8b",
 ) -> str:
-    """Translate text to the target language."""
+    """
+    Traduce texto al idioma objetivo manteniendo el tono técnico.
+
+    Args:
+        text (str): Texto a traducir.
+        target_language (str): Idioma de destino.
+        model (str): Modelo a utilizar.
+
+    Returns:
+        str: Texto traducido.
+    """
     system_prompt = f"Translate the following text to {target_language} literally."
     try:
         llm_model = f"ollama/{model}" if not model.startswith("ollama/") else model
@@ -141,6 +200,7 @@ async def translate_text(
         logger.error("Translation failed: %s", str(e))
         raise
 
+
 async def generate_relevance_suggestion(
     title: str,
     abstract: str,
@@ -148,7 +208,21 @@ async def generate_relevance_suggestion(
     goal: str = "",
     model: str = "gemma4:e4b"
 ) -> dict:
-    """Generate an inclusion/exclusion suggestion based on history."""
+    """
+    Genera una sugerencia de inclusión/exclusión basada en el historial previo de cribado.
+
+    Implementa aprendizaje en pocos pasos (few-shot) para guiar al usuario.
+
+    Args:
+        title (str): Título del artículo a evaluar.
+        abstract (str): Resumen del artículo.
+        history (list[dict]): Lista de decisiones previas tomadas por el usuario.
+        goal (str): Objetivo general de la revisión sistemática.
+        model (str): Modelo a utilizar.
+
+    Returns:
+        dict: Sugerencia con estado, justificación y nivel de confianza.
+    """
     examples_str = ""
     for i, h in enumerate(history):
         h_abs = (h['abstract'] or "")[:400].replace("\n", " ")
@@ -172,12 +246,23 @@ async def generate_relevance_suggestion(
     except Exception as e:
         return {"suggested_status": "include", "justification": str(e), "confidence": 0.0}
 
+
 async def analyze_article_content(
     md_content: str,
     project_goal: str = "",
     model: str = "gemma4:e4b"
 ) -> dict[str, Any]:
-    """Deep analysis of article content."""
+    """
+    Realiza un análisis profundo del contenido de un artículo (Markdown) para extraer variables agrícolas.
+
+    Args:
+        md_content (str): Texto completo del artículo en Markdown.
+        project_goal (str): Objetivo del proyecto para orientar la relevancia.
+        model (str): Modelo a utilizar (se recomienda uno con ventana de contexto amplia).
+
+    Returns:
+        dict[str, Any]: Diccionario con resumen, score de relevancia y variables extraídas.
+    """
     system_prompt = f"""Analyze this agricultural article content. Goal: {project_goal}.
 Extract: llm_summary, methodology_type, agri_variables (crops, pests_diseases, chemicals_treatments, environmental_factors), relevance_score, justification.
 JSON Format only."""
@@ -201,12 +286,23 @@ JSON Format only."""
         logger.error(f"Deep analysis failed: {e}")
         return {"llm_summary": str(e), "relevance_score": 0.0}
 
+
 async def describe_image_content(
     image_base64: str,
     context: str = "",
     model: str = "gemma4:e4b"
 ) -> str:
-    """Uses vision model to describe images/diagrams from PDFs."""
+    """
+    Utiliza un modelo de visión (VLM) para describir imágenes o diagramas de artículos científicos.
+
+    Args:
+        image_base64 (str): Imagen codificada en base64.
+        context (str): Contexto textual (ej: título del artículo) para guiar la descripción.
+        model (str): Modelo de visión a utilizar.
+
+    Returns:
+        str: Descripción técnica de la imagen.
+    """
     system_prompt = f"""You are a scientific vision assistant.
 Describe the provided image or diagram from a research paper.
 If it is a workflow or chart, try to describe the logic concisely.

@@ -1,9 +1,34 @@
 """
-AgriSearch Backend - Search Service.
+Archivo: search_service.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Orchestrates searching across multiple scientific databases (OpenAlex, Semantic Scholar,
+Descripción:
+Servicio de orquestación de búsqueda bibliográfica multibase.
+Coordina la ejecución de consultas en bases de datos científicas (OpenAlex, Semantic Scholar,
 ArXiv, Crossref, CORE, SciELO, Redalyc, AgEcon Search, Organic Eprints),
-consolidates results, and removes duplicates. All results are scoped by project_id.
+consolida los resultados, realiza la desduplicación y persiste los registros vinculados a proyectos.
+
+Acciones Principales:
+    - Extracción de conceptos clave desde consultas en lenguaje natural.
+    - Ejecución asíncrona y paralela de búsquedas en múltiples fuentes.
+    - Desduplicación robusta basada en DOI y similitud difusa (Fuzzy) de títulos.
+    - Gestión del ciclo de vida de las búsquedas (creación, paginación y eliminación).
+    - Adaptación determinista de consultas según la base de datos objetivo.
+
+Estructura Interna:
+    - `execute_search`: Orquestador principal de la búsqueda y persistencia.
+    - `_extract_concepts_from_query`: Procesa la entrada del usuario para extraer términos atómicos.
+    - `_normalize_doi`: Estandariza DOIs para comparación precisa.
+    - `_is_duplicate_title`: Implementa RapidFuzz para detectar duplicados por título.
+
+Entradas / Dependencias:
+    - Clientes MCP para cada base de datos.
+    - `QueryBuilder` para la adaptación sintáctica.
+    - Base de datos (SQLAlchemy AsyncSession).
+
+Ejemplo de Integración:
+    results = await execute_search(db, project_id, "control biológico", ["arxiv", "scielo"])
 """
 
 import asyncio
@@ -40,10 +65,15 @@ _CLEAN_RE = re.compile(r'[()"\[\]]')
 
 def _extract_concepts_from_query(query: str) -> list[str]:
     """
-    Extract meaningful concepts from a query string.
+    Extrae conceptos significativos de una cadena de consulta.
 
-    Handles both readable boolean-style queries ("biological control AND thrips AND strawberry")
-    and plain text descriptions. Returns a list of clean concept phrases.
+    Maneja tanto consultas booleanas legibles como descripciones en lenguaje natural.
+
+    Args:
+        query (str): Cadena de búsqueda cruda del usuario.
+
+    Returns:
+        list[str]: Lista de términos o frases conceptuales limpias.
     """
     if not query or not query.strip():
         return []
@@ -92,7 +122,15 @@ def _extract_concepts_from_query(query: str) -> list[str]:
 
 
 def _normalize_doi(doi: str | None) -> str | None:
-    """Normalize a DOI for comparison."""
+    """
+    Normaliza un DOI para permitir comparaciones precisas.
+
+    Args:
+        doi (str | None): DOI crudo.
+
+    Returns:
+        str | None: DOI normalizado (sin prefijos de URL) o None si es inválido.
+    """
     if not doi:
         return None
     doi = doi.strip().lower()
@@ -104,7 +142,17 @@ def _normalize_doi(doi: str | None) -> str | None:
 
 
 def _is_duplicate_title(title_a: str, title_b: str, threshold: float = 0.85) -> bool:
-    """Check if two titles are fuzzy duplicates."""
+    """
+    Verifica si dos títulos son duplicados mediante comparación difusa.
+
+    Args:
+        title_a (str): Primer título.
+        title_b (str): Segundo título.
+        threshold (float): Umbral de similitud (0.0 a 1.0).
+
+    Returns:
+        bool: True si la similitud supera el umbral.
+    """
     if not title_a or not title_b:
         return False
     ratio = fuzz.ratio(title_a.lower().strip(), title_b.lower().strip()) / 100.0
@@ -122,9 +170,20 @@ async def execute_search(
     raw_prompt: str | None = None,
 ) -> dict:
     """
-    Execute a search across selected databases, deduplicate, and store results.
+    Ejecuta una búsqueda en las bases de datos seleccionadas, desduplica y persiste resultados.
 
-    Returns a summary of the search results including counts by source.
+    Args:
+        db (AsyncSession): Sesión de base de datos.
+        project_id (str): ID del proyecto.
+        query (str): Consulta booleana o descriptiva.
+        databases (list[str]): Lista de fuentes a consultar.
+        max_results_per_source (int): Límite de resultados por fuente.
+        year_from (int | None): Año de inicio.
+        year_to (int | None): Año de fin.
+        raw_prompt (str | None): Prompt original que generó la consulta (opcional).
+
+    Returns:
+        dict: Resumen de la búsqueda con conteos por fuente y lista de artículos.
     """
     # Verify project exists
     project = await db.get(Project, project_id)
@@ -142,12 +201,7 @@ async def execute_search(
     await db.flush()
 
     # ── Build deterministic queries for each DB ──
-    # Extract search concepts from the query string
-    # The query may be a readable string like "biological control AND thrips AND strawberry"
-    # or a plain text description. We split by common separators to extract concepts.
     concepts = _extract_concepts_from_query(query)
-    # No synonyms at this stage — the LLM already provided them in step 1.
-    # The concepts themselves are enough for a good search.
     adapted_queries = build_all_queries(concepts=concepts, databases=databases)
     search_query.adapted_queries_json = json.dumps(adapted_queries, ensure_ascii=False)
     await db.flush()
@@ -196,14 +250,7 @@ async def execute_search(
             article_data["source_database"] = source_name
             all_articles.append(article_data)
 
-    logger.info(
-        "Raw results: %s total from %s sources",
-        len(all_articles),
-        counts_by_source,
-    )
-
     # ── Deduplication ──
-    # First pass: deduplicate by normalized DOI
     seen_dois: dict[str, int] = {}
     unique_articles: list[dict] = []
     duplicates_removed = 0
@@ -217,7 +264,7 @@ async def execute_search(
             seen_dois[normalized_doi] = len(unique_articles)
         unique_articles.append(article_data)
 
-    # Second pass: fuzzy title dedup for articles without DOI
+    # Fuzzy title dedup
     final_articles: list[dict] = []
     existing_titles: list[str] = []
 
@@ -233,10 +280,10 @@ async def execute_search(
             final_articles.append(article_data)
             existing_titles.append(title)
 
-    # Also check against existing articles in the project
+    # Cross-check against existing articles in the project
     existing_query = select(Article.doi, Article.title).where(
         Article.project_id == project_id,
-        Article.is_duplicate == False,  # noqa: E712
+        Article.is_duplicate == False,
     )
     existing_result = await db.execute(existing_query)
     existing_rows = existing_result.all()
@@ -311,10 +358,23 @@ async def get_project_articles(
     download_status: str | None = None,
     search_query_id: str | None = None,
 ) -> tuple[list[Article], int]:
-    """Get paginated articles for a project, optionally filtered by download status or search query id."""
+    """
+    Obtiene artículos paginados para un proyecto, con filtros opcionales.
+
+    Args:
+        db (AsyncSession): Sesión de base de datos.
+        project_id (str): ID del proyecto.
+        skip (int): Desplazamiento (offset).
+        limit (int): Límite de resultados.
+        download_status (str | None): Filtro por estado de descarga.
+        search_query_id (str | None): Filtro por ID de consulta de búsqueda.
+
+    Returns:
+        tuple[list[Article], int]: Lista de artículos y conteo total.
+    """
     base_query = select(Article).where(
         Article.project_id == project_id,
-        Article.is_duplicate == False,  # noqa: E712
+        Article.is_duplicate == False,
     )
 
     if download_status:
@@ -341,8 +401,14 @@ async def delete_search_query(
     query_id: str,
 ):
     """
-    Deletes a search query and all its associated articles from the database.
-    Also deletes any locally downloaded PDF files and generated .md files for those articles.
+    Elimina una consulta de búsqueda y todos sus artículos asociados.
+
+    También elimina los archivos PDF y Markdown locales vinculados a dichos artículos.
+
+    Args:
+        db (AsyncSession): Sesión de base de datos.
+        project_id (str): ID del proyecto.
+        query_id (str): ID de la consulta a eliminar.
     """
     import os
     import shutil

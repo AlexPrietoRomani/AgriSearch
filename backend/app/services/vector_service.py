@@ -1,8 +1,33 @@
 """
-AgriSearch Backend - Vector Service (Qdrant).
+Archivo: vector_service.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Handles semantic indexing and search for article chunks.
-Uses Qdrant for persistence and LiteLLM/Ollama for embeddings.
+Descripción:
+Servicio encargado de la indexación y búsqueda semántica de documentos.
+Utiliza Qdrant como base de datos vectorial local para almacenar fragmentos (chunks)
+de artículos y LiteLLM/Ollama para la generación de embeddings.
+
+Acciones Principales:
+    - Gestión de colecciones vectoriales segmentadas por proyecto.
+    - Generación de embeddings para consultas y documentos.
+    - Fragmentación inteligente (chunking) de Markdown con conciencia estructural (encabezados).
+    - Búsqueda de similitud de coseno para recuperación de información relevante (RAG).
+    - Persistencia de metadatos bibliográficos junto con los vectores para trazabilidad.
+
+Estructura Interna:
+    - `ensure_collection`: Garantiza la existencia del índice para un proyecto.
+    - `chunk_text`: Implementa la lógica de división de texto por secciones.
+    - `index_article`: Orquestador de vectorización e inserción masiva (upsert).
+    - `search`: Realiza la búsqueda semántica y formatea los resultados para el cliente.
+
+Entradas / Dependencias:
+    - Cliente de `Qdrant`.
+    - Modelos de embedding vía LiteLLM.
+    - Metadatos de artículos de la base de datos relacional.
+
+Ejemplo de Integración:
+    results = await VectorService().search(project_id, "efecto de la urea en café")
 """
 
 import logging
@@ -20,12 +45,14 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+
 class VectorService:
     """
-    Manages Qdrant collections and vector search.
+    Gestor de operaciones vectoriales sobre la base de datos Qdrant.
     """
 
     def __init__(self):
+        """Inicializa el cliente de Qdrant y configura el modelo de embedding."""
         self.client = QdrantClient(path=settings.vector_db_dir.absolute().as_posix())
         self.embedding_model = settings.embedding_model
         
@@ -35,7 +62,15 @@ class VectorService:
             self.embedding_model = f"ollama/{self.embedding_model}"
 
     async def _get_embedding(self, text: str) -> List[float]:
-        """Generates embedding using LiteLLM."""
+        """
+        Genera un vector numérico (embedding) a partir de una cadena de texto.
+
+        Args:
+            text (str): Texto a vectorizar.
+
+        Returns:
+            List[float]: Vector resultante.
+        """
         try:
             response = await litellm.aembedding(
                 model=self.embedding_model,
@@ -48,11 +83,25 @@ class VectorService:
             raise
 
     def _get_collection_name(self, project_id: str) -> str:
-        """Standardized collection name: project_<uuid>."""
+        """
+        Genera un nombre de colección estandarizado para Qdrant.
+
+        Args:
+            project_id (str): ID del proyecto.
+
+        Returns:
+            str: Nombre formateado (ej: project_<uuid>).
+        """
         return f"project_{project_id.replace('-', '_')}"
 
     async def ensure_collection(self, project_id: str, vector_size: int = 768):
-        """Creates collection if it doesn't exist."""
+        """
+        Garantiza que exista una colección para el proyecto, creándola si es necesario.
+
+        Args:
+            project_id (str): ID del proyecto.
+            vector_size (int): Dimensión del vector del modelo (ej: 768 para Nomic/Gemma).
+        """
         collection_name = self._get_collection_name(project_id)
         try:
             self.client.get_collection(collection_name)
@@ -71,8 +120,18 @@ class VectorService:
 
     def chunk_text(self, text: str, chunk_size: int = 1500, overlap: int = 300) -> List[Dict[str, Any]]:
         """
-        Structure-aware chunking for Markdown.
-        Splits by headers first, then by size if a section is too long.
+        Divide el texto Markdown en fragmentos manejables respetando la jerarquía de encabezados.
+
+        Prioriza la división por secciones (##, ###). Si una sección es demasiado grande,
+        se divide por párrafos.
+
+        Args:
+            text (str): Contenido completo del documento en Markdown.
+            chunk_size (int): Tamaño máximo aproximado por fragmento en caracteres.
+            overlap (int): Solapamiento entre fragmentos para mantener el contexto.
+
+        Returns:
+            List[Dict[str, Any]]: Lista de fragmentos con su contenido y nombre de sección.
         """
         chunks = []
         
@@ -114,7 +173,14 @@ class VectorService:
         return chunks
 
     async def index_article(self, project_id: str, article: Any, md_content: str):
-        """Chunks and indexes an article's Markdown content with full metadata."""
+        """
+        Procesa, vectoriza e indexa el contenido de un artículo en la base de datos vectorial.
+
+        Args:
+            project_id (str): ID del proyecto.
+            article (Any): Instancia del modelo Article con metadatos.
+            md_content (str): Texto Markdown parseado.
+        """
         collection_name = self._get_collection_name(project_id)
         
         # 1. Chunking (Structure-aware)
@@ -160,7 +226,17 @@ class VectorService:
             logger.info(f"Indexed {len(points)} chunks for article {article.id} in {collection_name}")
 
     async def search(self, project_id: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Semantic search within a project's collection."""
+        """
+        Realiza una búsqueda semántica dentro de la colección vectorial de un proyecto.
+
+        Args:
+            project_id (str): ID del proyecto donde buscar.
+            query (str): Consulta del usuario en lenguaje natural.
+            limit (int): Número máximo de fragmentos a retornar.
+
+        Returns:
+            List[Dict[str, Any]]: Fragmentos más relevantes con score de similitud.
+        """
         collection_name = self._get_collection_name(project_id)
         
         try:

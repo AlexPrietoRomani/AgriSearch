@@ -1,8 +1,30 @@
 """
-AgriSearch Backend - Summarization Service.
+Archivo: summarization_service.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Generates structured "Enriched Summaries" from scientific articles
-parsed as Markdown. Focuses on extraction of key evidence.
+Descripción:
+Servicio encargado de la generación de resúmenes estructurados y enriquecidos.
+Procesa el contenido de artículos científicos (en formato Markdown) para extraer
+evidencia clave, metodología y conclusiones, optimizando la lectura técnica
+para el investigador agrícola.
+
+Acciones Principales:
+    - Generación de resúmenes estructurados mediante LLM (Ollama/OpenAI).
+    - Extracción de objetivos, metodología, resultados y limitaciones del estudio.
+    - Identificación de la relevancia práctica para el sector agrícola.
+    - Formateo de los resultados JSON a Markdown presentable para la interfaz.
+
+Estructura Interna:
+    - `generate_summary`: Orquesta la llamada al LLM con un prompt sistémico robusto.
+    - `format_summary_to_markdown`: Convierte el esquema JSON en un reporte visual.
+
+Entradas / Dependencias:
+    - Contenido Markdown del artículo.
+    - `litellm` para la comunicación con modelos.
+
+Ejemplo de Integración:
+    summary = await SummarizationService.generate_summary(md_text)
 """
 
 import logging
@@ -17,7 +39,7 @@ settings = get_settings()
 
 class SummarizationService:
     """
-    Service to generate structured summaries from document Markdown.
+    Servicio para generar resúmenes técnicos estructurados a partir del contenido Markdown de documentos.
     """
 
     SYSTEM_PROMPT = """Eres un analista de revisiones sistemáticas en agricultura.
@@ -52,7 +74,14 @@ IMPORTANTE:
         model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Calls the LLM to generate a structured summary from Markdown.
+        Llama al LLM para generar un resumen estructurado a partir de Markdown.
+
+        Args:
+            md_content (str): Contenido completo o parcial del artículo en Markdown.
+            model (Optional[str]): Modelo específico a utilizar (por defecto usa la configuración del sistema).
+
+        Returns:
+            Dict[str, Any]: Diccionario con las secciones del resumen según el esquema definido.
         """
         llm_model = model or settings.litellm_model
         if not (llm_model.startswith("ollama/") or llm_model.startswith("openai/")):
@@ -94,7 +123,15 @@ IMPORTANTE:
 
     @classmethod
     def format_summary_to_markdown(cls, data: Dict[str, Any]) -> str:
-        """Converts the JSON summary data into a clean Markdown string for display."""
+        """
+        Convierte los datos JSON del resumen en una cadena Markdown legible.
+
+        Args:
+            data (Dict[str, Any]): Datos del resumen generados por el LLM.
+
+        Returns:
+            str: Texto formateado en Markdown.
+        """
         if "error" in data and len(data) == 1:
             return f"**Error:** {data['error']}"
 

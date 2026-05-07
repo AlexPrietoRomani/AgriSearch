@@ -1,8 +1,34 @@
 """
-AgriSearch Backend - Active Learning Service.
+Archivo: active_learning_service.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Implements screening assistance using simple ML (TF-IDF + Logistic Regression)
-to re-rank articles by uncertainty or potential relevance.
+Descripción:
+Servicio de Aprendizaje Activo (Active Learning) para asistir en el proceso de cribado.
+Utiliza técnicas de procesamiento de lenguaje natural (TF-IDF) y clasificación (Regresión Logística)
+para predecir la relevancia de los artículos y priorizar aquellos con mayor incertidumbre o relevancia potencial.
+
+Acciones Principales:
+    - Entrena un modelo de clasificación basado en las etiquetas (incluir/excluir) ya asignadas.
+    - Predice la probabilidad de relevancia (score) para artículos pendientes.
+    - Calcula la incertidumbre de la predicción para implementar "Uncertainty Sampling".
+    - Ordena los artículos según diferentes estrategias (relevancia, incertidumbre, balanceado).
+
+Estructura Interna:
+    - `ActiveLearningService`: Clase principal que encapsula el pipeline de Scikit-Learn.
+    - `_prepare_text`: Limpia y combina campos bibliográficos para vectorización.
+    - `train`: Ajusta el modelo a los datos etiquetados.
+    - `predict_relevance`: Genera puntuaciones para el pool de artículos.
+    - `rank_for_screening`: Reordena la lista según la estrategia seleccionada.
+
+Entradas / Dependencias:
+    - Librerías `numpy` y `scikit-learn`.
+    - Estados de decisión desde `app.models.project`.
+
+Ejemplo de Integración:
+    service = ActiveLearningService()
+    service.train(labeled_data)
+    ranked_articles = service.predict_relevance(pending_pool)
 """
 
 import logging
@@ -15,12 +41,16 @@ from app.models.project import ScreeningDecisionStatus
 
 logger = logging.getLogger(__name__)
 
+
 class ActiveLearningService:
     """
-    Implements simple active learning (Uncertainty Sampling) for screening.
+    Servicio que implementa muestreo por incertidumbre (Active Learning) para el cribado bibliográfico.
     """
 
     def __init__(self):
+        """
+        Inicializa el vectorizador TF-IDF y el modelo de Regresión Logística balanceada.
+        """
         self.vectorizer = TfidfVectorizer(
             stop_words='english',
             max_features=5000,
@@ -30,7 +60,15 @@ class ActiveLearningService:
         self._is_trained = False
 
     def _prepare_text(self, article: Dict[str, Any]) -> str:
-        """Combines title, abstract, and keywords for vectorization."""
+        """
+        Combina título, abstract y palabras clave en una única cadena para vectorización.
+
+        Args:
+            article (Dict[str, Any]): Datos del artículo.
+
+        Returns:
+            str: Texto concatenado y normalizado en minúsculas.
+        """
         title = article.get('title', '') or ''
         abstract = article.get('abstract', '') or ''
         keywords = article.get('keywords', '') or ''
@@ -41,9 +79,15 @@ class ActiveLearningService:
 
     def train(self, labeled_articles: List[Dict[str, Any]]) -> bool:
         """
-        Trains the classifier on already labeled articles (included/excluded).
-        
-        labeled_articles: List of dicts with keys 'title', 'abstract', 'keywords', 'decision'
+        Entrena el clasificador utilizando los artículos que ya tienen una decisión asignada.
+
+        Requiere al menos un ejemplo de cada clase (incluir y excluir) para poder entrenar.
+
+        Args:
+            labeled_articles (List[Dict[str, Any]]): Lista de artículos con campo 'decision'.
+
+        Returns:
+            bool: True si el entrenamiento fue exitoso, False en caso contrario.
         """
         if not labeled_articles:
             logger.warning("No labeled articles provided for training.")
@@ -78,8 +122,13 @@ class ActiveLearningService:
 
     def predict_relevance(self, pool_articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Predicts inclusion probability and uncertainty for a pool of pending articles.
-        Returns the article list with added 'suggestion_score' and 'uncertainty'.
+        Predice la probabilidad de inclusión y la incertidumbre para un pool de artículos pendientes.
+
+        Args:
+            pool_articles (List[Dict[str, Any]]): Artículos sin decisión tomada.
+
+        Returns:
+            List[Dict[str, Any]]: Artículos enriquecidos con 'suggestion_score' e 'uncertainty'.
         """
         if not self._is_trained or not pool_articles:
             return pool_articles
@@ -111,10 +160,19 @@ class ActiveLearningService:
     @staticmethod
     def rank_for_screening(articles: List[Dict[str, Any]], mode: str = "balanced") -> List[Dict[str, Any]]:
         """
-        Ranks articles according to different strategies:
-        - 'most_relevant': Descending by suggestion_score.
-        - 'uncertainty': Descending by uncertainty (most unsure first).
-        - 'balanced': Combination (e.g., top relevance first, then high uncertainty).
+        Ordena los artículos según diferentes estrategias de cribado.
+
+        Estrategias:
+            - 'most_relevant': De mayor a menor probabilidad de inclusión.
+            - 'uncertainty': De mayor a menor incertidumbre (exploración).
+            - 'balanced': Combinación de relevancia e incertidumbre.
+
+        Args:
+            articles (List[Dict[str, Any]]): Lista de artículos enriquecidos con puntuaciones.
+            mode (str): Modo de ordenamiento.
+
+        Returns:
+            List[Dict[str, Any]]: Lista ordenada de artículos.
         """
         if not articles or 'suggestion_score' not in articles[0]:
             return articles

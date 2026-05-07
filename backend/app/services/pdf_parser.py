@@ -1,6 +1,28 @@
 """
-AgriSearch Backend - PDF to Structured Markdown Parser (Docling-based).
-Implements Sub-fase 2.0: PDF -> Enriched Markdown.
+Archivo: pdf_parser.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
+
+Descripción:
+Servicio de parseo de PDF a Markdown estructurado basado en Docling (Legacy).
+Implementa la Sub-fase 2.0 del pipeline: PDF -> Enriched Markdown.
+Nota: Este servicio está siendo reemplazado por la arquitectura de ruteo dual,
+pero se mantiene para flujos que requieren enriquecimiento visual directo con VLM.
+
+Acciones Principales:
+    - Conversión de PDF a Markdown manteniendo la estructura jerárquica.
+    - Extracción de imágenes y diagramas para su análisis con modelos de visión.
+    - Aplanamiento de tablas para optimizar la fragmentación en RAG.
+    - Inyección de metadatos en Front-matter YAML.
+
+Estructura Interna:
+    - `TableFlattener`: Transforma tablas Markdown en oraciones narrativas.
+    - `PDFParserService`: Clase principal que envuelve el motor Docling.
+    - `_convert_to_md_with_vision`: Pipeline que integra visión artificial en el parseo.
+
+Entradas / Dependencias:
+    - Librería `docling`.
+    - `llm_service` para descripciones de imágenes.
 """
 
 import os
@@ -20,7 +42,10 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 class TableFlattener:
-    """Transforms Markdown tables into descriptive natural language sentences."""
+    """
+    Utilidad para transformar tablas Markdown en oraciones de lenguaje natural.
+    Ayuda a que los modelos de embeddings capturen mejor la relación entre celdas y encabezados.
+    """
 
     _TABLE_PATTERN = re.compile(r"((?:^\|.+\|$\n?)+)", re.MULTILINE)
 
@@ -72,12 +97,21 @@ class TableFlattener:
 
 
 class PDFParserService:
-    """PDF to Markdown parser using IBM's Docling."""
+    """
+    Servicio que implementa el parseo de PDFs científicos utilizando el motor Docling de IBM.
+    """
 
     def __init__(self):
+        """Inicializa el servicio sin cargar el motor (carga diferida)."""
         self._converter = None
 
     def _get_converter(self):
+        """
+        Carga e inicializa el DocumentConverter de Docling bajo demanda.
+        
+        Returns:
+            DocumentConverter: Instancia configurada del motor de parseo.
+        """
         if self._converter is None:
             try:
                 from docling.document_converter import DocumentConverter, PdfFormatOption
@@ -100,7 +134,16 @@ class PDFParserService:
         return self._converter
 
     async def _convert_to_md_with_vision(self, pdf_path: str, context: str = "") -> str:
-        """Helper to convert PDF and enrich images with vision analysis."""
+        """
+        Pipeline que integra la conversión de Docling con análisis visual de modelos LLM.
+
+        Args:
+            pdf_path (str): Ruta al PDF.
+            context (str): Contexto para guiar la descripción de imágenes.
+
+        Returns:
+            str: Markdown con descripciones de imágenes inyectadas.
+        """
         from docling.document_converter import DocumentConverter
         import base64
         from io import BytesIO
@@ -140,7 +183,16 @@ class PDFParserService:
         return md_text
 
     async def parse_article(self, article: Article, db: Session) -> bool:
-        """Parses an article PDF to enriched Markdown and updates the DB."""
+        """
+        Parse un PDF de artículo, lo convierte a MD enriquecido y actualiza la base de datos.
+
+        Args:
+            article (Article): Instancia del artículo.
+            db (Session): Sesión de base de datos.
+
+        Returns:
+            bool: True si el proceso fue exitoso.
+        """
         if not article.local_pdf_path or not os.path.exists(article.local_pdf_path):
             logger.warning(f"No PDF found for article {article.id}")
             article.parsed_status = "failed"

@@ -1,8 +1,34 @@
 """
-AgriSearch Backend - Document Parser Service.
+Archivo: document_parser_service.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Handles advanced PDF to Markdown conversion using Docling, 
-table flattening for RAG optimization, and VLM-based image descriptions.
+Descripción:
+Servicio central de parseo y conversión de documentos a Markdown.
+Implementa una arquitectura de "Parser Dual" optimizada:
+1. OpenDataLoader: Motor principal para artículos científicos (alta precisión en tablas).
+2. MarkItDown: Motor versátil para formatos de oficina (DOCX, PPTX, etc.) y PDFs genéricos.
+
+Acciones Principales:
+    - Conversión de PDF, DOCX, PPTX, XLSX y HTML a Markdown estructurado.
+    - "Table Flattening": Transformación de tablas Markdown en oraciones narrativas para RAG.
+    - Integración con VLM (Ollama) para la descripción de imágenes técnicas.
+    - Inyección de metadatos bibliográficos en front-matter YAML.
+
+Estructura Interna:
+    - `TableFlattener`: Utilidad para aplanar tablas.
+    - `OpenDataLoaderParser`: Wrapper para el motor basado en Java/JVM.
+    - `MarkItDownParser`: Wrapper para el motor basado en CPU de Microsoft.
+    - `ParserRouter`: Lógica de selección del mejor motor según el archivo.
+
+Entradas / Dependencias:
+    - Java 11+ (para OpenDataLoader).
+    - Librerías `markitdown`, `opendl-pdf`, `docling` (legacy).
+    - Cliente de LLM para descripciones visuales.
+
+Ejemplo de Integración:
+    router = ParserRouter()
+    md = await router.parse_auto(pdf_path, metadata)
 """
 
 import logging
@@ -45,8 +71,9 @@ logger = logging.getLogger(__name__)
 
 class TableFlattener:
     """
-    Transforms Markdown tables into natural language sentences.
-    Each row becomes a sentence referencing its headers to preserve context.
+    Transforma tablas Markdown en oraciones de lenguaje natural.
+    Cada fila se convierte en una oración que referencia sus encabezados para preservar el contexto 
+    durante la recuperación (RAG).
     """
     # Regex to detect Markdown table blocks
     _TABLE_PATTERN = re.compile(
@@ -56,7 +83,15 @@ class TableFlattener:
 
     @staticmethod
     def _parse_table_block(table_text: str) -> tuple:
-        """Extracts headers and rows from a Markdown table block."""
+        """
+        Extrae encabezados y filas de un bloque de tabla Markdown.
+
+        Args:
+            table_text (str): Texto crudo de la tabla en Markdown.
+
+        Returns:
+            tuple: (headers, rows) como listas de strings.
+        """
         lines = [
             line.strip()
             for line in table_text.strip().split("\n")
@@ -92,7 +127,16 @@ class TableFlattener:
 
     @classmethod
     def flatten(cls, md_text: str, doc_meta: Optional[Dict[str, Any]] = None) -> str:
-        """Replaces tables in Markdown with descriptive sentences."""
+        """
+        Reemplaza las tablas en el Markdown con oraciones descriptivas.
+
+        Args:
+            md_text (str): Contenido Markdown completo.
+            doc_meta (Optional[Dict[str, Any]]): Metadatos del documento para contextualizar las oraciones.
+
+        Returns:
+            str: Markdown con las tablas aplanadas.
+        """
         doc_meta = doc_meta or {}
         doc_title = doc_meta.get("title", "documento")
         doc_authors = doc_meta.get("authors", "").split(",")[0].strip() or "el autor"
@@ -129,9 +173,8 @@ import warnings
 
 class ImageFilter:
     """
-    @deprecated
-    Filters decorative images and describes technical ones using a VLM.
-    (This class is deprecated. VLM processing is now handled natively by MarkItDownParser).
+    DEPRECADO: Filtraba imágenes decorativas y describía técnicas usando un VLM.
+    Esta funcionalidad ahora está integrada nativamente en MarkItDownParser.
     """
     SYSTEM_PROMPT = (
         "Eres un analista experto en extracción de datos científicos. "
@@ -151,7 +194,7 @@ class ImageFilter:
         self.model = model_name
 
     async def analyze_image_bytes(self, image_bytes: bytes) -> Optional[str]:
-        """Calls a VLM (via Ollama or similar) to describe image content."""
+        """Llama a un VLM (vía Ollama) para describir el contenido de la imagen."""
         # Note: Implementation depends on available local LLM provider (Ollama recommended)
         try:
             import ollama
@@ -176,8 +219,8 @@ class ImageFilter:
 
 class DoclingParser:
     """
-    DEPRECATED: Reemplazado por OpenDataLoaderParser + MarkItDownParser.
-    Se mantiene como referencia hasta confirmar estabilidad del nuevo pipeline.
+    DEPRECADO: Reemplazado por OpenDataLoaderParser + MarkItDownParser.
+    Se mantiene por compatibilidad temporal.
     """
     def __init__(self):
         if not DOCLING_AVAILABLE:
@@ -213,11 +256,11 @@ class DoclingParser:
 
     async def parse_pdf(self, pdf_path: Path, article_meta: Dict[str, Any], vlm_describer: Optional[ImageFilter] = None, publish_event = None, project_id: str = None) -> str:
         """
-        Converts PDF to enriched Markdown.
-        1. Docling conversion (Structural MD)
-        2. VLM image descriptions (optional)
-        3. Table flattening
-        4. YAML Front-matter injection
+        Convierte PDF a Markdown enriquecido.
+        1. Conversión Docling.
+        2. Descripciones VLM (opcional).
+        3. Aplanamiento de tablas.
+        4. Inyección de Front-matter.
         """
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found at {pdf_path}")
@@ -464,20 +507,11 @@ class MarkItDownParser:
     
     Formatos soportados: PDF (básico), DOCX, PPTX, XLSX, HTML, EPUB, CSV.
     Para PDFs de artículos científicos, usar OpenDataLoaderParser.
-    
-    Atributos:
-        md: Instancia de MarkItDown configurada.
-        has_vlm: Indica si hay un VLM disponible para describir imágenes.
     """
 
     def __init__(self, llm_client=None, llm_model: str = None):
         """
-        Inicializa el parser.
-        
-        Args:
-            llm_client: Cliente OpenAI-compatible (openai.OpenAI o OllamaVLMWrapper).
-                        Opcional. Si se proporciona, MarkItDown describirá imágenes automáticamente.
-            llm_model:  Nombre del modelo VLM (ej: "gemma4:26b", "llama3.2-vision").
+        Inicializa el parser MarkItDown con soporte opcional de VLM para imágenes.
         """
         if not MARKITDOWN_AVAILABLE:
             raise ImportError(
@@ -523,25 +557,6 @@ class MarkItDownParser:
     ) -> str:
         """
         Convierte un documento a Markdown enriquecido.
-        Soporta PDF, DOCX, PPTX, XLSX, HTML, EPUB, CSV.
-        
-        Pipeline:
-          1. MarkItDown convierte el documento a Markdown (CPU).
-          2. TableFlattener aplana tablas en oraciones atómicas para RAG.
-          3. Se inyecta front-matter YAML con metadatos bibliográficos.
-        
-        Args:
-            file_path:     Ruta absoluta al archivo (PDF, DOCX, PPTX, etc.).
-            article_meta:  Dict con claves: id, doi, title, authors, year,
-                          journal, keywords, source_database.
-            publish_event: Función async para enviar progreso via SSE (opcional).
-            project_id:    ID del proyecto para los eventos SSE (opcional).
-        
-        Returns:
-            String con el Markdown enriquecido completo (YAML + contenido + tablas aplanadas).
-        
-        Raises:
-            FileNotFoundError: Si el archivo no existe en la ruta indicada.
         """
         if isinstance(file_path, str):
             file_path = Path(file_path)
@@ -633,22 +648,12 @@ class MarkItDownParser:
 class OpenDataLoaderParser:
     """
     Convierte PDFs de artículos científicos a Markdown usando OpenDataLoader PDF.
-    
-    Motor #1 en benchmarks (0.907 overall, 0.928 en tablas).
-    Opera en CPU (Java JVM) — sin dependencia de GPU.
-    Detecta layout de doble columna, tablas borderless, y fórmulas LaTeX.
-    
-    Requiere: Java 11+ instalado en el sistema.
+    Motor de alta precisión para tablas y layouts complejos de doble columna.
     """
 
     def __init__(self, hybrid_mode: bool = False, hybrid_port: int = 5002):
         """
-        Inicializa el parser.
-        
-        Args:
-            hybrid_mode: Si True, usa el servidor hybrid para OCR/fórmulas/imágenes.
-                         Requiere `opendataloader-pdf-hybrid` corriendo en hybrid_port.
-            hybrid_port: Puerto del servidor hybrid (default: 5002).
+        Inicializa el parser OpenDataLoader basado en Java JVM.
         """
         if not OPENDATALOADER_AVAILABLE:
             raise ImportError(
@@ -672,22 +677,7 @@ class OpenDataLoaderParser:
         project_id: str = None,
     ) -> str:
         """
-        Convierte un PDF científico a Markdown estructurado.
-        
-        Pipeline:
-          1. OpenDataLoader convierte el PDF (Java JVM, CPU).
-          2. TableFlattener aplana tablas en oraciones atómicas para RAG.
-          3. Se inyecta front-matter YAML con metadatos bibliográficos.
-        
-        Args:
-            pdf_path:      Ruta absoluta al archivo PDF.
-            article_meta:  Dict con claves: id, doi, title, authors, year,
-                          journal, keywords, source_database.
-            publish_event: Función async para enviar progreso via SSE (opcional).
-            project_id:    ID del proyecto para los eventos SSE (opcional).
-        
-        Returns:
-            String con el Markdown enriquecido completo (YAML + contenido + tablas aplanadas).
+        Convierte un PDF científico a Markdown estructurado usando la JVM de Java.
         """
         if isinstance(pdf_path, str):
             pdf_path = Path(pdf_path)
@@ -781,17 +771,7 @@ class OpenDataLoaderParser:
 
 class ParserRouter:
     """
-    Selecciona el parser apropiado según tipo de archivo y naturaleza del documento.
-    
-    Reglas de routing:
-    ┌──────────────────────────────┬─────────────────────────┐
-    │ Condición                    │ Parser seleccionado     │
-    ├──────────────────────────────┼─────────────────────────┤
-    │ PDF + artículo científico    │ OpenDataLoaderParser    │
-    │ PDF + no científico          │ MarkItDownParser        │
-    │ DOCX / PPTX / XLSX / HTML   │ MarkItDownParser        │
-    │ EPUB / CSV / otros           │ MarkItDownParser        │
-    └──────────────────────────────┴─────────────────────────┘
+    Selector inteligente que encamina cada documento al parser óptimo (Dual-Parser Architecture).
     """
 
     # Extensiones que siempre van a MarkItDown
