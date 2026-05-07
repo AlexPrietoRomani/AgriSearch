@@ -13,8 +13,14 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::db::{DbPool, DecisionStatus};
+use crate::db::DecisionStatus;
+use crate::ml::acquisition::AcquisitionStrategy;
+use crate::{AppState, TrainingTrigger};
+
+/// Contador atomico de decisiones (compartido entre requests).
+static DECISION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Request para registrar una decision.
 #[derive(Deserialize)]
@@ -33,6 +39,7 @@ pub struct ArticleResponse {
     pub keywords: Option<String>,
     pub suggestion_score: f64,
     pub uncertainty: f64,
+    pub retraining_triggered: bool,
 }
 
 /// Respuesta de estadisticas.
@@ -44,6 +51,7 @@ pub struct StatusResponse {
     pub rejected: i64,
     pub maybe: i64,
     pub progress_pct: f64,
+    pub decisions_since_retrain: u64,
 }
 
 /// Respuesta de progreso para graficos.
@@ -60,11 +68,12 @@ pub struct ProgressPoint {
 }
 
 /// Registra una decision y retorna el siguiente articulo.
+/// Cada 10 decisiones dispara re-entrenamiento en background via mpsc.
 pub async fn decide(
-    State(db): State<Option<DbPool>>,
+    State(state): State<AppState>,
     Json(req): Json<DecideRequest>,
 ) -> Result<Json<ArticleResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = db.ok_or((
+    let pool = state.db.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({"error": "Base de datos no disponible"})),
     ))?;
@@ -81,6 +90,27 @@ pub async fn decide(
 
     tracing::info!("Decision registrada: {} -> {:?}", req.id, status);
 
+    // Incrementar contador y verificar si toca re-entrenar
+    let count = DECISION_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+    let retraining_triggered = if count % 10 == 0 {
+        let trigger = TrainingTrigger::Retrain(AcquisitionStrategy::Balanced);
+        match state.tx.try_send(trigger) {
+            Ok(()) => {
+                tracing::info!(
+                    "Re-entrenamiento disparado (decision #{})",
+                    count
+                );
+                true
+            }
+            Err(e) => {
+                tracing::warn!("Canal mpsc lleno, re-entrenamiento omitido: {}", e);
+                false
+            }
+        }
+    } else {
+        false
+    };
+
     // Obtener siguiente articulo
     match pool.get_next_article().await {
         Ok(Some(article)) => Ok(Json(ArticleResponse {
@@ -90,6 +120,7 @@ pub async fn decide(
             keywords: article.keywords,
             suggestion_score: article.suggestion_score,
             uncertainty: article.uncertainty,
+            retraining_triggered,
         })),
         Ok(None) => Ok(Json(ArticleResponse {
             id: String::new(),
@@ -98,6 +129,7 @@ pub async fn decide(
             keywords: None,
             suggestion_score: 0.0,
             uncertainty: 0.0,
+            retraining_triggered,
         })),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -108,9 +140,9 @@ pub async fn decide(
 
 /// Retorna el siguiente articulo sin registrar decision.
 pub async fn next(
-    State(db): State<Option<DbPool>>,
+    State(state): State<AppState>,
 ) -> Result<Json<ArticleResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = db.ok_or((
+    let pool = state.db.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({"error": "Base de datos no disponible"})),
     ))?;
@@ -123,6 +155,7 @@ pub async fn next(
             keywords: article.keywords,
             suggestion_score: article.suggestion_score,
             uncertainty: article.uncertainty,
+            retraining_triggered: false,
         })),
         Ok(None) => Ok(Json(ArticleResponse {
             id: String::new(),
@@ -131,6 +164,7 @@ pub async fn next(
             keywords: None,
             suggestion_score: 0.0,
             uncertainty: 0.0,
+            retraining_triggered: false,
         })),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -141,9 +175,9 @@ pub async fn next(
 
 /// Retorna estadisticas de screening.
 pub async fn status(
-    State(db): State<Option<DbPool>>,
+    State(state): State<AppState>,
 ) -> Result<Json<StatusResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = db.ok_or((
+    let pool = state.db.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({"error": "Base de datos no disponible"})),
     ))?;
@@ -162,6 +196,8 @@ pub async fn status(
         0.0
     };
 
+    let decisions_since_retrain = DECISION_COUNTER.load(Ordering::SeqCst) % 10;
+
     Ok(Json(StatusResponse {
         total: stats.total,
         pending: stats.pending,
@@ -169,14 +205,15 @@ pub async fn status(
         rejected: stats.rejected,
         maybe: stats.maybe,
         progress_pct,
+        decisions_since_retrain,
     }))
 }
 
 /// Retorna datos para grafico de progreso.
 pub async fn progress(
-    State(db): State<Option<DbPool>>,
+    State(state): State<AppState>,
 ) -> Result<Json<ProgressResponse>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = db.ok_or((
+    let pool = state.db.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({"error": "Base de datos no disponible"})),
     ))?;
@@ -202,7 +239,7 @@ pub async fn progress(
 }
 
 /// Construye el router de la API.
-pub fn router() -> Router<Option<DbPool>> {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/decide", post(decide))
         .route("/next", get(next))

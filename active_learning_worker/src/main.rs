@@ -4,9 +4,24 @@ pub mod ml;
 
 use axum::{routing::get, Router, Json};
 use serde_json::json;
+use tokio::sync::mpsc;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::db::DbPool;
+use crate::ml::acquisition::AcquisitionStrategy;
+
+/// Mensaje enviado al worker de re-entrenamiento.
+#[derive(Debug)]
+pub enum TrainingTrigger {
+    Retrain(AcquisitionStrategy),
+}
+
+/// Estado compartido de la aplicacion.
+#[derive(Clone)]
+pub struct AppState {
+    pub db: Option<DbPool>,
+    pub tx: mpsc::Sender<TrainingTrigger>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -26,16 +41,47 @@ async fn main() {
         }
     };
 
+    // Canal mpsc para re-entrenamiento en background
+    let (tx, mut rx) = mpsc::channel::<TrainingTrigger>(100);
+
+    // Spawn worker de re-entrenamiento
+    if let Some(db_pool) = db.clone() {
+        tokio::spawn(async move {
+            while let Some(trigger) = rx.recv().await {
+                match trigger {
+                    TrainingTrigger::Retrain(strategy) => {
+                        let start = std::time::Instant::now();
+                        match ml::retrain_and_rerank(&db_pool, strategy).await {
+                            Ok(n) => {
+                                tracing::info!(
+                                    "Re-entrenamiento completado: {} articulos en {:.2}ms",
+                                    n,
+                                    start.elapsed().as_secs_f64() * 1000.0
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!("Error en re-entrenamiento: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        tracing::info!("Worker de re-entrenamiento iniciado (canal mpsc)");
+    }
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let app_state = AppState { db, tx };
+
     let app = Router::new()
         .route("/health", get(health_check))
         .merge(api::router())
         .layer(cors)
-        .with_state(db);
+        .with_state(app_state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
         .await
@@ -45,9 +91,9 @@ async fn main() {
 }
 
 async fn health_check(
-    axum::extract::State(db): axum::extract::State<Option<DbPool>>,
+    axum::extract::State(state): axum::extract::State<AppState>,
 ) -> Json<serde_json::Value> {
-    let db_status = match &db {
+    let db_status = match &state.db {
         Some(pool) => match pool.get_stats().await {
             Ok(stats) => json!({
                 "connected": true,
@@ -66,5 +112,6 @@ async fn health_check(
         "status": "ok",
         "service": "active_learning_worker",
         "database": db_status,
+        "ml_worker": "active",
     }))
 }
