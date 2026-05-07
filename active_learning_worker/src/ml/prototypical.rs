@@ -103,3 +103,122 @@ fn euclidean_distance(a: &[f32], b: &[f32]) -> f64 {
     }
     sum.sqrt()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_features_4(data: &[[f32; 4]]) -> Array2<f32> {
+        let n = data.len();
+        let mut arr = Array2::zeros((n, 4));
+        for (i, row) in data.iter().enumerate() {
+            for (j, &val) in row.iter().enumerate() {
+                arr[[i, j]] = val;
+            }
+        }
+        arr
+    }
+
+    fn make_features_2(data: &[[f32; 2]]) -> Array2<f32> {
+        let n = data.len();
+        let mut arr = Array2::zeros((n, 2));
+        for (i, row) in data.iter().enumerate() {
+            for (j, &val) in row.iter().enumerate() {
+                arr[[i, j]] = val;
+            }
+        }
+        arr
+    }
+
+    #[test]
+    fn test_prototypical_perfect_separation() {
+        // Accepted cluster at [1,1,1,1], rejected at [0,0,0,0]
+        let labeled = make_features_4(&[
+            [1.0, 1.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+        ]);
+        let labels = Array1::from_vec(vec![1, 1, 0, 0]);
+        let pending = make_features_4(&[
+            [1.0, 1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0, 0.0],
+        ]);
+
+        let probs = predict_prototypical(&labeled, &labels, &pending);
+
+        assert_eq!(probs.len(), 2);
+        // First pending is identical to accepted centroid -> high P(include)
+        // exp(-0) / (exp(-0) + exp(-2)) = 1 / (1 + 0.135) ≈ 0.88
+        assert!(probs[0] > 0.85);
+        // Second pending is identical to rejected centroid -> low P(include)
+        assert!(probs[1] < 0.15);
+    }
+
+    #[test]
+    fn test_prototypical_neutral_point() {
+        let labeled = make_features_2(&[
+            [1.0, 0.0],
+            [0.0, 0.0],
+        ]);
+        let labels = Array1::from_vec(vec![1, 0]);
+        // Point equidistant from both centroids
+        let pending = make_features_2(&[
+            [0.5, 0.0],
+        ]);
+
+        let probs = predict_prototypical(&labeled, &labels, &pending);
+        // Should be close to 0.5 (equidistant)
+        assert!((probs[0] - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_prototypical_empty_pending() {
+        let labeled = make_features_2(&[
+            [1.0, 0.0],
+            [0.0, 0.0],
+        ]);
+        let labels = Array1::from_vec(vec![1, 0]);
+        let pending = Array2::zeros((0, 2));
+
+        let probs = predict_prototypical(&labeled, &labels, &pending);
+        assert_eq!(probs.len(), 0);
+    }
+
+    #[test]
+    fn test_euclidean_distance_identical() {
+        let a = [1.0, 2.0, 3.0];
+        let b = [1.0, 2.0, 3.0];
+        assert!((euclidean_distance(&a, &b) - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_euclidean_distance_known() {
+        let a = [0.0, 0.0];
+        let b = [3.0, 4.0];
+        assert!((euclidean_distance(&a, &b) - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_compute_centroid_empty() {
+        let c = compute_centroid(&[], 3);
+        assert_eq!(c, vec![0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_compute_centroid_single() {
+        let v = vec![vec![1.0, 2.0, 3.0]];
+        let c = compute_centroid(&v, 3);
+        assert_eq!(c, vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_compute_centroid_multiple() {
+        let v = vec![
+            vec![0.0, 0.0],
+            vec![2.0, 2.0],
+        ];
+        let c = compute_centroid(&v, 2);
+        assert_eq!(c, vec![1.0, 1.0]);
+    }
+}

@@ -1,27 +1,11 @@
-pub mod api;
-pub mod db;
-pub mod ml;
-
+use active_learning_worker::api;
+use active_learning_worker::db::DbPool;
+use active_learning_worker::ml;
+use active_learning_worker::{AppState, TrainingTrigger};
 use axum::{routing::get, Router, Json};
 use serde_json::json;
 use tokio::sync::mpsc;
 use tower_http::cors::{Any, CorsLayer};
-
-use crate::db::DbPool;
-use crate::ml::acquisition::AcquisitionStrategy;
-
-/// Mensaje enviado al worker de re-entrenamiento.
-#[derive(Debug)]
-pub enum TrainingTrigger {
-    Retrain(AcquisitionStrategy),
-}
-
-/// Estado compartido de la aplicacion.
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Option<DbPool>,
-    pub tx: mpsc::Sender<TrainingTrigger>,
-}
 
 #[tokio::main]
 async fn main() {
