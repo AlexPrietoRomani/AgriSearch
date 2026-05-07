@@ -1,8 +1,28 @@
 """
-AgriSearch - Redalyc Client.
+Archivo: redalyc_client.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Searches Redalyc for open access scientific articles from Iberoamerica.
-Requires free token from: https://redalyc.org
+Descripción:
+Cliente para la API de Redalyc (https://www.redalyc.org). 
+Permite la búsqueda de artículos científicos de acceso abierto producidos en Iberoamérica. 
+Es vital para asegurar la inclusión de literatura científica en español y portugués.
+
+Acciones Principales:
+    - Realiza búsquedas asíncronas en la API de Redalyc.
+    - Normaliza los resultados de Redalyc al formato estándar de AgriSearch.
+    - Maneja la autenticación mediante Token de API.
+
+Estructura Interna:
+    - `_parse_redalyc_work`: Transforma un objeto de resultado de Redalyc en un artículo normalizado.
+    - `search_redalyc`: Función principal de búsqueda con soporte para filtros de año.
+
+Entradas / Dependencias:
+    - Librería `aiohttp`.
+    - Token de Redalyc configurado en `Settings`.
+
+Ejemplo de Integración:
+    articles = await search_redalyc("agroecología", max_results=10)
 """
 
 import logging
@@ -19,7 +39,17 @@ REDALYC_API = "https://api.redalyc.org/v1"
 
 
 def _parse_redalyc_work(item: dict) -> dict[str, Any]:
-    """Parse a Redalyc result into our standard article format."""
+    """
+    Parsea un resultado de Redalyc al formato estándar de artículo de AgriSearch.
+
+    Extrae DOI, título, autores, año, abstract y URL del PDF.
+
+    Args:
+        item (dict): Diccionario crudo retornado por la API de Redalyc.
+
+    Returns:
+        dict[str, Any]: Metadatos normalizados del artículo.
+    """
     # Authors
     authors_raw = item.get("authors", [])
     if isinstance(authors_raw, list):
@@ -58,7 +88,16 @@ async def search_redalyc(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Search Redalyc for articles matching the query.
+    Busca artículos en Redalyc que coincidan con la consulta.
+
+    Args:
+        query (str): Términos de búsqueda.
+        max_results (int): Cantidad máxima de resultados.
+        year_from (int | None): Año mínimo de publicación.
+        year_to (int | None): Año máximo de publicación.
+
+    Returns:
+        list[dict[str, Any]]: Lista de artículos normalizados.
     """
     if not settings.redalyc_token:
         logger.warning("Redalyc token not configured, skipping Redalyc search")

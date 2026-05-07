@@ -1,8 +1,28 @@
 """
-AgriSearch - SciELO Client.
+Archivo: scielo_client.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Searches SciELO for scientific articles from Latin America and the Caribbean.
-Free API, no key required.
+Descripción:
+Cliente para la API de búsqueda de SciELO (https://search.scielo.org). 
+SciELO es una biblioteca científica electrónica de acceso abierto que cubre 
+América Latina y el Caribe. Este cliente permite buscar artículos en múltiples idiomas.
+
+Acciones Principales:
+    - Ejecuta búsquedas asíncronas en el motor de búsqueda de SciELO.
+    - Maneja respuestas multilingües (español, inglés, portugués).
+    - Normaliza los datos al formato estándar de AgriSearch.
+
+Estructura Interna:
+    - `_parse_scielo_work`: Parsea un documento de SciELO manejando campos multilingües.
+    - `search_scielo`: Función principal que gestiona la petición y el parseo JSON/HTML.
+
+Entradas / Dependencias:
+    - Librería `aiohttp`.
+    - Endpoint de búsqueda de SciELO.
+
+Ejemplo de Integración:
+    articles = await search_scielo("riego por goteo", max_results=10)
 """
 
 import logging
@@ -16,7 +36,17 @@ SCIELO_SEARCH_API = "https://search.scielo.org"
 
 
 def _parse_scielo_work(item: dict) -> dict[str, Any]:
-    """Parse a SciELO search result into our standard article format."""
+    """
+    Parsea un resultado de búsqueda de SciELO al formato estándar de AgriSearch.
+
+    Maneja campos multilingües para título y abstract, priorizando español e inglés.
+
+    Args:
+        item (dict): Diccionario de resultado retornado por SciELO.
+
+    Returns:
+        dict[str, Any]: Metadatos normalizados del artículo.
+    """
     # Authors
     authors_raw = item.get("au", [])
     if isinstance(authors_raw, list):
@@ -81,8 +111,16 @@ async def search_scielo(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Search SciELO for articles matching the query.
-    Uses the SciELO search API with JSON output.
+    Busca artículos en SciELO que coincidan con la consulta.
+
+    Args:
+        query (str): Términos de búsqueda.
+        max_results (int): Cantidad máxima de resultados a retornar.
+        year_from (int | None): Año inicial del filtro.
+        year_to (int | None): Año final del filtro.
+
+    Returns:
+        list[dict[str, Any]]: Lista de artículos normalizados.
     """
     articles: list[dict[str, Any]] = []
 

@@ -1,12 +1,27 @@
 """
-AgriSearch - OAI-PMH Client.
+Archivo: oaipmh_client.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Generic OAI-PMH harvester for AgEcon Search and Organic Eprints.
-Both use the OAI-PMH protocol (free, no key required).
+Descripción:
+Recolector (harvester) genérico de OAI-PMH para fuentes como AgEcon Search y Organic Eprints.
+Utiliza el protocolo OAI-PMH para obtener metadatos bibliográficos en formato Dublin Core.
 
-Endpoints:
-  - AgEcon Search: http://ageconsearch.umn.edu/oai2d
-  - Organic Eprints: http://orgprints.org/cgi/oai2
+Acciones Principales:
+    - Realiza el "harvesting" de registros desde endpoints OAI-PMH conocidos.
+    - Filtra los resultados localmente mediante la coincidencia de términos de búsqueda.
+    - Normaliza los metadatos Dublin Core al formato estándar de AgriSearch.
+
+Estructura Interna:
+    - `_parse_oai_record`: Transforma los metadatos Dublin Core en el esquema de artículo interno.
+    - `search_oaipmh`: Función principal que gestiona la conexión asíncrona y el filtrado local.
+
+Entradas / Dependencias:
+    - Librería `sickle` para la gestión del protocolo OAI-PMH.
+    - Diccionario `OAI_ENDPOINTS` con las rutas de los repositorios soportados.
+
+Ejemplo de Integración:
+    articles = await search_oaipmh("organic farming", source="organic_eprints")
 """
 
 import logging
@@ -22,7 +37,17 @@ OAI_ENDPOINTS = {
 
 
 def _parse_oai_record(metadata: dict) -> dict[str, Any]:
-    """Parse OAI-PMH Dublin Core metadata into our standard article format."""
+    """
+    Parsea los metadatos Dublin Core de un registro OAI-PMH al formato estándar de AgriSearch.
+
+    Extrae título, autores (creadores), año, abstract (descripción) y DOIs/URLs.
+
+    Args:
+        metadata (dict): Diccionario con los campos Dublin Core extraídos por sickle.
+
+    Returns:
+        dict[str, Any]: Metadatos normalizados del artículo.
+    """
     # Title
     title_raw = metadata.get("title", [])
     title = title_raw[0] if title_raw else "No Title"
@@ -91,13 +116,20 @@ async def search_oaipmh(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Harvest records from an OAI-PMH endpoint and filter by query terms.
+    Recolecta y filtra registros desde un endpoint OAI-PMH.
 
-    OAI-PMH doesn't support full-text search natively, so we harvest
-    recent records and filter locally by matching query terms in title/abstract.
+    Dado que OAI-PMH no soporta búsqueda por términos de forma nativa, esta función
+    recolecta los registros recientes y aplica un filtro local de palabras clave.
 
     Args:
-        source: "agecon" or "organic_eprints"
+        query (str): Términos de búsqueda para el filtrado local.
+        source (str): Identificador de la fuente ("agecon" o "organic_eprints").
+        max_results (int): Cantidad máxima de resultados deseados.
+        year_from (int | None): Año de inicio para la recolección.
+        year_to (int | None): Año final para la recolección.
+
+    Returns:
+        list[dict[str, Any]]: Lista de artículos normalizados que coinciden con la consulta.
     """
     import asyncio
 

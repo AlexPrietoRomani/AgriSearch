@@ -1,8 +1,28 @@
 """
-AgriSearch - Crossref Client.
+Archivo: crossref_client.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Searches Crossref for scientific articles using the habanero library.
-Free API, no key required. Email recommended for polite pool.
+Descripción:
+Cliente para la API de Crossref (https://www.crossref.org). 
+Permite la búsqueda de metadatos bibliográficos de artículos científicos a través de su DOI 
+o por términos de búsqueda. Es fundamental para la identificación de fuentes formales.
+
+Acciones Principales:
+    - Ejecuta búsquedas utilizando la librería `habanero`.
+    - Normaliza la respuesta de Crossref (JSON) al formato estándar de AgriSearch.
+    - Limpia etiquetas HTML de los abstracts si están presentes.
+
+Estructura Interna:
+    - `_parse_crossref_work`: Parsea un objeto "work" de Crossref.
+    - `search_crossref`: Ejecuta la búsqueda de forma asíncrona (usando `run_in_executor` para `habanero`).
+
+Entradas / Dependencias:
+    - Librería `habanero`.
+    - Configuración de correo para el "polite pool" de Crossref.
+
+Ejemplo de Integración:
+    articles = await search_crossref("soil health", max_results=15)
 """
 
 import logging
@@ -17,7 +37,17 @@ settings = get_settings()
 
 
 def _parse_crossref_work(work: dict) -> dict[str, Any]:
-    """Parse a Crossref work into our standard article format."""
+    """
+    Parsea un objeto de trabajo (work) de Crossref al formato estándar de AgriSearch.
+
+    Extrae DOI, título, autores, año, abstract (limpiando HTML) y revista.
+
+    Args:
+        work (dict): Diccionario crudo retornado por habanero/Crossref.
+
+    Returns:
+        dict[str, Any]: Metadatos normalizados del artículo.
+    """
     # Authors
     authors_list = []
     for author in work.get("author", []):
@@ -63,9 +93,18 @@ async def search_crossref(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Search Crossref for articles matching the query.
+    Busca artículos en Crossref que coincidan con la consulta.
 
-    Uses habanero (synchronous) wrapped for async compatibility.
+    Utiliza `habanero` de forma sincrónica, envuelto en un ejecutor para compatibilidad asíncrona.
+
+    Args:
+        query (str): Términos de búsqueda.
+        max_results (int): Cantidad máxima de resultados.
+        year_from (int | None): Año mínimo de publicación.
+        year_to (int | None): Año máximo de publicación.
+
+    Returns:
+        list[dict[str, Any]]: Lista de artículos normalizados.
     """
     import asyncio
 

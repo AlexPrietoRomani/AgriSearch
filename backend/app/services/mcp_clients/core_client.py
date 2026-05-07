@@ -1,8 +1,28 @@
 """
-AgriSearch - CORE Client.
+Archivo: core_client.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Searches CORE (core.ac.uk) for open access scientific articles.
-Requires free API key from: https://core.ac.uk/api-keys/register
+Descripción:
+Cliente para la API de CORE (https://api.core.ac.uk). 
+Permite la búsqueda de artículos de acceso abierto en el agregador CORE, 
+el cual recolecta contenido de repositorios institucionales y revistas de todo el mundo.
+
+Acciones Principales:
+    - Realiza búsquedas asíncronas en el endpoint v3 de CORE.
+    - Normaliza la respuesta de CORE al formato interno de AgriSearch.
+    - Maneja la autenticación mediante API Key.
+
+Estructura Interna:
+    - `_parse_core_work`: Transforma un objeto "work" de CORE en el esquema de artículo estándar.
+    - `search_core`: Función principal de búsqueda con soporte para filtros de año.
+
+Entradas / Dependencias:
+    - Librería `aiohttp`.
+    - API Key de CORE configurada en `Settings`.
+
+Ejemplo de Integración:
+    articles = await search_core("hydroponics", max_results=20)
 """
 
 import logging
@@ -19,7 +39,17 @@ CORE_API = "https://api.core.ac.uk/v3"
 
 
 def _parse_core_work(item: dict) -> dict[str, Any]:
-    """Parse a CORE work into our standard article format."""
+    """
+    Parsea un objeto de trabajo (work) de CORE al formato estándar de AgriSearch.
+
+    Extrae DOI, título, autores, año, abstract y URL de descarga del PDF.
+
+    Args:
+        item (dict): Diccionario crudo retornado por la API de CORE.
+
+    Returns:
+        dict[str, Any]: Metadatos normalizados del artículo.
+    """
     # Authors
     authors_raw = item.get("authors", [])
     if isinstance(authors_raw, list):
@@ -69,7 +99,16 @@ async def search_core(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Search CORE for open access articles matching the query.
+    Busca artículos de acceso abierto en CORE que coincidan con la consulta.
+
+    Args:
+        query (str): Términos de búsqueda.
+        max_results (int): Cantidad máxima de resultados.
+        year_from (int | None): Año mínimo de publicación.
+        year_to (int | None): Año máximo de publicación.
+
+    Returns:
+        list[dict[str, Any]]: Lista de artículos normalizados.
     """
     if not settings.core_api_key:
         logger.warning("CORE API key not configured, skipping CORE search")

@@ -1,7 +1,28 @@
 """
-AgriSearch - ArXiv Client.
+Archivo: arxiv_client.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Searches ArXiv for scientific articles via the ArXiv API.
+Descripción:
+Cliente para la API de ArXiv (http://export.arxiv.org). 
+Permite la búsqueda de artículos científicos (pre-prints) especializados en física, 
+matemáticas y ciencias de la computación, con relevancia para la agricultura (ej. IA, sensores).
+
+Acciones Principales:
+    - Ejecuta consultas asíncronas a la API de ArXiv.
+    - Parsea respuestas en formato Atom (XML) al formato estándar de AgriSearch.
+    - Implementa filtrado por fecha (enviado a la API y post-hoc).
+
+Estructura Interna:
+    - `_parse_arxiv_entry`: Convierte una entrada Atom XML en un diccionario de artículo.
+    - `search_arxiv`: Función principal para ejecutar la búsqueda y retornar resultados normalizados.
+
+Entradas / Dependencias:
+    - Librería `aiohttp` para peticiones asíncronas.
+    - Librería `xml.etree.ElementTree` para el parseo de XML.
+
+Ejemplo de Integración:
+    articles = await search_arxiv("precision agriculture", max_results=10)
 """
 
 import logging
@@ -17,7 +38,17 @@ NS = {"atom": "http://www.w3.org/2005/Atom"}
 
 
 def _parse_arxiv_entry(entry: ET.Element) -> dict[str, Any]:
-    """Parse an ArXiv Atom entry into our standard article format."""
+    """
+    Parsea una entrada Atom de ArXiv al formato estándar de artículo de AgriSearch.
+
+    Extrae el ID de ArXiv, DOI (si existe), autores, año, categorías y URL del PDF.
+
+    Args:
+        entry (ET.Element): Elemento XML de la entrada de ArXiv.
+
+    Returns:
+        dict[str, Any]: Diccionario con los metadatos normalizados del artículo.
+    """
     # Extract ID and DOI
     arxiv_id = entry.findtext("atom:id", "", NS).split("/abs/")[-1]
     arxiv_id_match = arxiv_id.split('v')[0] if arxiv_id else None
@@ -74,10 +105,18 @@ async def search_arxiv(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Search ArXiv for articles matching the query.
+    Busca artículos en ArXiv que coincidan con la consulta.
 
-    ArXiv doesn't support native year filtering, so we filter post-hoc.
-    Returns a list of normalized article dictionaries.
+    Utiliza el filtrado nativo por fecha de ArXiv y realiza una validación post-hoc del año.
+
+    Args:
+        query (str): Términos de búsqueda o consulta booleana.
+        max_results (int): Cantidad máxima de resultados a retornar.
+        year_from (int | None): Año de inicio del filtro.
+        year_to (int | None): Año final del filtro.
+
+    Returns:
+        list[dict[str, Any]]: Lista de artículos normalizados.
     """
     articles: list[dict[str, Any]] = []
 

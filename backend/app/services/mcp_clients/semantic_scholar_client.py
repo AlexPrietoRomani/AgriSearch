@@ -1,7 +1,28 @@
 """
-AgriSearch - Semantic Scholar Client.
+Archivo: semantic_scholar_client.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Searches Semantic Scholar for scientific articles via the public API.
+Descripción:
+Cliente para la API de Semantic Scholar (https://api.semanticscholar.org). 
+Permite la búsqueda de artículos científicos utilizando el motor de búsqueda 
+impulsado por IA de Semantic Scholar, extrayendo metadatos y acceso abierto.
+
+Acciones Principales:
+    - Ejecuta búsquedas asíncronas paginadas en Semantic Scholar.
+    - Maneja límites de tasa (rate limiting) de la API pública.
+    - Normaliza la respuesta del grafo de artículos al formato estándar de AgriSearch.
+
+Estructura Interna:
+    - `_parse_ss_paper`: Convierte un objeto de artículo de Semantic Scholar en el esquema interno.
+    - `search_semantic_scholar`: Función principal con soporte para paginación y filtros de fecha.
+
+Entradas / Dependencias:
+    - Librería `aiohttp`.
+    - API Graph de Semantic Scholar (endpoint `/paper/search`).
+
+Ejemplo de Integración:
+    articles = await search_semantic_scholar("climate change impact", max_results=25)
 """
 
 import logging
@@ -16,7 +37,17 @@ SS_FIELDS = "paperId,externalIds,title,authors,year,abstract,venue,url,openAcces
 
 
 def _parse_ss_paper(paper: dict) -> dict[str, Any]:
-    """Parse a Semantic Scholar paper into our standard article format."""
+    """
+    Parsea un objeto de artículo de Semantic Scholar al formato estándar de AgriSearch.
+
+    Extrae DOI, autores, título, año, abstract y URL del PDF si está disponible.
+
+    Args:
+        paper (dict): Diccionario crudo del artículo retornado por la API.
+
+    Returns:
+        dict[str, Any]: Metadatos normalizados del artículo.
+    """
     # Extract DOI
     doi = None
     external_ids = paper.get("externalIds", {})
@@ -53,9 +84,16 @@ async def search_semantic_scholar(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Search Semantic Scholar for articles matching the query.
+    Busca artículos en Semantic Scholar que coincidan con la consulta.
 
-    Returns a list of normalized article dictionaries.
+    Args:
+        query (str): Términos de búsqueda.
+        max_results (int): Cantidad máxima de resultados a retornar.
+        year_from (int | None): Año de inicio del filtro.
+        year_to (int | None): Año final del filtro.
+
+    Returns:
+        list[dict[str, Any]]: Lista de artículos normalizados.
     """
     articles: list[dict[str, Any]] = []
     limit = min(max_results, 100)

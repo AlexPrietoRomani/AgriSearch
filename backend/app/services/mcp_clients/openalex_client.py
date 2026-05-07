@@ -1,8 +1,31 @@
 """
-AgriSearch - OpenAlex MCP Client.
+Archivo: openalex_client.py
+Modificación: 2026-05-06
+Autor: Alex Prieto
 
-Searches OpenAlex for scientific articles.
-Uses the OpenAlex REST API directly (no MCP dependency at runtime).
+Descripción:
+Cliente para la API REST de OpenAlex (https://api.openalex.org). 
+OpenAlex es una de las bases de datos bibliográficas abiertas más completas. 
+Este cliente permite realizar búsquedas avanzadas con filtrado por fecha y tipo de artículo.
+
+Acciones Principales:
+    - Realiza peticiones asíncronas paginadas a OpenAlex.
+    - Normaliza los datos de "works" al formato de AgriSearch.
+    - Reconstruye abstracts a partir del "inverted index" de OpenAlex.
+    - Extrae información de acceso abierto (OA).
+
+Estructura Interna:
+    - `_parse_authors`: Extrae nombres de autores de la estructura de OpenAlex.
+    - `_parse_openalex_work`: Transforma un objeto "work" en un artículo estándar.
+    - `_reconstruct_abstract`: Convierte el índice invertido de OpenAlex en texto plano.
+    - `search_openalex`: Función principal de búsqueda paginada.
+
+Entradas / Dependencias:
+    - Librería `aiohttp`.
+    - Identificador `MAILTO` para el "polite pool" de OpenAlex.
+
+Ejemplo de Integración:
+    articles = await search_openalex("regenerative agriculture", max_results=50)
 """
 
 import logging
@@ -13,11 +36,19 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 OPENALEX_API = "https://api.openalex.org"
-MAILTO = "agrisearch@example.com"
+MAILTO = "agrisearch@alex-prieto.com"
 
 
 def _parse_authors(authorships: list[dict]) -> str:
-    """Extract author names from OpenAlex authorships."""
+    """
+    Extrae los nombres de los autores a partir de la lista de authorships de OpenAlex.
+
+    Args:
+        authorships (list[dict]): Lista de diccionarios de autoría.
+
+    Returns:
+        str: Nombres de autores separados por comas (límite 20).
+    """
     names = []
     for auth in authorships[:20]:  # Limit to 20 authors
         display_name = auth.get("author", {}).get("display_name", "")
@@ -27,7 +58,15 @@ def _parse_authors(authorships: list[dict]) -> str:
 
 
 def _parse_openalex_work(work: dict) -> dict[str, Any]:
-    """Parse an OpenAlex work into our standard article format."""
+    """
+    Parsea un objeto de trabajo (work) de OpenAlex al formato estándar de AgriSearch.
+
+    Args:
+        work (dict): Diccionario crudo de OpenAlex.
+
+    Returns:
+        dict[str, Any]: Metadatos normalizados del artículo.
+    """
     # Extract OA URL
     oa_url = None
     best_oa = work.get("best_oa_location")
@@ -62,7 +101,15 @@ def _parse_openalex_work(work: dict) -> dict[str, Any]:
 
 
 def _reconstruct_abstract(inverted_index: dict | None) -> str | None:
-    """Reconstruct abstract from OpenAlex inverted index format."""
+    """
+    Reconstruye el abstract a partir del formato de índice invertido de OpenAlex.
+
+    Args:
+        inverted_index (dict | None): Índice invertido de palabras y posiciones.
+
+    Returns:
+        str | None: Abstract en texto plano o None si no existe.
+    """
     if not inverted_index:
         return None
     word_positions: list[tuple[int, str]] = []
@@ -80,9 +127,18 @@ async def search_openalex(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Search OpenAlex for articles matching the query.
+    Busca artículos en OpenAlex que coincidan con la consulta.
 
-    Returns a list of normalized article dictionaries.
+    Implementa paginación automática y filtrado por fecha directamente en la API.
+
+    Args:
+        query (str): Términos de búsqueda.
+        max_results (int): Cantidad máxima de resultados a retornar.
+        year_from (int | None): Año de inicio del filtro.
+        year_to (int | None): Año final del filtro.
+
+    Returns:
+        list[dict[str, Any]]: Lista de artículos normalizados.
     """
     articles: list[dict[str, Any]] = []
     per_page = min(max_results, 50)
