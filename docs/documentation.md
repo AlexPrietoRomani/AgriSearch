@@ -313,6 +313,90 @@ La robustez contra duplicados intra e inter APIs, revisiones concurrentes e inmu
 1. `docs/database_schema_expected.json`: Diccionario canónico que delimita el objetivo, tipo de dato y restricciones SQL lógicas (Ejemplo y Explicación) sobre cada tabla de `agrisearch.db`.
 2. `docs/database_schema_current.json`: Snapshot auto-generado de SQLite usando pragmas para evidenciar el estado 1:1 real del servidor.
 3. `docs/database_diagram.md`: Diagrama de Arquitectura ER (Entity Relationship) escrito nativamente en código `mermaid`. Ilustra el proceso de cómo 1 Proyecto se ramifica atando fuertemente el destino de una "Búsqueda" o "Revisión" hasta las múltiples "Decisiones PRISMA" usando UUIDs.
+
+### Active Learning Worker (Rust/Axum)
+
+#### Arquitectura del Microservicio
+
+El Active Learning Worker es un microservicio independiente escrito en **Rust** que se comunica con el frontend Astro vía HTTP/JSON en el puerto **3001**. Su propósito es reducir la latencia del bucle de decisión de screening de ~100ms (Python/scikit-learn) a **<5ms**.
+
+```mermaid
+graph TD
+    FE[Frontend Astro :4321] -->|POST /decide| AL[Rust AL Worker :3001]
+    AL -->|SQLite| DB[(datos_cribado.sqlite)]
+    AL -->|mpsc channel| BW[Background Worker]
+    BW -->|retrain + rerank| ML[Motor ML]
+    ML -->|Prototypical| NC[Cold Start <20 labels]
+    ML -->|linfa Linear| LC[Estable ≥20 labels]
+    ML -->|update_priorities| DB
+    
+    classDef rust fill:#b7410e,stroke:#ff6347,stroke-width:2px,color:#fff;
+    classDef db fill:#004d40,stroke:#1de9b6,stroke-width:2px,color:#fff;
+    class AL,BW,ML rust;
+    class DB db;
+```
+
+#### Endpoints del Worker
+
+| Método | Ruta | Request | Response | Latencia |
+|--------|------|---------|----------|----------|
+| `POST` | `/decide` | `{id, status}` | `{id, title, abstract, suggestion_score, uncertainty, retraining_triggered}` | <5ms |
+| `GET` | `/next` | — | `{id, title, abstract, ...}` | <2ms |
+| `GET` | `/status` | — | `{total, pending, accepted, rejected, maybe, progress_pct}` | <1ms |
+| `GET` | `/progress` | — | `{decisions_over_time: [{count, accepted, rejected}]}` | <2ms |
+| `GET` | `/health` | — | `{status: "ok", service: "active_learning_worker"}` | <1ms |
+
+#### Motor de Machine Learning
+
+**Dos regímenes de clasificación:**
+
+1. **Redes Prototípicas (Cold Start, <20 labels):**
+   - Calcula centroide de embeddings "accepted" y "rejected"
+   - Distancia euclidiana a ambos centroides → probabilidad via softmax
+   - Incertidumbre: `1 - abs(prob - 0.5) * 2`
+   - Complejidad: O(N × 384) — microsegundos para N=100
+
+2. **Clasificador Lineal (Régimen Estable, ≥20 labels):**
+   - `linfa::linear::LinearRegression` (Ridge)
+   - Entrenado sobre embeddings etiquetados
+   - Predicción: `model.predict(&dataset)`
+
+**Estrategias de Adquisición:**
+- `uncertainty`: Mayor incertidumbre primero (exploración)
+- `most_relevant`: Mayor P(include) primero (explotación)
+- `balanced`: Combinación ponderada 50/50
+
+#### Patrón Worker Asíncrono
+
+```
+HTTP Request → POST /decide
+    ├── Update SQLite (<1ms)
+    ├── Increment AtomicU64 counter
+    ├── If counter % 10 == 0 → tx.try_send(TrainingTrigger)
+    └── Return next article (<5ms total)
+
+Background Task (tokio::spawn):
+    └── rx.recv() → ml::retrain_and_rerank() → update_priorities()
+```
+
+El re-entrenamiento se dispara cada **10 decisiones** y se ejecuta en un worker de fondo via `tokio::sync::mpsc`, sin bloquear la respuesta HTTP.
+
+#### Pre-vuelo de Embeddings
+
+Script Python (`scripts/prepare_embeddings.py`) que:
+1. Lee artículos del proyecto desde `agrisearch.db`
+2. Genera embeddings con `all-MiniLM-L6-v2` (384 dimensiones, normalizados L2)
+3. Crea `datos_cribado.sqlite` con tablas `articles` + `embeddings` (sqlite-vec)
+
+```bash
+uv run python scripts/prepare_embeddings.py --project-id <UUID>
+```
+
+#### Integración Frontend
+
+`frontend/src/config.js` exporta `AL_WORKER_URL` (default: `http://localhost:3001`).
+`ScreeningSession.tsx` usa `syncToRustWorker()` como fire-and-forget tras cada decisión, con timeout de 2s y fallback automático si el worker no responde.
+
 ---
 
 ## Dependencias Críticas

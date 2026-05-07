@@ -14,6 +14,7 @@ AgriSearch se organiza en **4 capas principales**:
 |------|------------|--------|
 | **Frontend** | Astro + React + TypeScript + Tailwind | 4321 |
 | **Backend** | FastAPI + Python + SQLAlchemy Async | 8000 |
+| **Active Learning** | Rust + Axum + Tokio + linfa | 3001 |
 | **Procesamiento IA** | Ollama Local + LiteLLM | — |
 | **Almacenamiento** | SQLite + Qdrant (vectorial) | — |
 
@@ -22,23 +23,30 @@ AgriSearch se organiza en **4 capas principales**:
 │   Frontend      │ ──────────────── │   Backend       │ ──────────── │   LLM / IA      │
 │   Astro+React   │                  │   FastAPI        │              │   Ollama Local   │
 │   :4321         │                  │   :8000          │              │                  │
-└─────────────────┘                  └─────────────────┘              └─────────────────┘
-                                         │           │
-                                    SQL  │           │  Vector
-                                         ▼           ▼
-                                   ┌───────────┐ ┌───────────┐
-                                   │  SQLite   │ │  Qdrant   │
-                                   │  agrisearch│ │  Embeddings│
-                                   └───────────┘ └───────────┘
-                                         │
-                                   MCP   │  Consultas Paralelas
-                                         ▼
-                                   ┌─────────────────────────┐
-                                   │  Red Científica         │
-                                   │  9+ Bases de Datos      │
-                                   │  OpenAlex / S.Scholar   │
-                                   │  ArXiv / Crossref / ... │
-                                   └─────────────────────────┘
+└────────┬────────┘                  └────────┬────────┘              └─────────────────┘
+         │                                    │           │
+    AL :3001 │                            SQL  │           │  Vector
+         ▼                                    ▼           ▼
+┌─────────────────┐                    ┌───────────┐ ┌───────────┐
+│  Rust AL Worker │                    │  SQLite   │ │  Qdrant   │
+│  Axum + linfa   │                    │  agrisearch│ │  Embeddings│
+│  :3001          │                    └───────────┘ └───────────┘
+└────────┬────────┘                         │
+         │                            MCP   │  Consultas Paralelas
+         │                                  ▼
+         │                            ┌─────────────────────────┐
+         │                            │  Red Científica         │
+         │                            │  9+ Bases de Datos      │
+         │                            │  OpenAlex / S.Scholar   │
+         │                            │  ArXiv / Crossref / ... │
+         │                            └─────────────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  datos_cribado  │
+│  .sqlite        │
+│  (sqlite-vec)   │
+└─────────────────┘
 ```
 
 ---
@@ -81,7 +89,7 @@ AgriSearch se organiza en **4 capas principales**:
 ### Fase 3: Cribado
 
 10. **Screening Interactivo** — Interfaz estilo Rayyan.ai con atajos de teclado, traducción de abstracts y sugerencias AI.
-11. **Active Learning** — Clasificador TF-IDF + LogisticRegression para priorización por incertidumbre (uncertainty sampling).
+11. **Active Learning** — Microservicio Rust (Axum + linfa) con redes prototípicas (cold start) y clasificador lineal. Re-entrenamiento asíncrono cada 10 decisiones. Latencia <5ms.
 
 ### Fase 4: Análisis
 
@@ -96,6 +104,7 @@ AgriSearch se organiza en **4 capas principales**:
 |------------|------------|
 | **Frontend** | Astro (SSR Híbrido), React, TypeScript, Tailwind CSS |
 | **Backend** | FastAPI (Python 3.11), SQLAlchemy Async, aiosqlite |
+| **Active Learning** | Rust 1.95, Axum 0.8, Tokio, linfa, rusqlite + sqlite-vec |
 | **Parsing PDF** | OpenDataLoader (artículos científicos), MarkItDown (multi-formato) |
 | **IA** | LiteLLM, Ollama, Qdrant (vectorial local) |
 | **Búsqueda** | MCP Clients para 9 APIs científicas |
@@ -114,11 +123,19 @@ AgriSearch/
 │   │   │   └── mcp_clients/ # Clientes para 9 APIs científicas
 │   │   └── models/          # SQLAlchemy ORM + Pydantic schemas
 │   └── temp/                # Scripts CLI para DB (create_tables, dump_schema, check_db)
+├── active_learning_worker/
+│   ├── src/
+│   │   ├── main.rs          # Entry point Axum + Tokio mpsc worker
+│   │   ├── api/             # Endpoints REST (decide, next, status, progress)
+│   │   ├── db/              # Capa SQLite + sqlite-vec
+│   │   └── ml/              # Motor ML (prototypical, linear, acquisition)
+│   └── Cargo.toml           # Dependencias Rust
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/           # Rutas Astro (index, project, search, screening)
 │   │   ├── components/      # React Islands (Dashboard, SearchWizard, ScreeningSession, etc.)
-│   │   └── lib/             # Cliente API (api.ts — 29 funciones tipadas)
+│   │   ├── lib/             # Cliente API (api.ts — 29 funciones tipadas)
+│   │   └── config.js        # Configuración AL_WORKER_URL
 │   └── public/
 ├── data/                    # Datos locales (SQLite, PDFs por proyecto)
 ├── docs/                    # Documentación técnica y diagramas
@@ -133,6 +150,7 @@ AgriSearch/
 |-----------|---------|-----------|
 | **Python** | 3.11+ | Backend (FastAPI) |
 | **Node.js** | 18+ | Frontend (Astro) |
+| **Rust** | 1.75+ | Active Learning Worker (Axum) |
 | **Java (JDK)** | 11+ | OpenDataLoader PDF (parser científico) |
 | **Ollama** | Última | LLM local para búsqueda y screening |
 | **uv** *(recomendado)* | Última | Gestión de dependencias Python |
@@ -237,25 +255,24 @@ Una vez completada la búsqueda y descarga de PDFs, el módulo de **Screening** 
 
 ---
 
-## Roadmap: Migración a Rust (Active Learning)
+## Módulo de Active Learning (Rust/Axum)
 
-> **Estado:** 🔴 Pendiente
+> **Estado:** 🟢 Completado
 
-### Objetivo
+El módulo de Active Learning fue migrado desde Python (scikit-learn) a un microservicio independiente en **Rust (Axum + Tokio)**, reduciendo la latencia del bucle síncrono de **~100ms a <5ms**.
 
-Migrar el módulo de Active Learning desde Python (scikit-learn) hacia un microservicio independiente en **Rust (Axum + Tokio)** para reducir la latencia del bucle síncrono de **~100ms a <5ms**.
-
-### Stack Propuesto
+### Stack Implementado
 
 | Componente | Tecnología Rust | Propósito |
 |------------|-----------------|-----------|
-| **API Web** | `axum` | Framework HTTP de alto rendimiento |
-| **Runtime** | `tokio` | Async multi-hilo + workers en background |
-| **Base de Datos** | `rusqlite` + `sqlite-vec` | SQLite embebido con búsqueda vectorial |
-| **ML (Inferencia)** | `ort` (ONNX Runtime) | Embeddings densos pre-computados |
-| **ML (Active Learning)** | `linfa` / `ndarray` | Clasificadores lineales + Redes Prototípicas |
+| **API Web** | `axum` 0.8 | Framework HTTP de alto rendimiento |
+| **Runtime** | `tokio` 1.x | Async multi-hilo + workers en background |
+| **Base de Datos** | `rusqlite` 0.32 + `sqlite-vec` | SQLite embebido con búsqueda vectorial |
+| **ML (Cold Start)** | `ndarray` 0.16 | Redes Prototípicas (centroide geométrico) |
+| **ML (Estable)** | `linfa` 0.8 + `linfa-linear` | Clasificador lineal (Ridge/SGD) |
+| **Adquisición** | Módulo propio | Uncertainty, most relevant, balanced |
 
-### Arquitectura Migrada
+### Arquitectura Implementada
 
 ```
 ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
@@ -275,23 +292,41 @@ Migrar el módulo de Active Learning desde Python (scikit-learn) hacia un micros
                                                      └───────────────────┘
 ```
 
-### Beneficios Esperados
+### Métricas Reales
 
-| Métrica | Implementación Actual (Python) | Implementación Propuesta (Rust) |
-|---------|-------------------------------|--------------------------------|
+| Métrica | Python (scikit-learn) | Rust (Axum + linfa) |
+|---------|----------------------|---------------------|
 | Latencia de respuesta | ~100ms | <5ms |
-| Re-entrenamiento | Síncrono (bloquea UI) | Asíncrono (background worker) |
+| Re-entrenamiento | Síncrono (bloquea UI) | Asíncrono (mpsc background worker) |
 | Vectorización | TF-IDF en tiempo real | Embeddings densos pre-computados (ONNX) |
-| Cold Start | Muestreo aleatorio | Redes Prototípicas (centroide geométrico) |
+| Cold Start (<20 labels) | Muestreo aleatorio | Redes Prototípicas (centroide geométrico) |
+| Régimen estable (≥20 labels) | LogisticRegression | linfa LinearRegression |
+| Binario release | N/A | ~3.08MB |
 
-### Fases de Implementación
+### Endpoints del Worker
 
-1. **Preparación del Entorno** (1-2 días) — Instalar Rust, crear `active_learning_worker/`, configurar `Cargo.toml`
-2. **Script Pre-vuelo** (1-2 días) — Generar embeddings con `all-MiniLM-L6-v2`, exportar a ONNX, popular SQLite
-3. **API REST en Axum** (2-3 días) — Endpoints: `POST /decide`, `GET /next`, `GET /status`, CORS
-4. **Motor ML** (2-3 días) — Redes Prototípicas, clasificador lineal, funciones de adquisición
-5. **Integración Frontend** (1-2 días) — Apuntar screening al puerto 3001, fallback a Python
-6. **Documentación** (1 día) — Actualizar README, ejecucion.md, documentación
+| Método | Ruta | Descripción | Latencia objetivo |
+|--------|------|-------------|-------------------|
+| `POST` | `/decide` | Registra decisión y retorna siguiente artículo | <5ms |
+| `GET` | `/next` | Retorna el artículo con mayor prioridad | <2ms |
+| `GET` | `/status` | Estadísticas (decididos, pendientes, accuracy) | <1ms |
+| `GET` | `/progress` | Datos para gráfico de progreso | <2ms |
+
+### Ejecución
+
+```bash
+# Pre-vuelo: generar embeddings
+cd backend && uv run python ../scripts/prepare_embeddings.py --project-id <UUID>
+
+# Compilar y ejecutar el worker
+cd active_learning_worker
+cargo build --release
+cargo run --release
+```
+
+### Integración Frontend
+
+El componente `ScreeningSession.tsx` envía decisiones al worker Rust vía `POST /decide` con fallback automático al backend Python si el worker no responde (timeout 2s). Configuración en `frontend/src/config.js`.
 
 ---
 

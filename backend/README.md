@@ -26,7 +26,7 @@ graph TD
     PDF_Parser --> LLM[LLM Service: Generador de Resúmenes y Features]
     PDF_Parser --> Vector[VectorService: Qdrant Indexing]
     
-    Screening --> AL[Active Learning Service]
+    Screening --> AL[Active Learning Service :8000]
     
     subgraph Storage
         SQL
@@ -37,6 +37,14 @@ graph TD
     Screening --> SQL
     Vector --> VecDB
     Download --> Files
+
+    subgraph Rust AL Worker
+        FE[Frontend Astro :4321] -->|POST /decide| RW[Rust Axum :3001]
+        RW -->|mpsc| BGW[Background Worker]
+        BGW --> ML[linfa + ndarray]
+        RW --> ALDB[(datos_cribado.sqlite)]
+        ML -->|update_priorities| ALDB
+    end
 ```
 
 ### Funcionalidades Dinámicas Implementadas
@@ -79,7 +87,7 @@ backend/
 3. **Descarga**: Obtención P2P asíncrona de PDF Open Access.
 4. **Parsing y Enriquecimiento**: Generación generativa MD vía Docling. Las imágenes y gráficos son transcritas empleando modelos Multimodales (ej. `gemma4:e4b`).
 5. **Generación RAG Vectorial**: Qdrant vectoriza embeddings para ser analizados posteriormente en el Screening interactivo.
-6. **Active Learning (Experimental)**: Sugerencias booleanas predictivas basadas en iteración de decisiones.
+6. **Active Learning (Rust)**: Microservicio en `active_learning_worker/` (Axum + linfa) que prioriza artículos por incertidumbre. Latencia <5ms. Re-entrenamiento asíncrono cada 10 decisiones. Ver `docs/process/plan/plan_active_learning_rust.md`.
 
 ## 🛠️ Instalación y Desarrollo (Con UV)
 

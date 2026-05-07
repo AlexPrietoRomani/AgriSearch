@@ -12,6 +12,7 @@ Si acabas de clonar el repositorio o es la primera vez que vas a arrancar AgriSe
 Asegúrate de tener instalados los siguientes programas en tu computadora:
 - **Python 3.11+** (No olvides marcar la opción "Add Python to PATH" durante la instalación).
 - **Node.js** (Versión LTS, típicamente la 20.x o superior).
+- **Rust** (rustc + cargo). Instalar desde [rustup.rs](https://rustup.rs/). Verificar con `rustc --version`.
 - **Ollama**: Descárgalo desde [ollama.com](https://ollama.com/) e instálalo.
 
 ### 2. Configurar Ollama (Motores de IA)
@@ -37,7 +38,18 @@ Varias bases de datos científicas integradas (como **CORE** y **Redalyc**) exig
 
 ### 4. Preparar el Entorno y Dependencias (Recomendado: uv)
 
-#### 4.1 Instalación con `uv` (Más rápido y confiable)
+#### 4.1 Compilar el Active Learning Worker (Rust)
+
+El worker de Active Learning está escrito en Rust y necesita compilarse antes de su primera ejecución:
+
+```powershell
+cd active_learning_worker
+cargo build --release
+```
+
+Esto genera un binario optimizado de ~3MB en `active_learning_worker/target/release/`. La compilación inicial descarga todas las dependencias y puede tardar varios minutos.
+
+#### 4.2 Instalación con `uv` (Más rápido y confiable)
 
 Si no tienes `uv` instalado, ejecútalo primero:
 ```powershell
@@ -50,17 +62,28 @@ cd backend
 uv sync
 ```
 
-#### 4.2 Instalación Legacy / Extra
+#### 4.3 Instalación Legacy / Extra
 
 Usamos exclusivamente `uv` debido a su inmensa velocidad y estabilización de versiones en `pyproject.toml`. El antiguo `requirements.txt` ha sido eliminado del repositorio oficial.
 
-### 5. Lanzar AgriSearch
+### 5. Generar Embeddings Pre-vuelo (Solo primera vez)
+
+Antes de usar el screening con Active Learning, genera los embeddings del corpus:
+
+```powershell
+cd backend
+uv run python ../scripts/prepare_embeddings.py --project-id <TU-PROJECT-UUID>
+```
+
+Esto crea `active_learning_worker/datos_cribado.sqlite` con los vectores de 384 dimensiones para cada artículo.
+
+### 6. Lanzar AgriSearch
 Desde la raíz principal del proyecto, debes instalar las dependencias de ambas carpetas (`backend` y `frontend`). Puedes hacerlo automáticamente haciendo **doble clic** en:
 
 📄 `start_agrisearch.cmd`
 
 > **¿El doble clic no funciona o la ventana se cierra instantáneamente?**
-> Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **dos ventanas separadas**:
+> Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **tres ventanas separadas**:
 > 
 > **Ventana 1 (Backend):** 
 > ```powershell
@@ -68,9 +91,15 @@ Desde la raíz principal del proyecto, debes instalar las dependencias de ambas 
 > uv run uvicorn app.main:app --port 8000 --reload
 > ```
 > 
-> **Ventana 2 (Frontend):**
+> **Ventana 2 (Active Learning Worker):**
+> ```powershell
+> cd active_learning_worker
+> cargo run --release
+> ```
+> 
+> **Ventana 3 (Frontend):**
 > ```bash
-> cd C:\ruta\donde\clonaste\Chat_busqueda_sistematica
+> cd C:\ruta\donde\clonaste\AgriSearch
 > cd frontend
 > npm install
 > npm run dev
@@ -107,7 +136,13 @@ cd backend
 uv run uvicorn app.main:app --port 8000 --reload
 ```
 
-**Ventana 2 (Frontend):**
+**Ventana 2 (Active Learning Worker):**
+```powershell
+cd active_learning_worker
+cargo run --release
+```
+
+**Ventana 3 (Frontend):**
 ```bash
 cd C:\ruta\donde\clonaste\AgriSearch
 cd frontend
