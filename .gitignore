@@ -120,6 +120,8 @@ backend/vector_db/
 *.sqlite3
 *.db
 *.db-journal
+*.sqlite-wal
+*.sqlite-shm
 *.sqlite
 agrisearch.db
 
