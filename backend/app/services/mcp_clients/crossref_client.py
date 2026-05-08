@@ -1,27 +1,35 @@
 """
 Archivo: crossref_client.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
 Cliente para la API de Crossref (https://www.crossref.org). 
-Permite la búsqueda de metadatos bibliográficos de artículos científicos a través de su DOI 
-o por términos de búsqueda. Es fundamental para la identificación de fuentes formales.
+Permite la búsqueda de metadatos bibliográficos de artículos científicos a través 
+de su DOI o por términos de búsqueda. Es fundamental para la identificación de 
+fuentes formales y la normalización de metadatos en AgriSearch.
 
 Acciones Principales:
     - Ejecuta búsquedas utilizando la librería `habanero`.
     - Normaliza la respuesta de Crossref (JSON) al formato estándar de AgriSearch.
     - Limpia etiquetas HTML de los abstracts si están presentes.
+    - Resuelve URLs de acceso abierto mediante integración con Unpaywall.
 
 Estructura Interna:
     - `_parse_crossref_work`: Parsea un objeto "work" de Crossref.
-    - `search_crossref`: Ejecuta la búsqueda de forma asíncrona (usando `run_in_executor` para `habanero`).
+    - `search_crossref`: Ejecuta la búsqueda de forma asíncrona.
 
 Entradas / Dependencias:
-    - Librería `habanero`.
-    - Configuración de correo para el "polite pool" de Crossref.
+    - `habanero`: Para interactuar con la API de Crossref.
+    - `app.services.oa_resolver`: Para resolución de PDFs Open Access.
+    - `settings.crossref_mailto`: Email para el "polite pool" de Crossref.
+
+Salidas / Efectos:
+    - Retorna una lista de diccionarios normalizados con metadatos de artículos.
+    - Realiza llamadas de red externas a api.crossref.org.
 
 Ejemplo de Integración:
+    from app.services.mcp_clients.crossref_client import search_crossref
     articles = await search_crossref("soil health", max_results=15)
 """
 
@@ -31,6 +39,7 @@ from typing import Any
 from habanero import Crossref
 
 from app.core.config import get_settings
+from app.services.oa_resolver import resolve_oa_url
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -135,4 +144,13 @@ async def search_crossref(
 
     articles = await asyncio.get_event_loop().run_in_executor(None, _sync_search)
     logger.info("Crossref: found %d articles for query: %s", len(articles), query[:60])
+
+    # Resolver OA URLs para artículos sin open_access_url usando Unpaywall
+    if settings.unpaywall_email:
+        for article in articles:
+            if not article.get("open_access_url") and article.get("doi"):
+                oa_url = await resolve_oa_url(article["doi"], settings.unpaywall_email)
+                if oa_url:
+                    article["open_access_url"] = oa_url
+
     return articles

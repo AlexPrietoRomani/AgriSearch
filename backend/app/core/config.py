@@ -1,39 +1,38 @@
 """
 Archivo: config.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
-Configuración centralizada para el backend de AgriSearch.
-Utiliza Pydantic Settings para gestionar variables de entorno de forma segura
-y tipada. Proporciona valores predeterminados para la conexión a la base de datos,
-modelos de IA, rutas de almacenamiento y claves de API.
+Gestión centralizada de la configuración para AgriSearch. Utiliza Pydantic Settings
+para cargar variables de entorno de forma segura, tipada y con validaciones en
+tiempo real. Este módulo define desde las rutas de almacenamiento persistente
+hasta las claves de API y los timeouts de las bases de datos científicas.
 
 Acciones Principales:
-    - Define todas las variables de entorno necesarias y sus tipos.
-    - Asegura que las rutas de directorios se creen dinámicamente si no existen.
-    - Valida y formatea URLs de conexión de base de datos.
-    - Sanitiza nombres de carpetas.
+    - Carga de variables desde el archivo `.env`.
+    - Validación y normalización de URLs de base de datos.
+    - Orquestación de rutas dinámicas para datos de proyectos.
+    - Definición de límites y cuotas (Rate Limits, Timeouts) para servicios externos.
 
 Estructura Interna:
-    - `sanitize_folder_name`: Función para limpiar strings que se usarán como nombres de directorio.
-    - `Settings`: Clase de Pydantic para validar la configuración global.
-    - `get_settings`: Instancia Singleton en caché para acceder rápidamente a la configuración.
+    - `Settings`: Clase principal de configuración (Pydantic).
+    - `get_settings`: Función de acceso tipo Singleton con caché (`lru_cache`).
+    - `sanitize_folder_name`: Utilidad para normalizar nombres de directorios.
 
 Entradas / Dependencias:
-    - Variables de entorno o el archivo `.env` en la raíz del backend.
-    - Módulos estándar (`pathlib`, `re`, `unicodedata`).
+    - Archivo `.env` en la raíz del backend.
+    - Librería `pydantic-settings`.
 
 Salidas / Efectos:
-    - Retorna el objeto `Settings` con todas las rutas y variables preparadas.
-    - Puede crear directorios en disco (ej. `data/projects/...`).
+    - Provee un objeto `Settings` inmutable y validado.
+    - Crea automáticamente la estructura de directorios en `data/projects`.
+    - Normaliza la conexión a la base de datos SQLite.
 
 Ejemplo de Integración:
     from app.core.config import get_settings
-    
     settings = get_settings()
-    print(settings.database_url)
-    db_path = settings.get_project_data_dir("project_id")
+    db_url = settings.database_url
 """
 
 from pathlib import Path
@@ -152,9 +151,31 @@ class Settings(BaseSettings):
     openalex_key: str = ""
     semantic_scholar_key: str = ""
 
+    # --- Unpaywall (OA URL resolution) ---
+    unpaywall_email: str = ""
+
     # --- Descargas ---
     download_rate_limit: int = 10  # Peticiones por segundo
     download_timeout: int = 30  # Segundos por PDF
+
+    # --- Timeouts de búsqueda por BD ---
+    search_timeouts: dict = {
+        "openalex": 15,
+        "semantic_scholar": 15,
+        "arxiv": 15,
+        "crossref": 20,
+        "core": 15,
+        "scielo": 15,
+        "redalyc": 15,
+        "agecon": 45,
+        "organic_eprints": 45,
+    }
+    search_global_timeout: int = 60  # Timeout total de la búsqueda (60s máx)
+
+    # --- Sci-Hub (descarga forzada) ---
+    scihub_enabled: bool = True
+    scihub_download_dir: str = "data/downloads/scihub"
+    scihub_rate_limit: float = 10.0  # Segundos entre requests
 
     def get_project_data_dir(self, project_id: str, project_name: str | None = None) -> Path:
         """

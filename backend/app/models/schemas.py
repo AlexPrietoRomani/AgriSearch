@@ -1,31 +1,35 @@
 """
 Archivo: schemas.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
-Esquemas de Pydantic para la validación de peticiones (request) y respuestas (response) de la API.
-Mantiene una separación clara entre los modelos de la base de datos y las interfaces de comunicación.
+Esquemas de validación y serialización de datos basados en Pydantic para la API
+de AgriSearch. Estos modelos actúan como contratos de interfaz, asegurando la
+integridad de las peticiones (request) y la estructura consistente de las
+respuestas (response), manteniendo el desacoplamiento con los modelos de BD.
 
 Acciones Principales:
-    - Define estructuras de datos para creación y actualización de proyectos.
-    - Valida parámetros de búsqueda y descarga de artículos.
-    - Estructura las respuestas de las sesiones de cribado y estadísticas.
-    - Configura la compatibilidad con objetos ORM mediante `from_attributes`.
+    - Validación de entrada para creación de proyectos y búsquedas.
+    - Definición de tipos para la comunicación entre el frontend y el backend.
+    - Configuración de compatibilidad ORM para serialización automática.
+    - Desglose de estructuras complejas (PICO, Diagnósticos, Sugerencias de IA).
 
 Estructura Interna:
-    - `ProjectSchemas`: Creación, actualización y respuesta de proyectos.
-    - `SearchSchemas`: Generación de consultas, ejecución de búsquedas y resultados.
-    - `DownloadSchemas`: Peticiones de descarga y progreso.
-    - `ScreeningSchemas`: Sesiones, decisiones, estadísticas y sugerencias de IA.
+    - `ProjectSchemas`: Gestión de proyectos.
+    - `SearchSchemas`: Consultas y resultados federados.
 
 Entradas / Dependencias:
-    - `pydantic.BaseModel` y `pydantic.Field`.
-    - Tipos nativos de Python y `datetime`.
+    - `pydantic`: Motor de validación.
+    - `datetime`: Para el manejo de marcas de tiempo serializadas.
+
+Salidas / Efectos:
+    - Garantiza que los datos que entran y salen de la API cumplen con el tipo esperado.
+    - Lanza errores de validación automáticos en caso de discrepancia de datos.
 
 Ejemplo de Integración:
-    from app.models.schemas import ProjectCreate
-    payload = ProjectCreate(name="Nueva Revisión", agri_area="agronomy")
+    from app.models.schemas import SearchExecuteRequest
+    request = SearchExecuteRequest(project_id="uuid", query="soil health")
 """
 
 from datetime import datetime
@@ -311,3 +315,13 @@ class ScreeningSuggestionResponse(BaseModel):
     suggested_status: str  # include | exclude
     justification: str
     confidence: float | None = None
+
+
+# ──────────────────── Esquemas de OA Resolution ────────────────────
+
+
+class OAResolveResult(BaseModel):
+    """Esquema para el resultado de una resolución OA via Unpaywall."""
+    doi: str
+    open_access_url: str | None = None
+    resolved_by: str = "unpaywall"
