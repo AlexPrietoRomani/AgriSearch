@@ -1,27 +1,37 @@
 """
-Benchmark de latencia para el Active Learning Worker en Rust.
+Archivo: benchmark_latency.py
+Modificación: 2026-05-08
+Autor: Alex Prieto
 
-Mide la latencia de 100 peticiones consecutivas POST /decide
-y calcula p50, p95, p99.
+Descripción:
+Suite de benchmark para medir la latencia de respuesta del Active Learning Worker (Rust/Axum).
+Calcula métricas de rendimiento (p50, p95, p99) simulando una carga de trabajo de cribado.
 
-Requisitos:
-- El worker Rust debe estar corriendo en localhost:3001
-- datos_cribado.sqlite debe existir con articulos de prueba
+Acciones Principales:
+    - Verificación de estado del worker (/health).
+    - Simulación de peticiones de decisión (/decide) secuenciales.
+    - Cálculo estadístico de percentiles de latencia.
+    - Validación contra objetivos de rendimiento (sub-10ms).
 
-Ejecutar:
-    cd backend
-    uv run python ../scripts/benchmark_latency.py
+Estructura Interna:
+    - `check_worker_alive`: Validación de conectividad.
+    - `get_next_article_id`: Recuperación de IDs pendientes.
+    - `send_decision`: Medición de tiempo de ida y vuelta (RTT).
+    - `percentile`: Utilidad estadística para métricas.
 
-Metricas objetivo (procesamiento Rust puro):
-    p50 < 3ms
-    p95 < 5ms
-    p99 < 10ms
+Entradas / Dependencias:
+    - Active Learning Worker en ejecución (localhost:3001).
+    - Base de datos `datos_cribado.sqlite` con datos de prueba.
 
-Nota: Las mediciones via HTTP incluyen overhead del cliente.
-En pruebas con PowerShell Invoke-WebRequest, el overhead del
-cliente HTTP añade ~8-12ms adicionales. El procesamiento real
-de Rust (DB query + decision logic) es sub-milisegundo (<1ms).
-Para mediciones precisas, usar herramientas como `wrk` o `hey`.
+Salidas / Efectos:
+    - Reporte detallado de latencias en consola.
+    - Código de salida 0 si cumple objetivos, 1 si falla.
+
+Ejecución:
+    uv run python scripts/benchmark_latency.py
+
+Ejemplo de Uso:
+    python scripts/benchmark_latency.py
 """
 import json
 import statistics
@@ -35,7 +45,15 @@ NUM_REQUESTS = 100
 
 
 def check_worker_alive() -> bool:
-    """Verifica que el worker Rust este corriendo."""
+    """
+    Verifica que el worker de Active Learning en Rust esté en ejecución y responda.
+
+    Returns:
+        bool: True si el worker responde con estado 'ok', False en caso contrario.
+
+    Salidas / Efectos:
+        - Realiza una petición GET al endpoint /health.
+    """
     try:
         req = urllib.request.Request(f"{AL_WORKER_URL}/health")
         with urllib.request.urlopen(req, timeout=2) as resp:
@@ -46,7 +64,15 @@ def check_worker_alive() -> bool:
 
 
 def get_next_article_id() -> str | None:
-    """Obtiene el ID del siguiente articulo pendiente."""
+    """
+    Recupera el identificador del próximo artículo pendiente de cribado desde el worker.
+
+    Returns:
+        str | None: El UUID del artículo si existe, None si no hay pendientes o hay error.
+
+    Salidas / Efectos:
+        - Consulta el endpoint /next del worker Rust.
+    """
     try:
         req = urllib.request.Request(f"{AL_WORKER_URL}/next")
         with urllib.request.urlopen(req, timeout=2) as resp:
@@ -57,7 +83,20 @@ def get_next_article_id() -> str | None:
 
 
 def send_decision(article_id: str, status: str) -> float:
-    """Envia una decision y retorna la latencia en ms."""
+    """
+    Envía una decisión de clasificación (accepted/rejected/maybe) al worker y mide el tiempo.
+
+    Args:
+        article_id (str): Identificador único del artículo.
+        status (str): Estado de la decisión (accepted, rejected, maybe).
+
+    Returns:
+        float: Latencia de la petición en milisegundos (ms).
+
+    Salidas / Efectos:
+        - Envía una petición POST al endpoint /decide.
+        - Registra la decisión en la base de datos gestionada por el worker.
+    """
     payload = json.dumps({"id": article_id, "status": status}).encode("utf-8")
     req = urllib.request.Request(
         f"{AL_WORKER_URL}/decide",
@@ -73,7 +112,16 @@ def send_decision(article_id: str, status: str) -> float:
 
 
 def percentile(data: list[float], pct: float) -> float:
-    """Calcula el percentil pct de una lista ordenada."""
+    """
+    Calcula el percentil especificado para una serie de datos de latencia.
+
+    Args:
+        data (list[float]): Lista de valores numéricos (latencias).
+        pct (float): Percentil a calcular (0-100).
+
+    Returns:
+        float: El valor del percentil calculado mediante interpolación lineal.
+    """
     sorted_data = sorted(data)
     n = len(sorted_data)
     idx = (pct / 100) * (n - 1)

@@ -1,12 +1,29 @@
 """
-Crea una base de datos de prueba para el benchmark del Active Learning Worker.
+Archivo: create_test_db.py
+Modificación: 2026-05-08
+Autor: Alex Prieto
 
-Genera 100 articulos sinteticos con embeddings aleatorios de 384 dimensiones
-en datos_cribado.sqlite.
+Descripción:
+Generador de datos sintéticos para pruebas de carga y benchmark del Active Learning Worker.
+Crea una base de datos SQLite con artículos y sus correspondientes embeddings aleatorios.
 
-Ejecutar:
-    cd active_learning_worker
-    python ../scripts/create_test_db.py
+Acciones Principales:
+    - Generación de vectores de 384 dimensiones normalizados L2.
+    - Creación de esquema de tablas `articles` y `embeddings`.
+    - Inserción de 100 registros con diversos estados (accepted, rejected, pending).
+
+Estructura Interna:
+    - `random_embedding`: Generador de ruido gaussiano estructurado.
+    - `main`: Orquestador de creación de BD.
+
+Entradas / Dependencias:
+    - Ninguna externa (usa librerías estándar).
+
+Salidas / Efectos:
+    - Crea/Sobrescribe `active_learning_worker/datos_cribado.sqlite`.
+
+Ejecución:
+    python scripts/create_test_db.py
 """
 import sqlite3
 import struct
@@ -19,7 +36,19 @@ EMBEDDING_DIM = 384
 
 
 def random_embedding(is_accepted: bool) -> bytes:
-    """Genera un embedding aleatorio con sesgo segun la clase."""
+    """
+    Genera un embedding sintético de 384 dimensiones con sesgo estadístico.
+
+    Args:
+        is_accepted (bool): Si es True, el vector tendrá un sesgo positivo para 
+            simular artículos relevantes.
+
+    Returns:
+        bytes: Vector de floats serializado en formato binario (f32).
+
+    Salidas / Efectos:
+        - Utiliza el módulo struct para empaquetar los datos para SQLite.
+    """
     vec = []
     for i in range(EMBEDDING_DIM):
         base = 0.3 if is_accepted else -0.3

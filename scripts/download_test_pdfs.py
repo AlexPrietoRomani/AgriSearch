@@ -1,4 +1,31 @@
-"""Descarga PDFs de ejemplo desde arXiv para tests."""
+"""
+Archivo: download_test_pdfs.py
+Modificación: 2026-05-08
+Autor: Alex Prieto
+
+Descripción:
+Script de automatización para la descarga de artículos científicos (PDF) desde arXiv.
+Estos archivos se utilizan como assets para pruebas de parsing y Active Learning.
+
+Acciones Principales:
+    - Descarga asíncrona de múltiples PDFs simultáneamente.
+    - Validación de existencia previa para evitar descargas redundantes.
+    - Gestión de errores HTTP y reportes de progreso en consola.
+
+Estructura Interna:
+    - `download_pdf`: Gestor de descarga individual por paper ID.
+    - `main`: Orquestador asíncrono de tareas de red.
+
+Entradas / Dependencias:
+    - Conexión a internet.
+    - Librería `aiohttp` para peticiones asíncronas.
+
+Salidas / Efectos:
+    - Descarga archivos .pdf en `tests/assets/pdf/`.
+
+Ejecución:
+    uv run python scripts/download_test_pdfs.py
+"""
 import asyncio
 import aiohttp
 from pathlib import Path
@@ -15,6 +42,21 @@ PDFS = [
 OUTPUT_DIR = Path(__file__).parent.parent / "tests" / "assets" / "pdf"
 
 async def download_pdf(session: aiohttp.ClientSession, paper_id: str, filename: str):
+    """
+    Descarga un archivo PDF desde el repositorio de arXiv de forma asíncrona.
+
+    Args:
+        session (aiohttp.ClientSession): Sesión HTTP compartida para las peticiones.
+        paper_id (str): Identificador único del paper en arXiv (ej: '2301.12345v1').
+        filename (str): Nombre deseado para el archivo descargado localmente.
+
+    Returns:
+        bool: True si la descarga fue exitosa o el archivo ya existía, False si hubo error.
+
+    Salidas / Efectos:
+        - Escribe el contenido binario del PDF en el disco.
+        - Muestra mensajes de estado en la consola.
+    """
     url = f"https://arxiv.org/pdf/{paper_id}"
     output_path = OUTPUT_DIR / filename
     if output_path.exists():
@@ -37,6 +79,14 @@ async def download_pdf(session: aiohttp.ClientSession, paper_id: str, filename: 
         return False
 
 async def main():
+    """
+    Orquestador principal para la descarga masiva de artículos de prueba.
+    Gestiona la creación del directorio de salida y la ejecución paralela de descargas.
+
+    Salidas / Efectos:
+        - Crea el directorio `tests/assets/pdf` si no existe.
+        - Descarga los archivos definidos en la constante `PDFS`.
+    """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Descargando {len(PDFS)} PDFs en {OUTPUT_DIR}...")
     

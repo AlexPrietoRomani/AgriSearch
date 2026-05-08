@@ -1,15 +1,34 @@
 """
-Script pre-vuelo: Genera embeddings y popula datos_cribado.sqlite.
+Archivo: prepare_embeddings.py
+Modificación: 2026-05-08
+Autor: Alex Prieto
 
-Lee articulos de agrisearch.db, genera embeddings con all-MiniLM-L6-v2,
-y los almacena en una BD SQLite optimizada para el worker Rust de Active Learning.
+Descripción:
+Script de procesamiento de datos para la migración de artículos desde el backend principal 
+hacia el Active Learning Worker. Genera embeddings vectoriales y optimiza la BD SQLite.
 
-Ejecutar:
-    cd AgriSearch (raiz del proyecto)
+Acciones Principales:
+    - Extracción de artículos exitosos de AgriSearch (agrisearch.db).
+    - Generación de embeddings usando el modelo `all-MiniLM-L6-v2`.
+    - Exportación opcional del modelo a formato ONNX para inferencia en Rust.
+    - Construcción de la base de datos de cribado con índices de prioridad.
+
+Estructura Interna:
+    - `serialize_f32`: Conversión de vectores a binario compatible con SQLite.
+    - `get_db_path`: Localizador dinámico de la base de datos de origen.
+    - `main`: Flujo principal de transformación y carga (ETL).
+
+Entradas / Dependencias:
+    - Base de datos `agrisearch.db`.
+    - Librerías `sentence-transformers`, `numpy`.
+    - Opcional: `optimum`, `onnxruntime` para exportación.
+
+Salidas / Efectos:
+    - Crea/Actualiza `active_learning_worker/datos_cribado.sqlite`.
+    - Genera directorio de modelos ONNX si se especifica.
+
+Ejecución:
     uv run python scripts/prepare_embeddings.py --project-id <UUID>
-
-Opcional: exportar modelo a ONNX para inferencia desde Rust:
-    uv run python scripts/prepare_embeddings.py --project-id <UUID> --export-onnx
 """
 import argparse
 import sqlite3
@@ -19,12 +38,30 @@ from pathlib import Path
 
 
 def serialize_f32(vector: list[float]) -> bytes:
-    """Serializa vector float32 para almacenamiento en SQLite (compatible con sqlite-vec)."""
+    """
+    Serializa un vector de números de punto flotante a formato binario f32.
+    Este formato es el estándar requerido por la extensión sqlite-vec y el worker Rust.
+
+    Args:
+        vector (list[float]): Lista de valores del embedding (normalmente 384 dimensiones).
+
+    Returns:
+        bytes: Representación binaria del vector lista para inserción en SQLite (BLOB).
+    """
     return struct.pack(f"{len(vector)}f", *vector)
 
 
 def get_db_path() -> Path:
-    """Busca agrisearch.db en ubicaciones comunes."""
+    """
+    Busca de forma recursiva la base de datos principal de AgriSearch (agrisearch.db).
+    Intenta localizar el archivo en las estructuras de carpetas más comunes del proyecto.
+
+    Returns:
+        Path: Ruta absoluta al archivo de base de datos encontrado.
+
+    Salidas / Efectos:
+        - Si no se encuentra, retorna la ruta por defecto aunque no exista.
+    """
     candidates = [
         Path("backend/data/agrisearch.db"),
         Path("backend/agrisearch.db"),
@@ -38,6 +75,19 @@ def get_db_path() -> Path:
 
 
 def main(project_id: str, db_path: str | None = None, export_onnx: bool = False) -> None:
+    """
+    Flujo principal de transformación y carga para el Active Learning.
+    Extrae datos del backend, genera embeddings y prepara la BD del worker Rust.
+
+    Args:
+        project_id (str): Identificador único del proyecto (UUID).
+        db_path (str, opcional): Ruta manual a la base de datos de origen.
+        export_onnx (bool): Si es True, exporta el modelo de embeddings a formato ONNX.
+
+    Salidas / Efectos:
+        - Genera/Sobrescribe el archivo `active_learning_worker/datos_cribado.sqlite`.
+        - Si export_onnx es True, genera archivos en `active_learning_worker/models/`.
+    """
     src_db = Path(db_path) if db_path else get_db_path()
 
     if not src_db.exists():
