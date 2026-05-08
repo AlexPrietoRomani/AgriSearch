@@ -18,6 +18,7 @@ import {
     type SearchQuery,
     type ScreeningSession,
 } from "../lib/api";
+import { useOllamaModels } from "../hooks/useOllamaModels";
 import ProgressModal from "./ProgressModal";
 
 const LANGUAGES = [
@@ -26,19 +27,8 @@ const LANGUAGES = [
     { code: "pt", label: "🇧🇷 Português" },
 ];
 
-const GPU_MODELS = [
-    { value: "deepseek-r1:7b", label: "DeepSeek R1 7B (Excelente)", desc: "Gran balance en razonamiento y precisión." },
-    { value: "deepseek-r1:14b", label: "DeepSeek R1 14B (Recomendado GPU)", desc: "Alta capacidad analítica para screening complejo." },
-    { value: "qwen2.5:7b", label: "Qwen 2.5 7B (Veloz)", desc: "Traducción muy buena y rápida." },
-];
-
-const CPU_MODELS = [
-    { value: "deepseek-r1:1.5b", label: "DeepSeek R1 1.5B (Ligero)", desc: "Ideal para CPUs básicas, buen razonamiento." },
-    { value: "phi4-mini:3.8b", label: "Phi-4 Mini 3.8B (Recomendado CPU)", desc: "Eficiente en general." },
-    { value: "qwen3:0.6b", label: "Qwen 3 0.6B (Micro)", desc: "Extra ligero para tareas simples." },
-];
-
 export default function ScreeningSetup() {
+    const { models, recommendedModel, loading: modelsLoading, error: modelsError } = useOllamaModels();
     const params = new URLSearchParams(window.location.search);
     const projectId = params.get("id") || "";
     const hasSession = params.has("session");
@@ -89,7 +79,7 @@ export default function ScreeningSetup() {
                     if (savedModel === "aya-expanse" || savedModel === "aya:8b") savedModel = "deepseek-r1:7b";
                     setExistingSessionModel(savedModel);
 
-                    const isRecommended = [...GPU_MODELS, ...CPU_MODELS].some(m => m.value === savedModel);
+                    const isRecommended = models.some(m => m.name === savedModel);
                     if (!isRecommended && savedModel) {
                         setIsCustomExistingModel(true);
                         setCustomExistingModelName(savedModel);

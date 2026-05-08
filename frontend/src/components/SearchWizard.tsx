@@ -4,9 +4,9 @@
  * Multi-step wizard for: 1) Describe topic → 2) Review generated query → 3) Execute search → 4) View results → 5) Download PDFs
  */
 
-import { useState, useEffect } from "react";
-import type { GeneratedQuery, Article, SearchResults, DownloadProgress, SearchQuery } from "../lib/api";
-import { buildQuery, executeSearch, downloadArticles, listArticles, getProject, openProjectFolder, getProjectSearches } from "../lib/api";
+import { useState, useEffect, useMemo } from "react";
+import type { GeneratedQuery, Article, SearchResults, DownloadProgress, SearchQuery, DBStatus } from "../lib/api";
+import { buildQuery, executeSearch, downloadArticles, listArticles, getProject, openProjectFolder, getProjectSearches, fetchDBStatus } from "../lib/api";
 
 export type Step = "describe" | "review_query" | "searching" | "results" | "downloading";
 
@@ -40,7 +40,8 @@ export default function SearchWizard() {
     const [projectName, setProjectName] = useState("Cargando...");
     const [projectAgriArea, setProjectAgriArea] = useState("");
     const [projectLlmModel, setProjectLlmModel] = useState<string | undefined>();
-    const [selectedLlmModel, setSelectedLlmModel] = useState<string>("deepseek-r1:14b"); // Default to a GPU recommended model
+    const [selectedLlmModel, setSelectedLlmModel] = useState<string>(""); // Dynamic from Ollama
+    const [dbStatus, setDbStatus] = useState<Record<string, DBStatus>>({});
 
     // Check initial search params
     const initialQueryId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get("query_id") : null;
@@ -72,7 +73,33 @@ export default function SearchWizard() {
 
     const [yearFrom, setYearFrom] = useState<number | undefined>();
     const [yearTo, setYearTo] = useState<number | undefined>();
-    const [selectedDBs, setSelectedDBs] = useState(["openalex", "semantic_scholar", "arxiv", "crossref", "core", "scielo", "redalyc", "agecon", "organic_eprints"]);
+
+    // Load DB status for smart defaults
+    useEffect(() => {
+        fetchDBStatus()
+            .then(setDbStatus)
+            .catch(() => {});
+    }, []);
+
+    // Default selectedDBs: only DBs that don't need a key or have it configured
+    const defaultDBs = useMemo(() => {
+        if (Object.keys(dbStatus).length === 0) {
+            // Fallback while loading: all DBs except CORE and Redalyc (they need keys)
+            return ["openalex", "semantic_scholar", "arxiv", "crossref", "scielo", "agecon", "organic_eprints"];
+        }
+        return Object.values(dbStatus)
+            .filter(db => !db.requires_key || db.key_configured)
+            .map(db => db.id);
+    }, [dbStatus]);
+
+    const [selectedDBs, setSelectedDBs] = useState<string[]>(defaultDBs);
+
+    // Update selectedDBs when defaults change (after DB status loads)
+    useEffect(() => {
+        if (defaultDBs.length > 0 && selectedDBs.length === 0) {
+            setSelectedDBs(defaultDBs);
+        }
+    }, [defaultDBs]);
     const [maxResults, setMaxResults] = useState(50);
     const [generatedQuery, setGeneratedQuery] = useState<GeneratedQuery | null>(null);
     const [editedQuery, setEditedQuery] = useState("");
@@ -319,6 +346,7 @@ export default function SearchWizard() {
                     agriArea={projectAgriArea}
                     selectedLlmModel={selectedLlmModel}
                     setSelectedLlmModel={setSelectedLlmModel}
+                    dbStatus={dbStatus}
                 />
             )}
 

@@ -1,5 +1,7 @@
 import React from "react";
 import { DB_OPTIONS, type DbOption } from "./SearchWizard";
+import { useOllamaModels } from "../hooks/useOllamaModels";
+import type { DBStatus } from "../lib/api";
 
 interface Props {
     userInput: string;
@@ -17,19 +19,8 @@ interface Props {
     agriArea?: string;
     selectedLlmModel: string;
     setSelectedLlmModel: (val: string) => void;
+    dbStatus?: Record<string, DBStatus>;
 }
-
-const GPU_MODELS = [
-    { value: "qwen3:3b", label: "Qwen 3 3B (Rápido)", desc: "Excelente estructurando queries booleanas rápidas." },
-    { value: "deepseek-r1:14b", label: "DeepSeek R1 14B (Recomendado)", desc: "Gran balance en razonamiento y adherencia al formato JSON." },
-    { value: "gpt-oss:20b", label: "GPT-OSS 20B (High-VRAM)", desc: "Para GPUs de alta gama (16GB+ VRAM)." },
-];
-
-const CPU_MODELS = [
-    { value: "deepseek-r1:1.5b", label: "DeepSeek R1 1.5B (Ligero)", desc: "Súper liviano y rápido para CPUs básicas." },
-    { value: "phi4-mini:3.8b", label: "Phi-4 Mini 3.8B (Intermedio)", desc: "Razonamiento eficiente en CPUs modernas." },
-    { value: "deepseek-r1:8b", label: "DeepSeek R1 8B (Potente)", desc: "El mejor razonamiento en CPU con 8GB+ RAM." },
-];
 
 export default function SearchWizardDescribe({
     userInput,
@@ -46,19 +37,30 @@ export default function SearchWizardDescribe({
     loading,
     agriArea,
     selectedLlmModel,
-    setSelectedLlmModel
+    setSelectedLlmModel,
+    dbStatus
 }: Props) {
+    const { models, recommendedModel, loading: modelsLoading, error: modelsError } = useOllamaModels();
     const [isCustomModel, setIsCustomModel] = React.useState(false);
     const [customModelName, setCustomModelName] = React.useState("");
 
     React.useEffect(() => {
-        // If the initial selected model isn't in our recommended list, it must be custom
-        const isRecommended = [...GPU_MODELS, ...CPU_MODELS].some(m => m.value === selectedLlmModel);
-        if (!isRecommended && selectedLlmModel) {
-            setIsCustomModel(true);
-            setCustomModelName(selectedLlmModel);
+        // Auto-select recommended model if no model is selected yet
+        if (!selectedLlmModel && recommendedModel) {
+            setSelectedLlmModel(recommendedModel);
         }
-    }, []);
+    }, [recommendedModel, selectedLlmModel, setSelectedLlmModel]);
+
+    React.useEffect(() => {
+        // If the initial selected model isn't in the dynamic list, it must be custom
+        if (selectedLlmModel && models.length > 0) {
+            const isAvailable = models.some(m => m.name === selectedLlmModel);
+            if (!isAvailable) {
+                setIsCustomModel(true);
+                setCustomModelName(selectedLlmModel);
+            }
+        }
+    }, [models, selectedLlmModel]);
 
     const handleModelChange = (val: string) => {
         if (val === "custom") {
@@ -140,20 +142,35 @@ export default function SearchWizardDescribe({
             <div className="mb-6">
                 <span className="text-sm text-slate-400 block mb-2">Bases de datos a consultar</span>
                 <div className="flex gap-3 flex-wrap">
-                    {DB_OPTIONS.map((db: DbOption) => (
-                        <button
-                            key={db.id}
-                            onClick={() => toggleDB(db.id)}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-200 ${selectedDBs.includes(db.id)
-                                ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
-                                : "bg-slate-800 border-slate-700 text-slate-500 hover:border-slate-600"
+                    {DB_OPTIONS.map((db: DbOption) => {
+                        const status = dbStatus?.[db.id];
+                        const isDisabled = status?.requires_key && !status?.key_configured;
+                        const needsKey = status?.requires_key && status?.key_configured;
+                        const notDownloadable = status && !status.downloadable;
+
+                        return (
+                            <button
+                                key={db.id}
+                                onClick={() => toggleDB(db.id)}
+                                title={status?.note || db.desc}
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-200 ${
+                                    isDisabled
+                                        ? "bg-red-500/5 border-red-500/20 text-red-400/50 cursor-not-allowed opacity-50"
+                                        : selectedDBs.includes(db.id)
+                                            ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
+                                            : "bg-slate-800 border-slate-700 text-slate-500 hover:border-slate-600"
                                 }`}
-                        >
-                            <span>{db.icon}</span>
-                            <span className="font-medium">{db.label}</span>
-                            <span className="text-xs opacity-60 hidden sm:inline">{db.desc}</span>
-                        </button>
-                    ))}
+                            >
+                                <span>{db.icon}</span>
+                                <span className="font-medium">{db.label}</span>
+                                <span className="text-xs opacity-60 hidden sm:inline">{db.desc}</span>
+                                {/* Status indicators */}
+                                {isDisabled && <span className="text-[10px]" title="Requiere API key">🔴</span>}
+                                {needsKey && !isDisabled && <span className="text-[10px]" title="API key configurada">🟢</span>}
+                                {notDownloadable && <span className="text-[10px]" title="Solo DOIs, sin descarga directa">🟡</span>}
+                            </button>
+                        );
+                    })}
                 </div>
                 {(selectedDBs.includes("core") || selectedDBs.includes("redalyc")) && (
                     <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 text-sm flex items-start gap-3">
@@ -183,21 +200,34 @@ export default function SearchWizardDescribe({
 
                 <div className="flex flex-col sm:flex-row gap-4">
                     <div className="flex-grow">
+                        {modelsError && (
+                            <div className="mb-2 p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-xs">
+                                ⚠ No se pudieron cargar modelos de Ollama. ¿Está corriendo? (<code>ollama serve</code>)
+                            </div>
+                        )}
                         <select
                             value={isCustomModel ? "custom" : selectedLlmModel}
                             onChange={(e) => handleModelChange(e.target.value)}
+                            disabled={modelsLoading}
                             className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm transition-all"
                         >
-                            <optgroup label="Recomendados para GPU (Veloces)">
-                                {GPU_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </optgroup>
-                            <optgroup label="Recomendados para CPU (Ahorro)">
-                                {CPU_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </optgroup>
+                            <option value="">
+                                {modelsLoading ? "Cargando modelos..." : "Seleccionar modelo..."}
+                            </option>
+                            {models.map(m => (
+                                <option key={m.name} value={m.name}>
+                                    {m.name} {m.is_multimodal ? '📸' : '📝'} ({m.size.toFixed(1)} GB)
+                                </option>
+                            ))}
                             <option value="custom">✍️ Otro modelo (Manual)</option>
                         </select>
                         <p className="mt-2 text-[10px] text-slate-500 italic px-1">
-                            {isCustomModel ? "Ingresa el nombre del modelo tal cual aparece en Ollama." : (GPU_MODELS.find(m => m.value === selectedLlmModel)?.desc || CPU_MODELS.find(m => m.value === selectedLlmModel)?.desc)}
+                            {isCustomModel
+                                ? "Ingresa el nombre del modelo tal cual aparece en Ollama."
+                                : (models.find(m => m.name === selectedLlmModel)
+                                    ? `${selectedLlmModel} — ${models.find(m => m.name === selectedLlmModel)!.is_multimodal ? 'Multimodal (soporta imágenes)' : 'Solo texto'}`
+                                    : "Selecciona un modelo de la lista o escribe uno manualmente.")
+                            }
                         </p>
                     </div>
 

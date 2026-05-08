@@ -38,6 +38,19 @@ export async function getOllamaModels(): Promise<OllamaModel[]> {
   return request("/system/ollama-models");
 }
 
+export interface DBStatus {
+  id: string;
+  label: string;
+  requires_key: boolean;
+  key_configured: boolean;
+  downloadable: boolean;
+  note: string;
+}
+
+export async function fetchDBStatus(): Promise<Record<string, DBStatus>> {
+  return request("/system/db-status");
+}
+
 // ── Projects ──
 
 export interface Project {

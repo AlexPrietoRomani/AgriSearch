@@ -1,32 +1,32 @@
 """
 Archivo: system.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
-Endpoints de la API de sistema del backend de AgriSearch.
-Gestiona la información a nivel de sistema, principalmente la verificación
-y listado de los modelos disponibles localmente mediante Ollama.
+Endpoints de gestión del sistema para AgriSearch. Proporciona información sobre el
+estado de los servicios locales (Ollama) y la configuración de las bases de datos
+científicas externas. Esencial para la validación del entorno y la configuración
+del usuario en el frontend.
 
 Acciones Principales:
-    - Consulta la API de Ollama para listar los modelos instalados.
-    - Analiza heurísticamente si los modelos son multimodales o de embeddings.
-    - Gestiona los errores de conexión con el servicio local de IA.
+    - `list_ollama_models`: Recupera y clasifica los modelos de IA locales.
+    - `db_status`: Verifica la disponibilidad y requerimientos de las fuentes de datos.
 
 Estructura Interna:
-    - `OllamaModel`: Modelo Pydantic que define la estructura de retorno.
-    - `list_ollama_models`: Endpoint GET para obtener la lista de modelos.
+    - `OllamaModel`: Esquema para modelos locales.
+    - `DBStatus`: Esquema para el estado de las APIs científicas.
 
 Entradas / Dependencias:
-    - Servicio de Ollama corriendo en `http://127.0.0.1:11434`.
-    - Depende de `httpx` para realizar peticiones HTTP asíncronas.
+    - Ollama API (localhost:11434).
+    - `app.core.config.Settings`: Para verificar la presencia de API keys.
 
 Salidas / Efectos:
-    - Retorna una lista de objetos `OllamaModel` en formato JSON.
+    - Retorna el estado de conectividad con servicios de IA locales.
+    - Expone metadatos de configuración de APIs externas (sin revelar claves).
 
 Integración UI:
-    - Proporciona la información del sistema necesaria para las pantallas de configuración
-      y validación del entorno en el frontend.
+    - Consumido por el Dashboard y las pantallas de Configuración.
 """
 
 import logging
@@ -47,6 +47,15 @@ class OllamaModel(BaseModel):
     size: float
     is_multimodal: bool
     is_embedding: bool
+
+class DBStatus(BaseModel):
+    """Estado de una base de datos científica."""
+    id: str
+    label: str
+    requires_key: bool
+    key_configured: bool
+    downloadable: bool
+    note: str
 
 @router.get("/ollama-models", response_model=List[OllamaModel], summary="List available Ollama models")
 async def list_ollama_models() -> List[OllamaModel]:
@@ -96,3 +105,63 @@ async def list_ollama_models() -> List[OllamaModel]:
     except Exception as e:
         logger.error(f"Error listing Ollama models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/db-status", response_model=Dict[str, DBStatus], summary="Database availability status")
+async def db_status() -> Dict[str, DBStatus]:
+    """
+    Retorna el estado de cada base de datos científica.
+
+    Indica si cada BD requiere API key, si está configurada,
+    y si permite descarga automática de PDFs.
+    """
+    from app.core.config import get_settings
+    settings = get_settings()
+
+    return {
+        "openalex": DBStatus(
+            id="openalex", label="OpenAlex",
+            requires_key=False, key_configured=True, downloadable=True,
+            note=">200M works, OA incluido"
+        ),
+        "semantic_scholar": DBStatus(
+            id="semantic_scholar", label="Semantic Scholar",
+            requires_key=False, key_configured=True, downloadable=True,
+            note="AI-powered, 200M+ papers"
+        ),
+        "arxiv": DBStatus(
+            id="arxiv", label="ArXiv",
+            requires_key=False, key_configured=True, downloadable=True,
+            note="Preprints, siempre OA"
+        ),
+        "crossref": DBStatus(
+            id="crossref", label="Crossref",
+            requires_key=False, key_configured=True, downloadable=False,
+            note="Solo DOIs — requiere Unpaywall/Sci-Hub para PDF"
+        ),
+        "core": DBStatus(
+            id="core", label="CORE",
+            requires_key=True, key_configured=bool(settings.core_api_key),
+            downloadable=True, note="Open Access repository"
+        ),
+        "scielo": DBStatus(
+            id="scielo", label="SciELO",
+            requires_key=False, key_configured=True, downloadable=True,
+            note="Latinoamérica, español/portugués"
+        ),
+        "redalyc": DBStatus(
+            id="redalyc", label="Redalyc",
+            requires_key=True, key_configured=bool(settings.redalyc_token),
+            downloadable=True, note="Iberoamérica, requiere token gratuito"
+        ),
+        "agecon": DBStatus(
+            id="agecon", label="AgEcon Search",
+            requires_key=False, key_configured=True, downloadable=True,
+            note="Economía agrícola, OAI-PMH"
+        ),
+        "organic_eprints": DBStatus(
+            id="organic_eprints", label="Organic Eprints",
+            requires_key=False, key_configured=True, downloadable=True,
+            note="Agricultura orgánica, OAI-PMH"
+        ),
+    }
