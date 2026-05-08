@@ -16,6 +16,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "aiohttp-retry" },
     { name = "aiosqlite" },
     { name = "alembic" },
     { name = "beautifulsoup4" },
@@ -53,6 +54,7 @@ dependencies = [
     { name = "rank-bm25" },
     { name = "rapidfuzz" },
     { name = "rich" },
+    { name = "scihub" },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "sentence-transformers" },
@@ -64,6 +66,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = "==3.13.5" },
+    { name = "aiohttp-retry", specifier = ">=2.9.1" },
     { name = "aiosqlite", specifier = "==0.22.1" },
     { name = "alembic", specifier = "==1.18.4" },
     { name = "beautifulsoup4", specifier = "==4.14.3" },
@@ -101,6 +104,7 @@ requires-dist = [
     { name = "rank-bm25", specifier = "==0.2.2" },
     { name = "rapidfuzz", specifier = "==3.14.3" },
     { name = "rich", specifier = "==14.3.3" },
+    { name = "scihub", specifier = ">=0.0.1" },
     { name = "scikit-learn", specifier = "==1.8.0" },
     { name = "scipy", specifier = "==1.17.1" },
     { name = "sentence-transformers", specifier = ">=5.1.0" },
@@ -150,6 +154,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/67/5b3ac26b80adb20ea541c487f73730dc8fa107d632c998f25bbbab98fcda/aiohttp-3.13.5-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:7996023b2ed59489ae4762256c8516df9820f751cf2c5da8ed2fb20ee50abab3", size = 1752321, upload-time = "2026-03-31T21:57:30.549Z" },
     { url = "https://files.pythonhosted.org/packages/88/06/e4a2e49255ea23fa4feeb5ab092d90240d927c15e47b5b5c48dff5a9ce29/aiohttp-3.13.5-cp311-cp311-win32.whl", hash = "sha256:77dfa48c9f8013271011e51c00f8ada19851f013cde2c48fca1ba5e0caf5bb06", size = 439069, upload-time = "2026-03-31T21:57:32.388Z" },
     { url = "https://files.pythonhosted.org/packages/c0/43/8c7163a596dab4f8be12c190cf467a1e07e4734cf90eebb39f7f5d53fc6a/aiohttp-3.13.5-cp311-cp311-win_amd64.whl", hash = "sha256:d3a4834f221061624b8887090637db9ad4f61752001eae37d56c52fddade2dc8", size = 462859, upload-time = "2026-03-31T21:57:34.455Z" },
+]
+
+[[package]]
+name = "aiohttp-retry"
+version = "2.9.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9d/61/ebda4d8e3d8cfa1fd3db0fb428db2dd7461d5742cea35178277ad180b033/aiohttp_retry-2.9.1.tar.gz", hash = "sha256:8eb75e904ed4ee5c2ec242fefe85bf04240f685391c4879d8f541d6028ff01f1", size = 13608, upload-time = "2024-11-06T10:44:54.574Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/99/84ba7273339d0f3dfa57901b846489d2e5c2cd731470167757f1935fffbd/aiohttp_retry-2.9.1-py3-none-any.whl", hash = "sha256:66d2759d1921838256a05a3f80ad7e724936f083e35be5abb5e16eed6be6dc54", size = 9981, upload-time = "2024-11-06T10:44:52.917Z" },
 ]
 
 [[package]]
@@ -1988,6 +2004,15 @@ wheels = [
 ]
 
 [[package]]
+name = "retrying"
+version = "1.4.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/5a/b17e1e257d3e6f2e7758930e1256832c9ddd576f8631781e6a072914befa/retrying-1.4.2.tar.gz", hash = "sha256:d102e75d53d8d30b88562d45361d6c6c934da06fab31bd81c0420acb97a8ba39", size = 11411, upload-time = "2025-08-03T03:35:25.189Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/f3/6cd296376653270ac1b423bb30bd70942d9916b6978c6f40472d6ac038e7/retrying-1.4.2-py3-none-any.whl", hash = "sha256:bbc004aeb542a74f3569aeddf42a2516efefcdaff90df0eb38fbfbf19f179f59", size = 10859, upload-time = "2025-08-03T03:35:23.829Z" },
+]
+
+[[package]]
 name = "rich"
 version = "14.3.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2056,6 +2081,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/05/e5/cb4b713c8a93469e3c5be7c3f8d77d307e65fe89673e731f5c2bfd0a9237/safetensors-0.7.0-cp38-abi3-win32.whl", hash = "sha256:c74af94bf3ac15ac4d0f2a7c7b4663a15f8c2ab15ed0fc7531ca61d0835eccba", size = 326423, upload-time = "2025-11-19T15:18:45.74Z" },
     { url = "https://files.pythonhosted.org/packages/5d/e6/ec8471c8072382cb91233ba7267fd931219753bb43814cbc71757bfd4dab/safetensors-0.7.0-cp38-abi3-win_amd64.whl", hash = "sha256:d1239932053f56f3456f32eb9625590cc7582e905021f94636202a864d470755", size = 341380, upload-time = "2025-11-19T15:18:44.427Z" },
 ]
+
+[[package]]
+name = "scihub"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "requests" },
+    { name = "retrying" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d6/79/4f6d3136772b46d2647a8e9ad8b5bad39b2a387ac7ed1c12e854f8939c7a/scihub-0.0.1.tar.gz", hash = "sha256:18464941adc4d865f39678057f83bca05af2440a9bea96e8460691869840892e", size = 4072, upload-time = "2018-09-01T16:16:18.082Z" }
 
 [[package]]
 name = "scikit-learn"
