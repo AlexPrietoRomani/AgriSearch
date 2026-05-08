@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { uploadPdf, reparsePdfs, cancelReparse, type Article, type SearchResults, type DownloadProgress } from "../lib/api";
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
@@ -36,6 +36,23 @@ export default function SearchWizardResults({
     const [showQueries, setShowQueries] = useState(false);
     const [isReparsing, setIsReparsing] = useState(false);
     const [showProgressModal, setShowProgressModal] = useState(false);
+
+    // Estadísticas de disponibilidad por artículo
+    const downloadableCount = useMemo(() => articles.filter(a => a.open_access_url).length, [articles]);
+    const doiOnlyCount = useMemo(() => articles.filter(a => !a.open_access_url && a.doi).length, [articles]);
+    const noIdCount = useMemo(() => articles.filter(a => !a.open_access_url && !a.doi).length, [articles]);
+
+    // Conteo por BD con info de descargabilidad
+    const resultsByDB = useMemo(() => {
+        const map: Record<string, { total: number; downloadable: number }> = {};
+        articles.forEach(a => {
+            const db = a.source_database || 'unknown';
+            if (!map[db]) map[db] = { total: 0, downloadable: 0 };
+            map[db].total++;
+            if (a.open_access_url) map[db].downloadable++;
+        });
+        return map;
+    }, [articles]);
 
     const handleReparse = async (articleId?: string) => {
         setIsReparsing(true);
@@ -133,7 +150,7 @@ export default function SearchWizardResults({
             />
 
             {/* Stats Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-2">
                 <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-center">
                     <div className="text-2xl font-bold text-emerald-400">{searchResults.total_found}</div>
                     <div className="text-xs text-slate-400 mt-1">Artículos Únicos</div>
@@ -148,6 +165,12 @@ export default function SearchWizardResults({
                         <div className="text-xs text-slate-400 mt-1">{source}</div>
                     </div>
                 ))}
+            </div>
+            {/* Disponibilidad summary */}
+            <div className="text-sm text-slate-500 mb-6 flex items-center gap-4 flex-wrap">
+                <span>📥 {downloadableCount} descargables</span>
+                <span>🔗 {doiOnlyCount} solo DOI</span>
+                <span>— {noIdCount} sin ID</span>
             </div>
 
             {/* Queries Debug Section */}
@@ -196,6 +219,23 @@ export default function SearchWizardResults({
                                             <div key={db} className="p-3 bg-slate-950 rounded-lg border border-slate-800">
                                                 <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">{db}</div>
                                                 <div className="text-xs text-slate-300 font-mono break-all">{query}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Resultados por BD con conteo de descargables */}
+                            {Object.keys(resultsByDB).length > 0 && (
+                                <div className="mt-4">
+                                    <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-2">Resultados por Base de Datos</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                        {Object.entries(resultsByDB).map(([db, stats]) => (
+                                            <div key={db} className="p-2 bg-slate-950 rounded-lg border border-slate-800 flex items-center justify-between">
+                                                <span className="text-xs font-bold text-slate-400 uppercase">{db}</span>
+                                                <span className="text-xs text-slate-300">
+                                                    {stats.total} artículos ({stats.downloadable} descargables)
+                                                </span>
                                             </div>
                                         ))}
                                     </div>
@@ -295,6 +335,11 @@ export default function SearchWizardResults({
                                 Año {sortField === "year" && (sortDirection === "asc" ? "↑" : "↓")}
                             </th>
                             <th
+                                className="text-left px-4 py-4 text-slate-400 font-semibold uppercase tracking-wider w-20 text-center"
+                            >
+                                Disp.
+                            </th>
+                            <th
                                 className="text-left px-4 py-4 text-slate-400 font-semibold uppercase tracking-wider w-32 cursor-pointer hover:text-emerald-400 transition-colors"
                                 onClick={() => handleSort("source_database")}
                             >
@@ -338,6 +383,17 @@ export default function SearchWizardResults({
                                     </td>
                                     <td className="px-4 py-5 align-top">
                                         <span className="text-slate-300 font-mono">{a.year || "—"}</span>
+                                    </td>
+                                    <td className="px-4 py-5 align-top text-center">
+                                        {a.local_pdf_path ? (
+                                            <span title="Descargado" className="text-green-500 text-lg">✅</span>
+                                        ) : a.open_access_url ? (
+                                            <span title="Descargable (OA)" className="text-blue-500 text-lg">📥</span>
+                                        ) : a.doi ? (
+                                            <a href={`https://doi.org/${a.doi}`} target="_blank" rel="noopener noreferrer" title={`DOI: ${a.doi}`} className="text-orange-500 hover:text-orange-400 text-lg">🔗</a>
+                                        ) : (
+                                            <span title="Sin identificador" className="text-gray-500 text-lg">—</span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-5 align-top">
                                         <span className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold tracking-wider ${sourceColor(a.source_database)}`}>
