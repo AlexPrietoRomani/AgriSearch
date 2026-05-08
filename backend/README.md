@@ -16,10 +16,12 @@ graph TD
     System --> OllamaAPI[Ollama Local API: /api/tags]
     Project --> SQL[(SQLite: agrisearch.db)]
     
-    Search --> DB_Ext[External APIs: ArXiv, OpenAlex, Semantic Scholar]
+    Search --> DB_Ext[MCP Clients: 9 Academic APIs]
+    DB_Ext --> Unpaywall[OA Resolver: Unpaywall]
     Search --> Download[Download Service: PDF Async]
+    Download --> SciHub[Fallback Downloader: Sci-Hub]
     
-    Screening --> PDF_Parser[PDFParserService: Docling + Vision]
+    Screening --> PDF_Parser[PDFParserService: Docling / MarkItDown]
     Search --> PDF_Parser
     
     PDF_Parser --> VLM[Gemma 4 Vision: Análisis de Imágenes]
@@ -49,8 +51,11 @@ graph TD
 
 ### Funcionalidades Dinámicas Implementadas
 *   **Auto-descubrimiento de Ollama**: El endpoint `/system/ollama-models` lista todos los modelos locales disponibles automáticamente mediante comunicación directa con la API de Ollama y clasifica según capacidades (Multimodal, Embedding).
+*   **Gestión Inteligente de Motores (MCP Clients)**: Arquitectura resiliente con 9 bases de datos (OpenAlex, Semantic Scholar, ArXiv, CrossRef, CORE, SciELO, Redalyc, AgEcon, Organic Eprints), empleando **CircuitBreaker** y **RetryClient** con retardos exponenciales contra baneos (HTTP 429) y validación estricta (`QueryVerifier`).
+*   **Resolución OA de Última Milla**: Consulta automática a Unpaywall para URLs Open Access faltantes en DOIs, y fallback de Descarga Forzada interactiva integrada nativamente contra los mirrors encriptados de Sci-Hub (`scihub_service.py`).
+*   **Tests de Integración y Mocks**: Cobertura estandarizada (Pytest) cubriendo constructores deterministas (`test_query_builder_comprehensive.py`), parseo estructurado del esquema (`test_client_parsing.py`) e ingesta PDF automatizada con Active Learning RAG mockups.
 *   **Re-parsing Forzado (MD)**: Endpoint dinámico en `/search/reparse` para iterar, reprocesar y mejorar métricas de los PDFs descargados, regenerando los documentos Markdown y su indexación vectorial RAG bajo demanda de forma asíncrona.
-*   **Métricas de Calidad Automatizadas**: Clasifica la extracción Markdown como `alta`, `media` o `baja` en base a parámetros del formato exportado por Docling.
+*   **Métricas de Calidad Automatizadas**: Clasifica la extracción Markdown como `alta`, `media` o `baja` en base a parámetros del formato exportado por Docling / MarkItDown.
 
 ## 🛠️ Tecnologías Clave
 

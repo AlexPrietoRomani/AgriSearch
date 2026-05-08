@@ -30,11 +30,11 @@ ollama pull nomic-embed-text-v2-moe:latest
 *Nota: Durante la creación del proyecto, el sistema autodetectará qué modelos tienes instalados en tu Ollama. Puedes tener otros alternativos como `llava`.*
 
 ### 3. Configurar tus Accesos (Credenciales de API)
-Varias bases de datos científicas integradas (como **CORE** y **Redalyc**) exigen permisos gratuitos para proveer resultados. 
+Varias bases de datos científicas integradas (como **CORE** y **Redalyc**) exigen permisos gratuitos para proveer resultados. Adicionalmente, el servicio de rescate de PDFs (Unpaywall) requiere un email válido institucional o personal para operar respetando sus políticas de rate limit.
 1. Ve a la carpeta `backend` en el proyecto.
 2. Haz una copia del archivo `.env.example` y renómbralo a `.env`.
-3. Ábrelo con cualquier editor de texto. Adentro verás enlaces para registrarte gratuitamente en CORE, Redalyc y otras bases. Rellena los tokens generados tras los signos de igual (`=`). 
-> **Nota:** Si omites este paso, al buscar con CORE o Redalyc activados obtendrás siempre 0 resultados.
+3. Ábrelo con cualquier editor de texto. Adentro verás enlaces para registrarte gratuitamente en CORE, Redalyc y Unpaywall. Rellena los tokens y el email generado tras los signos de igual (`=`). 
+> **Nota:** Si omites este paso, al buscar con CORE o Redalyc activados obtendrás siempre 0 resultados. Asimismo, la auto-resolución de Open Access mediante DOI no funcionará y el botón de Descarga Forzada fallará de manera escalonada.
 
 ### 4. Preparar el Entorno y Dependencias (Recomendado: uv)
 

@@ -32,20 +32,20 @@ AgriSearch se organiza en **4 capas principales**:
 │  Axum + linfa   │                    │  agrisearch│ │  Embeddings│
 │  :3001          │                    └───────────┘ └───────────┘
 └────────┬────────┘                         │
-         │                            MCP   │  Consultas Paralelas
+         │                            MCP   │  Circuit Breaker / Retry Client
          │                                  ▼
          │                            ┌─────────────────────────┐
          │                            │  Red Científica         │
          │                            │  9+ Bases de Datos      │
          │                            │  OpenAlex / S.Scholar   │
          │                            │  ArXiv / Crossref / ... │
-         │                            └─────────────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│  datos_cribado  │
-│  .sqlite        │
-│  (sqlite-vec)   │
+         │                            └──────┬──────────────────┘
+         │                                   │ OA Resolver
+         ▼                                   ▼
+┌─────────────────┐                 ┌─────────────────┐
+│  datos_cribado  │                 │ Unpaywall API / │
+│  .sqlite        │                 │ Sci-Hub Fallback│
+│  (sqlite-vec)   │                 └─────────────────┘
 └─────────────────┘
 ```
 
@@ -82,9 +82,10 @@ AgriSearch se organiza en **4 capas principales**:
 
 ### Fase 2: Recolección
 
-7. **Descargar PDFs** — Descarga automática de Open Access con rate-limiting y validación magic bytes.
-8. **Parseo Dual-Parser** — OpenDataLoader (PDFs científicos, benchmark #1: 0.907) + MarkItDown (DOCX, PPTX, HTML).
-9. **Enriquecimiento LLM** — Extracción de metadatos, metodología, variables agrícolas y descripción VLM de figuras.
+7. **Extracción Open Access** — Unpaywall interviene resolviendo URLs ausentes para registros con DOI.
+8. **Descarga PDFs** — Descarga automática de repositorios con rate-limiting. Si la descarga falla, interviene Sci-Hub (a petición manual).
+9. **Parseo Dual-Parser** — OpenDataLoader (PDFs científicos, benchmark #1: 0.907) + MarkItDown (DOCX, PPTX, HTML).
+10. **Enriquecimiento LLM** — Extracción de metadatos, metodología, variables agrícolas y descripción VLM de figuras.
 
 ### Fase 3: Cribado
 

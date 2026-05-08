@@ -20,8 +20,11 @@ El proyecto está diseñado para ser rápido, modular y con un estilo visual "da
 ## 🌟 Funcionalidades Principales
 
 - **Dashboard Principal**: Gestión de Proyectos, listado de búsquedas y revisiones pasadas y control general del pipeline mediante `ProjectDashboard.tsx`.
-- **Wizard de Búsqueda Sistemática**: Un componente Multi-Step poderoso (`SearchWizard`) dividido en 4 pasos (Descripción, Revisión de Query LLC, Búsqueda asíncrona concurrente, Resultados con LaTeX y descarga PDF local).
-- **Control Inteligente de Inputs**: Preservación del Prompt Natural en paralelo a las queries crudas. Control visual del número de artículos *no encontrados/sin enlace* disponible para descarga.
+- **Selectores Dinámicos e Inteligentes**: 
+  - *Model Auto-Discovery*: Detección en tiempo real de los modelos LLM locales instalados vía Ollama (identificando capacidades multimodales como `gemma4:e4b`).
+  - *DB Status Tracker*: Evaluación en vivo del estado de las API keys en el backend, habilitando o deshabilitando motores de pago (ej. CORE, Redalyc) en la UI de selección.
+- **Wizard de Búsqueda Sistemática**: Un componente Multi-Step poderoso (`SearchWizard`) dividido en 4 pasos (Descripción, Revisión de Query LLC, Búsqueda asíncrona concurrente de 9 motores, Resultados con LaTeX y descarga PDF local).
+- **Indicadores de Disponibilidad (OA & Sci-Hub)**: Control visual estricto en la tabla de resultados para identificar si un artículo es descargable 📥, de Solo Referencia 🔗 o requiere intervención. Integra botón interactivo de **Forzar Descarga** (vía `scihub_service.py`) para papers restringidos.
 - **Sistema de Revisiones (Screening) Multi-Persona**: Una interfaz estricta (tipo Rayyan) que permite gestionar artículos con su PDF local en pantalla dividida o mediante modal. Traducciones automáticas vía LLM locales (Aya, Qwen, LLaMA), atajos de teclado y conteos en vivo.
 - **Botones de Purga de Sesión**: Posibilidad de eliminar búsquedas o revisiones. Al borrar una revisión se usa "Eliminación Segura", manteniendo los PDFs descargados intactos en sus rutas sanitizadas (`Project_Name/Search_Name/descargas`).
 

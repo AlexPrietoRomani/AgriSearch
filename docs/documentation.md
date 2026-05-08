@@ -7,7 +7,7 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
 ## Registro de Cambios y Funcionalidades
 
 ### Búsqueda y Obtención de PDFs (Fase 1)
-- **Extracción Inteligente:** Ejecuta queries a OpenAlex, Semantic Scholar y Arxiv, deduplica e inserta en SQLite.
+- **Extracción Inteligente:** Ejecuta queries a 9 motores (OpenAlex, Semantic Scholar, ArXiv, CrossRef, CORE, SciELO, Redalyc, AgEcon, Organic Eprints), deduplica e inserta en SQLite.
 - **Adaptación Determinista por Base de Datos:** Para evitar fallos de sintaxis en búsquedas complejas (ej. consultas booleanas con paréntesis que rompen las APIs), el backend usa un módulo determinista (`query_builder.py`) que construye la query óptima para cada API. No depende de un LLM para la adaptación, eliminando la impredecibilidad.
   - **OpenAlex**: Texto plano con keywords separados por espacios.
   - **Semantic Scholar**: Keywords concisas (no acepta nested boolean logic).
@@ -19,13 +19,15 @@ Este documento contiene el registro de cambios funcionales, decisiones técnicas
   - **AgEcon Search**: OAI-PMH libre, filtrado local por keywords.
   - **Organic Eprints**: OAI-PMH libre, filtrado local por keywords.
 - **Extracción de Conceptos por LLM:** El LLM (Ollama) se usa **solo una vez** para extraer conceptos, sinónimos y desglose PICO del input del usuario. Retorna un JSON estructurado (no una query booleana libre).
+- **Resolución Open Access (Unpaywall):** Para los artículos que solo poseen DOI (ej. provenientes de CrossRef), el servicio interno consulta automáticamente la API de Unpaywall para ubicar la mejor URL en Open Access disponible, reduciendo drásticamente la pérdida de papers.
 - **Descarga Múltiple Open Access:** El servicio `download_service.py` obtiene automáticamente los PDFs vía requests asíncronas de las URLs enlazadas, los guarda en `data/projects/{id}/pdfs` y los nombra automáticamente usando la convención `[Año]_[PrimerAutor]_[Slug_Titulo].pdf`.
-- **Subida Manual (Upload):** Endpoint `POST /search/upload-pdf/{article_id}`. Para los artículos que están bloqueados por un paywall, el usuario puede subir localmente su archivo PDF desde el dashboard de resultados. El archivo se enlaza directamente a su base de datos.
+- **Integración de Último Recurso (Sci-Hub):** Si un artículo carece de URL Open Access y Unpaywall no arroja resultados, el usuario puede invocar la **Descarga Forzada** (`POST /search/scihub-download/{article_id}`). El sistema emplea internamente `scihub_service.py` para tramitar la obtención del PDF mediante DOI sorteando proxies y espejos dinámicos de Sci-Hub de forma transparente.
+- **Resiliencia Anti-Fallos:** El ecosistema de búsqueda emplea un cliente adaptativo asíncrono (`RetryClient` + `CircuitBreaker`) que tolera rate-limits (HTTP 429) y errores de gateway (502/503/504) mediante retardos exponenciales. Además, incluye un verificador de queries (`QueryVerifier`) para generar alertas si las bases de datos devuelven 0 resultados.
 - **Eliminación de Búsquedas Segura:** Los usuarios pueden eliminar consultas del historial preventivamente. Esta acción ejecuta un Cascade Delete en la base de datos (eliminando `SearchQuery` y sus `Article`s) e intercepta el almacenamiento local, eliminando automáticamente los archivos PDF asociados a tales IDs para liberar espacio en disco. En la UI, el botón de eliminación está correctamente posicionado por encima del bloque redireccionador (con `z-index` y `stopPropagation`) para evitar colisiones de clics.
-- **Transparencia Total de Queries:** `ArticleResponse` incluye `local_pdf_path` para que el frontend pueda mostrar el nombre del archivo local en la tabla de resultados. `SearchResultsResponse` incluye la propiedad `prompt_used` y `adapted_queries` con precisión literal. Además se ha modificado la tabla `SearchQuery` en SQLite (añadiendo la columna en texto plano `adapted_queries_json`) para preservar perennemente qué le fue enviado a cada API. En la Interfaz de Resultados, un Acordeón desplegable de "Depuración" expone ambos parámetros al investigador.
-- **Selección Flexible y Dinámica de Modelos (Ollama Auto-Discovery):** Los usuarios pueden elegir qué modelo de Ollama utilizar al iniciar un proyecto.
-  - El sistema integra un endpoint (`GET /system/ollama-models`) que pollea en tiempo real la propia API de tu máquina local.
-  - En la interfaz gráfica del modal de creación de proyectos, se autocompleta la lista de modelos separándolos según sus "Familias", e identificando proactivamente si un modelo tiene facultades **Multimodales** (VLM - ej. `gemma4:e4b`) las cuales son altamente requeridas para extraer información desde imágenes presentes en los PDFs descargados.
+- **Transparencia Total de Queries:** `ArticleResponse` incluye `local_pdf_path` para que el frontend pueda mostrar el nombre del archivo local en la tabla de resultados. `SearchResultsResponse` incluye la propiedad `prompt_used` y `adapted_queries` con precisión literal. Además se ha modificado la tabla `SearchQuery` en SQLite (añadiendo la columna en texto plano `adapted_queries_json`) para preservar perennemente qué le fue enviado a cada API. En la Interfaz de Resultados, un Acordeón desplegable de "Depuración" expone ambos parámetros al investigador, sumado a estadísticas detalladas de cuántos artículos son **Descargables** frente a los que son de **Solo Referencia**.
+- **Selección Flexible y Dinámica:**
+  - **Selector de Modelos (Ollama Auto-Discovery):** Integración endpoint (`GET /system/ollama-models`) que sondea en tiempo real la API local para autocompletar modelos e identificar proactivamente los multimodales (ej. `llama3.2-vision`).
+  - **Selector Inteligente de Motores:** Verificación reactiva en UI (`GET /system/db-status`) que activa/desactiva bases de datos (como CORE o Redalyc) basándose en si el backend detecta las API Keys correspondientes cargadas en el sistema.
 - **Dashboard Integrado:** La portada de cada proyecto (`ProjectDashboard.tsx`) amalgama eficientemente tanto el **Historial de Búsquedas** como el **Historial de Revisiones (Screening)**, creando un ecosistema completo para monitorear el progreso del cribado PRISMA en una sola vista central. Asimismo se han refactorizado las asignaciones de estado (`useState`) iniciales en base a parámetros URl para eliminar destellos visuales o pestañeos transaccionales del renderizado (Flicker Fixes).
 
 #### Flujo de Ejecución Global del Sistema (Arquitectura)
@@ -92,9 +94,8 @@ sequenceDiagram
     participant API as FastAPI
     participant LLM as LLM (Ollama)
     participant QB as query_builder.py
-    participant OA as OpenAlex
-    participant SS as Semantic Scholar
-    participant AX as ArXiv
+    participant MCP as MCP Clients (9 APIs)
+    participant UNP as Unpaywall (OA Resolver)
     participant DB as SQLite
 
     User->>FE: Describe tema en lenguaje natural
@@ -102,24 +103,26 @@ sequenceDiagram
     API->>LLM: Extrae conceptos + sinónimos + PICO
     LLM-->>API: {concepts, synonyms, pico}
     API-->>FE: Conceptos para revisión del usuario
-    User->>FE: Aprueba/edita query
+    User->>FE: Confirma motores y ejecuta búsqueda
     FE->>API: POST /execute {query, databases}
     API->>QB: build_all_queries(concepts, databases)
-    QB-->>API: {openalex: "...", ss: "...", arxiv: "..."}
-    par OpenAlex
-        API->>OA: GET /works?search=...
-    and Semantic Scholar
-        API->>SS: GET /paper/search?query=...
-    and ArXiv
-        API->>AX: GET /api/query?search_query=...
+    QB-->>API: {openalex: "...", ss: "...", arxiv: "...", ...}
+    
+    API->>MCP: Ejecución Paralela Resiliente (asyncio.gather)
+    Note over API,MCP: CircuitBreaker + RetryClient evitan fallos 429/50x
+    MCP-->>API: Array de resultados en bruto
+    
+    loop Fallback OA
+        opt Artículo solo posee DOI (ej. CrossRef)
+            API->>UNP: GET https://api.unpaywall.org/v2/{doi}
+            UNP-->>API: Open Access URL extraída
+        end
     end
-    OA-->>API: resultados
-    SS-->>API: resultados
-    AX-->>API: resultados
-    API->>API: Merge + Dedup (DOI + fuzzy title)
-    API->>DB: INSERT artículos nuevos
-    API-->>FE: Resultados + adapted_queries
-    FE->>User: Tabla de artículos filtrados
+    
+    API->>API: Merge + Deduplicación (DOI exacto + Fuzzy Title 85%)
+    API->>DB: INSERT artículos (Persistencia Escalable)
+    API-->>FE: Resultados enriquecidos + Métricas por BD
+    FE->>User: Dashboard con indicador de Disponibilidad (📥 vs 🔗)
 ```
 
 #### Flujo de Preprocesamiento y Enriquecimiento (Fase 2)
