@@ -18,35 +18,53 @@ AgriSearch se organiza en **4 capas principales**:
 | **Procesamiento IA** | Ollama Local + LiteLLM | — |
 | **Almacenamiento** | SQLite + Qdrant (vectorial) | — |
 
-```
-┌─────────────────┐    HTTP/JSON     ┌─────────────────┐    Prompts    ┌─────────────────┐
-│   Frontend      │ ──────────────── │   Backend       │ ──────────── │   LLM / IA      │
-│   Astro+React   │                  │   FastAPI        │              │   Ollama Local   │
-│   :4321         │                  │   :8000          │              │                  │
-└────────┬────────┘                  └────────┬────────┘              └─────────────────┘
-         │                                    │           │
-    AL :3001 │                            SQL  │           │  Vector
-         ▼                                    ▼           ▼
-┌─────────────────┐                    ┌───────────┐ ┌───────────┐
-│  Rust AL Worker │                    │  SQLite   │ │  Qdrant   │
-│  Axum + linfa   │                    │  agrisearch│ │  Embeddings│
-│  :3001          │                    └───────────┘ └───────────┘
-└────────┬────────┘                         │
-         │                            MCP   │  Circuit Breaker / Retry Client
-         │                                  ▼
-         │                            ┌─────────────────────────┐
-         │                            │  Red Científica         │
-         │                            │  9+ Bases de Datos      │
-         │                            │  OpenAlex / S.Scholar   │
-         │                            │  ArXiv / Crossref / ... │
-         │                            └──────┬──────────────────┘
-         │                                   │ OA Resolver
-         ▼                                   ▼
-┌─────────────────┐                 ┌─────────────────┐
-│  datos_cribado  │                 │ Unpaywall API / │
-│  .sqlite        │                 │ Sci-Hub Fallback│
-│  (sqlite-vec)   │                 └─────────────────┘
-└─────────────────┘
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
+flowchart TD
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+
+    subgraph UI [Capa de Interfaz]
+        FE["Frontend (Astro + React)<br/>:4321"]:::frontend
+    end
+
+    subgraph Core [Capa de Lógica]
+        BE["Backend (FastAPI)<br/>:8000"]:::backend
+        AL["Rust AL Worker (Axum)<br/>:3001"]:::backend
+    end
+
+    subgraph AI [Capa de Inteligencia]
+        LLM["Ollama Local API<br/>(Aya / Llama 4)"]:::llm
+    end
+
+    subgraph Storage [Capa de Persistencia]
+        SQL[("SQLite<br/>agrisearch.db")]:::database
+        Vec[("Qdrant<br/>Vector Store")]:::database
+        ALDB[("datos_cribado.sqlite<br/>(sqlite-vec)")]:::database
+    end
+
+    subgraph Network [Red Científica]
+        MCP["9+ APIs Académicas<br/>(OpenAlex, ArXiv, etc.)"]:::external
+        OA["OA Resolver<br/>Unpaywall / Sci-Hub"]:::external
+    end
+
+    FE <-->|"HTTP/JSON"| BE
+    FE <-->|"AL Decisions"| AL
+    BE <-->|"Prompts / Embeddings"| LLM
+    BE --- SQL
+    BE --- Vec
+    BE -->|"Resilient Search"| MCP
+    MCP --> OA
+    AL --- ALDB
+
+    style UI fill:#f9f9f9,stroke:#333,stroke-dasharray: 5 5
+    style Core fill:#f9f9f9,stroke:#333,stroke-dasharray: 5 5
+    style AI fill:#f9f9f9,stroke:#333,stroke-dasharray: 5 5
+    style Storage fill:#f9f9f9,stroke:#333,stroke-dasharray: 5 5
+    style Network fill:#f9f9f9,stroke:#333,stroke-dasharray: 5 5
 ```
 
 ---
@@ -275,22 +293,30 @@ El módulo de Active Learning fue migrado desde Python (scikit-learn) a un micro
 
 ### Arquitectura Implementada
 
-```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│  Astro Frontend │      │  FastAPI Backend │      │  Rust AL Worker │
-│  :4321          │      │  :8000           │      │  :3001          │
-│                 │      │                  │      │                 │
-│  Screening UI ──┼──────┼▶ /screening/*    │      │  POST /decide   │
-│                 │      │  /search/*       │      │  GET  /next     │
-│  AL Decisions ──┼──────┼──────────────────┼──────┼▶ GET  /status   │
-│                 │      │                  │      │  GET  /progress │
-└─────────────────┘      └─────────────────┘      └─────────────────┘
-                                                               │
-                                                     ┌─────────┴─────────┐
-                                                     │  datos_cribado    │
-                                                     │  .sqlite          │
-                                                     │  (sqlite-vec)     │
-                                                     └───────────────────┘
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
+flowchart LR
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+
+    subgraph Client [Vista de Usuario]
+        FE["Astro Frontend<br/>:4321"]:::frontend
+    end
+
+    subgraph Services [Servicios de Backend]
+        BE["FastAPI Backend<br/>:8000"]:::backend
+        RW["Rust AL Worker<br/>:3001"]:::backend
+    end
+
+    subgraph Data [Persistencia AL]
+        DB[("datos_cribado.sqlite<br/>(sqlite-vec)")]:::database
+    end
+
+    FE -->|"/screening/*<br/>/search/*"| BE
+    FE -->|"POST /decide<br/>GET /next"| RW
+    RW -->|"GET /status<br/>GET /progress"| FE
+    RW --- DB
 ```
 
 ### Métricas Reales
