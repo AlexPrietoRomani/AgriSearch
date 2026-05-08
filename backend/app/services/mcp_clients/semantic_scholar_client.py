@@ -1,6 +1,6 @@
 """
 Archivo: semantic_scholar_client.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -14,12 +14,16 @@ Acciones Principales:
     - Normaliza la respuesta del grafo de artículos al formato estándar de AgriSearch.
 
 Estructura Interna:
-    - `_parse_ss_paper`: Convierte un objeto de artículo de Semantic Scholar en el esquema interno.
-    - `search_semantic_scholar`: Función principal con soporte para paginación y filtros de fecha.
+    - `_parse_ss_paper`: Convierte objeto de Semantic Scholar en esquema interno.
+    - `search_semantic_scholar`: Función principal de búsqueda federada.
 
 Entradas / Dependencias:
     - Librería `aiohttp`.
-    - API Graph de Semantic Scholar (endpoint `/paper/search`).
+    - API Graph de Semantic Scholar.
+
+Salidas / Efectos:
+    - Retorna una lista de artículos normalizados con identificadores de Semantic Scholar.
+    - Realiza llamadas de red asíncronas sujetas a rate limits de api.semanticscholar.org.
 
 Ejemplo de Integración:
     articles = await search_semantic_scholar("climate change impact", max_results=25)

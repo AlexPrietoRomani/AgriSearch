@@ -1,6 +1,6 @@
 """
 Archivo: scielo_client.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -14,12 +14,16 @@ Acciones Principales:
     - Normaliza los datos al formato estándar de AgriSearch.
 
 Estructura Interna:
-    - `_parse_scielo_work`: Parsea un documento de SciELO manejando campos multilingües.
-    - `search_scielo`: Función principal que gestiona la petición y el parseo JSON/HTML.
+    - `_parse_scielo_work`: Parsea documentos multilingües de SciELO.
+    - `search_scielo`: Función principal de búsqueda federada.
 
 Entradas / Dependencias:
     - Librería `aiohttp`.
     - Endpoint de búsqueda de SciELO.
+
+Salidas / Efectos:
+    - Retorna una lista de artículos con soporte multilingüe normalizado.
+    - Realiza llamadas de red asíncronas a search.scielo.org.
 
 Ejemplo de Integración:
     articles = await search_scielo("riego por goteo", max_results=10)

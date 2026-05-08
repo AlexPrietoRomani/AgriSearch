@@ -1,6 +1,6 @@
 """
 Archivo: search_service.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -18,14 +18,19 @@ Acciones Principales:
 
 Estructura Interna:
     - `execute_search`: Orquestador principal de la búsqueda y persistencia.
-    - `_extract_concepts_from_query`: Procesa la entrada del usuario para extraer términos atómicos.
-    - `_normalize_doi`: Estandariza DOIs para comparación precisa.
-    - `_is_duplicate_title`: Implementa RapidFuzz para detectar duplicados por título.
+    - `_extract_concepts_from_query`: Procesa la entrada del usuario.
+    - `_normalize_doi`: Estandariza DOIs para comparación.
+    - `_is_duplicate_title`: Implementa RapidFuzz para detección de duplicados.
 
 Entradas / Dependencias:
     - Clientes MCP para cada base de datos.
     - `QueryBuilder` para la adaptación sintáctica.
     - Base de datos (SQLAlchemy AsyncSession).
+
+Salidas / Efectos:
+    - Registra nuevas consultas (`SearchQuery`) y artículos (`Article`) en la DB.
+    - Coordina llamadas de red paralelas a múltiples APIs externas.
+    - Elimina archivos físicos (PDF/MD) al borrar consultas.
 
 Ejemplo de Integración:
     results = await execute_search(db, project_id, "control biológico", ["arxiv", "scielo"])

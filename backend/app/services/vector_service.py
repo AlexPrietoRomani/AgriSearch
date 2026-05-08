@@ -1,6 +1,6 @@
 """
 Archivo: vector_service.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -11,20 +11,24 @@ de artículos y LiteLLM/Ollama para la generación de embeddings.
 Acciones Principales:
     - Gestión de colecciones vectoriales segmentadas por proyecto.
     - Generación de embeddings para consultas y documentos.
-    - Fragmentación inteligente (chunking) de Markdown con conciencia estructural (encabezados).
-    - Búsqueda de similitud de coseno para recuperación de información relevante (RAG).
-    - Persistencia de metadatos bibliográficos junto con los vectores para trazabilidad.
+    - Fragmentación inteligente (chunking) de Markdown con conciencia estructural.
+    - Búsqueda de similitud de coseno para recuperación de información (RAG).
+    - Persistencia de metadatos bibliográficos junto con los vectores.
 
 Estructura Interna:
     - `ensure_collection`: Garantiza la existencia del índice para un proyecto.
     - `chunk_text`: Implementa la lógica de división de texto por secciones.
-    - `index_article`: Orquestador de vectorización e inserción masiva (upsert).
-    - `search`: Realiza la búsqueda semántica y formatea los resultados para el cliente.
+    - `index_article`: Orquestador de vectorización e inserción masiva.
+    - `search`: Realiza la búsqueda semántica y formatea los resultados.
 
 Entradas / Dependencias:
     - Cliente de `Qdrant`.
-    - Modelos de embedding vía LiteLLM.
-    - Metadatos de artículos de la base de datos relacional.
+    - Modelos de embedding vía LiteLLM/Ollama.
+
+Salidas / Efectos:
+    - Crea y modifica colecciones vectoriales en la base de datos Qdrant local.
+    - Consume recursos de CPU/GPU para la generación de embeddings.
+    - Retorna fragmentos de texto ordenados por relevancia semántica.
 
 Ejemplo de Integración:
     results = await VectorService().search(project_id, "efecto de la urea en café")

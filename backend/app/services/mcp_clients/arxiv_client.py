@@ -1,6 +1,6 @@
 """
 Archivo: arxiv_client.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -14,12 +14,16 @@ Acciones Principales:
     - Implementa filtrado por fecha (enviado a la API y post-hoc).
 
 Estructura Interna:
-    - `_parse_arxiv_entry`: Convierte una entrada Atom XML en un diccionario de artículo.
-    - `search_arxiv`: Función principal para ejecutar la búsqueda y retornar resultados normalizados.
+    - `_parse_arxiv_entry`: Convierte una entrada Atom XML en artículo normalizado.
+    - `search_arxiv`: Función principal para ejecutar la búsqueda federada.
 
 Entradas / Dependencias:
     - Librería `aiohttp` para peticiones asíncronas.
     - Librería `xml.etree.ElementTree` para el parseo de XML.
+
+Salidas / Efectos:
+    - Retorna una lista de artículos normalizados con DOIs fabricados (`10.48550/arXiv...`).
+    - Realiza llamadas de red asíncronas a export.arxiv.org.
 
 Ejemplo de Integración:
     articles = await search_arxiv("precision agriculture", max_results=10)

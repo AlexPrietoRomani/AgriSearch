@@ -1,6 +1,6 @@
 """
 Archivo: pdf_parser.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -18,11 +18,15 @@ Acciones Principales:
 Estructura Interna:
     - `TableFlattener`: Transforma tablas Markdown en oraciones narrativas.
     - `PDFParserService`: Clase principal que envuelve el motor Docling.
-    - `_convert_to_md_with_vision`: Pipeline que integra visión artificial en el parseo.
+    - `_convert_to_md_with_vision`: Pipeline que integra visión artificial.
 
 Entradas / Dependencias:
     - Librería `docling`.
     - `llm_service` para descripciones de imágenes.
+
+Salidas / Efectos:
+    - Genera archivos `.md` enriquecidos en el directorio `parsed` del proyecto.
+    - Actualiza el estado `parsed_status` en la base de datos de artículos.
 """
 
 import os

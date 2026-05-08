@@ -1,11 +1,12 @@
 """
 Archivo: oaipmh_client.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
-Recolector (harvester) genérico de OAI-PMH para fuentes como AgEcon Search y Organic Eprints.
-Utiliza el protocolo OAI-PMH para obtener metadatos bibliográficos en formato Dublin Core.
+Recolector (harvester) genérico de OAI-PMH para fuentes como AgEcon Search y 
+Organic Eprints. Utiliza el protocolo OAI-PMH para obtener metadatos 
+bibliográficos en formato Dublin Core.
 
 Acciones Principales:
     - Realiza el "harvesting" de registros desde endpoints OAI-PMH conocidos.
@@ -13,12 +14,16 @@ Acciones Principales:
     - Normaliza los metadatos Dublin Core al formato estándar de AgriSearch.
 
 Estructura Interna:
-    - `_parse_oai_record`: Transforma los metadatos Dublin Core en el esquema de artículo interno.
-    - `search_oaipmh`: Función principal que gestiona la conexión asíncrona y el filtrado local.
+    - `_parse_oai_record`: Transforma metadatos Dublin Core en esquema interno.
+    - `search_oaipmh`: Función principal de recolección asíncrona.
 
 Entradas / Dependencias:
     - Librería `sickle` para la gestión del protocolo OAI-PMH.
-    - Diccionario `OAI_ENDPOINTS` con las rutas de los repositorios soportados.
+    - Diccionario `OAI_ENDPOINTS` con las rutas de los repositorios.
+
+Salidas / Efectos:
+    - Retorna una lista de artículos normalizados filtrados por relevancia local.
+    - Realiza llamadas de red sincrónicas (envueltas en executor) a repositorios OAI.
 
 Ejemplo de Integración:
     articles = await search_oaipmh("organic farming", source="organic_eprints")

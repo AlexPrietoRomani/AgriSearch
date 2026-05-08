@@ -1,6 +1,6 @@
 """
 Archivo: core_client.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -14,12 +14,16 @@ Acciones Principales:
     - Maneja la autenticación mediante API Key.
 
 Estructura Interna:
-    - `_parse_core_work`: Transforma un objeto "work" de CORE en el esquema de artículo estándar.
-    - `search_core`: Función principal de búsqueda con soporte para filtros de año.
+    - `_parse_core_work`: Transforma un objeto "work" de CORE en artículo estándar.
+    - `search_core`: Función principal de búsqueda federada.
 
 Entradas / Dependencias:
     - Librería `aiohttp`.
     - API Key de CORE configurada en `Settings`.
+
+Salidas / Efectos:
+    - Retorna una lista de artículos normalizados listos para su persistencia.
+    - Requiere una clave de API válida para operar; de lo contrario, retorna lista vacía.
 
 Ejemplo de Integración:
     articles = await search_core("hydroponics", max_results=20)

@@ -1,6 +1,6 @@
 """
 Archivo: query_builder.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -11,17 +11,21 @@ No realiza llamadas a LLM; es una capa lógica pura.
 
 Acciones Principales:
     - Generación de consultas booleanas para ArXiv (con prefijos de campo).
-    - Optimización de términos de búsqueda para motores de texto completo (OpenAlex, Semantic Scholar).
+    - Optimización de términos de búsqueda para motores de texto completo.
     - Manejo de sinónimos para expandir la cobertura de búsqueda sin introducir ruido.
     - Adaptación de sintaxis para recolectores OAI-PMH.
 
 Estructura Interna:
     - `build_openalex_query`: Optimizado para búsqueda por relevancia.
     - `build_arxiv_query`: Utiliza lógica booleana estricta (AND/OR).
-    - `build_all_queries`: Orquestador que retorna un mapeo de consultas por base de datos.
+    - `build_all_queries`: Orquestador que retorna mapeo de consultas por BD.
 
 Entradas / Dependencias:
     - Conceptos y sinónimos extraídos previamente (vía `llm_service`).
+
+Salidas / Efectos:
+    - Retorna un diccionario con las cadenas de consulta formateadas para cada API.
+    - No produce efectos secundarios ni llamadas de red; es una función pura.
 
 Ejemplo de Integración:
     queries = build_all_queries(concepts=["maíz", "sequía"], databases=["arxiv", "openalex"])

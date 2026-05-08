@@ -1,6 +1,6 @@
 """
 Archivo: redalyc_client.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -14,12 +14,16 @@ Acciones Principales:
     - Maneja la autenticación mediante Token de API.
 
 Estructura Interna:
-    - `_parse_redalyc_work`: Transforma un objeto de resultado de Redalyc en un artículo normalizado.
-    - `search_redalyc`: Función principal de búsqueda con soporte para filtros de año.
+    - `_parse_redalyc_work`: Transforma objeto de Redalyc en artículo normalizado.
+    - `search_redalyc`: Función principal de búsqueda federada.
 
 Entradas / Dependencias:
     - Librería `aiohttp`.
     - Token de Redalyc configurado en `Settings`.
+
+Salidas / Efectos:
+    - Retorna una lista de artículos normalizados para el repositorio local.
+    - Requiere autenticación; retorna lista vacía si el token no está configurado.
 
 Ejemplo de Integración:
     articles = await search_redalyc("agroecología", max_results=10)

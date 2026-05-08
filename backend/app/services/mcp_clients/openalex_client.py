@@ -1,6 +1,6 @@
 """
 Archivo: openalex_client.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -15,14 +15,18 @@ Acciones Principales:
     - Extrae información de acceso abierto (OA).
 
 Estructura Interna:
-    - `_parse_authors`: Extrae nombres de autores de la estructura de OpenAlex.
-    - `_parse_openalex_work`: Transforma un objeto "work" en un artículo estándar.
-    - `_reconstruct_abstract`: Convierte el índice invertido de OpenAlex en texto plano.
+    - `_parse_authors`: Extrae nombres de autores.
+    - `_parse_openalex_work`: Transforma objeto "work" en artículo estándar.
+    - `_reconstruct_abstract`: Convierte el índice invertido en texto plano.
     - `search_openalex`: Función principal de búsqueda paginada.
 
 Entradas / Dependencias:
     - Librería `aiohttp`.
     - Identificador `MAILTO` para el "polite pool" de OpenAlex.
+
+Salidas / Efectos:
+    - Retorna una lista de artículos con metadatos enriquecidos (OA, abstracts reconstruidos).
+    - Ejecuta llamadas de red asíncronas al cluster de OpenAlex.
 
 Ejemplo de Integración:
     articles = await search_openalex("regenerative agriculture", max_results=50)

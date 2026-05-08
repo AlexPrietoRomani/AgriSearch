@@ -1,6 +1,6 @@
 """
 Archivo: llm_service.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -16,14 +16,18 @@ Acciones Principales:
     - Sugerencias inteligentes de inclusión/exclusión para el cribado.
 
 Estructura Interna:
-    - `_extract_json_payload`: Utilidad robusta para extraer JSON de respuestas de texto.
+    - `_extract_json_payload`: Utilidad robusta para extraer JSON.
     - `generate_search_query`: Genera lógica booleana y desglose PICO.
-    - `analyze_article_content`: Extrae variables específicas (cultivos, plagas, tratamientos).
+    - `analyze_article_content`: Extrae variables específicas (cultivos, plagas).
     - `describe_image_content`: Genera descripciones y código Mermaid para figuras.
 
 Entradas / Dependencias:
     - Librería `litellm`.
-    - Servidor Ollama local o API de OpenAI según configuración en `Settings`.
+    - Servidor Ollama local o API de OpenAI.
+
+Salidas / Efectos:
+    - Retorna estructuras de datos complejas (JSON) generadas por IA.
+    - Consume tokens de servicios de inferencia (costos o carga de CPU local).
 
 Ejemplo de Integración:
     query_data = await generate_search_query("impacto del glifosato en maíz")

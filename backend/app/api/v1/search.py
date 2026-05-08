@@ -1,40 +1,40 @@
 """
 Archivo: search.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
-Endpoints de la API para las funcionalidades de búsqueda y descarga en AgriSearch.
-Gestiona la construcción de consultas optimizadas por IA, la ejecución de búsquedas
-en bases de datos científicas, el listado de artículos y la descarga de PDFs.
+Punto de entrada para la orquestación de búsquedas científicas y gestión de documentos
+en AgriSearch. Este módulo expone los endpoints necesarios para la generación de
+consultas inteligentes mediante LLM, la ejecución federada en bases de datos (ArXiv,
+OpenAlex, Semantic Scholar) y el ciclo de vida de los PDFs (descarga y conversión).
 
 Acciones Principales:
-    - Genera consultas booleanas optimizadas a partir de lenguaje natural (con PICO).
-    - Ejecuta búsquedas en OpenAlex, Semantic Scholar y ArXiv.
-    - Descarga PDFs de acceso abierto.
-    - Permite la carga manual de PDFs.
-    - Maneja la eliminación de búsquedas y el re-procesamiento (parsing) de documentos.
+    - `build_query`: Transforma lenguaje natural en búsquedas booleanas optimizadas.
+    - `execute_search_endpoint`: Ejecuta la búsqueda federada y almacena resultados.
+    - `list_articles`: Recupera artículos filtrados y paginados por proyecto.
+    - `download_pdfs`: Inicia procesos de descarga masiva de PDFs Open Access.
+    - `upload_pdf`: Permite la vinculación manual de archivos PDF locales.
+    - `reparse_pdfs`: Lanza tareas de fondo para convertir PDFs a Markdown.
 
 Estructura Interna:
-    - `build_query`: Usa el LLM para construir la consulta.
-    - `execute_search_endpoint`: Ejecuta la búsqueda federada.
-    - `list_articles`: Retorna los artículos encontrados y guardados.
-    - `download_pdfs`: Lanza el servicio de descarga de PDFs.
-    - `upload_pdf`: Recibe un archivo PDF manual y lo vincula a un artículo.
-    - `delete_search_endpoint`: Borra un historial de búsqueda.
-    - `reparse_pdfs` / `cancel_reparse`: Gestionan tareas en segundo plano para convertir PDFs.
+    - `build_query`: Generación de queries con LLM.
+    - `execute_search_endpoint`: Búsqueda federada.
+    - `list_articles`: Recuperación de artículos de la BD.
+    - `download_pdfs`: Orquestación de descargas.
 
 Entradas / Dependencias:
-    - `llm_service`, `search_service` y `download_service`.
-    - Pydantic models para validación de entrada/salida.
+    - `app.services.search_service`: Lógica de negocio.
+    - `app.services.llm_service`: IA Generativa.
+    - `app.services.download_service`: Gestión de archivos.
 
 Salidas / Efectos:
-    - Consulta APIs externas y guarda metadatos en la base de datos local.
-    - Descarga archivos PDF y los guarda en el disco.
+    - Registra metadatos de artículos en SQLite.
+    - Genera archivos PDF en el sistema de archivos local.
+    - Crea tareas en segundo plano para el procesamiento de documentos.
 
 Integración UI:
-    - Consumido intensivamente por la pantalla de "Búsqueda Científica" (Research Search)
-      del frontend.
+    - Consumido por el 'SearchWizard' y la 'DocumentLibrary' en el frontend.
 """
 
 import logging
@@ -251,6 +251,55 @@ async def download_pdfs(
         paywall=result.get("paywall", 0),
         in_progress=0,
     )
+
+
+@router.post(
+    "/force-download/{article_id}",
+    summary="Force-download an article via Sci-Hub using DOI",
+)
+async def force_download_article(
+    article_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Fuerza la descarga de un artículo usando Sci-Hub (último recurso).
+    Solo funciona si el artículo tiene DOI.
+    Marca download_status como 'manual' en caso de éxito.
+    """
+    from sqlalchemy import select
+    from app.models.project import Article, DownloadStatus
+    from app.core.config import get_settings
+    from app.services.scihub_service import SciHubDownloader
+    from pathlib import Path
+
+    settings = get_settings()
+
+    if not settings.scihub_enabled:
+        raise HTTPException(status_code=403, detail="Sci-Hub descarga no está habilitada")
+
+    result = await db.execute(select(Article).where(Article.id == article_id))
+    article = result.scalar_one_or_none()
+    if not article:
+        raise HTTPException(status_code=404, detail="Artículo no encontrado")
+    if not article.doi:
+        raise HTTPException(status_code=400, detail="El artículo no tiene DOI para buscar en Sci-Hub")
+
+    try:
+        scihub = SciHubDownloader(
+            download_dir=Path(settings.scihub_download_dir),
+            rate_limit=settings.scihub_rate_limit,
+        )
+        pdf_path = await scihub.download_and_save(article.doi, article.id)
+        if pdf_path:
+            article.download_status = DownloadStatus.MANUAL.value
+            article.local_pdf_path = pdf_path
+            await db.commit()
+            return {"status": "success", "path": pdf_path}
+        else:
+            return {"status": "not_found", "reason": "Sci-Hub no encontró el PDF"}
+    except Exception as e:
+        logger.error("Sci-Hub error para %s: %s", article.doi, e)
+        return {"status": "error", "reason": str(e)}
 
 
 @router.post(

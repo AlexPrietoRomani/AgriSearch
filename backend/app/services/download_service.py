@@ -1,6 +1,6 @@
 """
 Archivo: download_service.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
@@ -16,13 +16,18 @@ Acciones Principales:
 
 Estructura Interna:
     - `_download_single_pdf`: Lógica individual de descarga y validación.
-    - `download_articles`: Orquestador principal para múltiples descargas en un proyecto.
+    - `download_articles`: Orquestador principal de descargas y procesamiento post-descarga.
     - `_sanitize_filename`: Utilidad para nombres de archivo seguros.
 
 Entradas / Dependencias:
     - Librería `aiohttp`.
     - Base de datos (SQLAlchemy AsyncSession).
-    - `ParserRouter` para el procesamiento post-descarga.
+    - `pdf_parser`, `llm_service`, `vector_service`.
+
+Salidas / Efectos:
+    - Persiste archivos `.pdf` y `.md` en directorios específicos del proyecto.
+    - Actualiza estados de descarga y metadatos de enriquecimiento en la DB.
+    - Indexa el contenido en el motor vectorial (RAG).
 
 Ejemplo de Integración:
     results = await download_articles(db_session, project_id)
