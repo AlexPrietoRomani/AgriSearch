@@ -1,35 +1,36 @@
 """
 Archivo: project.py
-Modificación: 2026-05-06
+Modificación: 2026-05-08
 Autor: Alex Prieto
 
 Descripción:
-Define los modelos relacionales (SQLAlchemy) para la persistencia de datos en AgriSearch.
-Incluye las definiciones para Proyectos, Consultas de Búsqueda, Artículos, 
-Sesiones de Cribado y Decisiones de Revisión.
+Definición de modelos relacionales (SQLAlchemy) para la persistencia de datos en
+AgriSearch. Este esquema modela el dominio completo de la aplicación, desde la
+gestión de proyectos aislados y el historial de búsquedas, hasta el seguimiento
+detallado de artículos científicos, sesiones de cribado y decisiones de inclusión.
 
 Acciones Principales:
-    - Define la estructura de las tablas de la base de datos.
-    - Establece las relaciones entre entidades (uno a muchos, cascadas).
-    - Provee utilidades para la generación de UUIDs y marcas de tiempo UTC.
+    - Definición de tablas y relaciones para el motor SQLite.
+    - Implementación de lógica de auditoría mediante marcas de tiempo UTC.
+    - Soporte para rastreo de duplicados y estados de procesamiento de documentos.
 
 Estructura Interna:
-    - `Project`: Entidad raíz que aisla todas las revisiones.
-    - `SearchQuery`: Registra los términos y resultados de las búsquedas ejecutadas.
-    - `Article`: Almacena metadatos bibliográficos y estados de descarga/procesamiento.
-    - `ScreeningSession`: Agrupa una revisión manual específica.
-    - `ScreeningDecision`: Registra la decisión individual del revisor por artículo.
+    - `Project`: Contenedor raíz de la investigación.
+    - `Article`: Entidad central que representa un trabajo científico.
+    - `SearchQuery`: Registro de ejecuciones de búsqueda.
 
 Entradas / Dependencias:
-    - Clase base declarativa desde `app.db.database`.
-    - Tipos de datos de SQLAlchemy.
+    - `SQLAlchemy`: ORM para la gestión de la base de datos.
+    - `app.db.database.Base`: Clase base declarativa.
 
 Salidas / Efectos:
-    - Define el esquema que `init_db` utiliza para crear las tablas en SQLite.
+    - Define y estructura el esquema físico de la base de datos SQLite.
+    - Gestiona la integridad referencial y las eliminaciones en cascada.
 
 Ejemplo de Integración:
     from app.models.project import Project, Article
-    new_project = Project(name="Estudio Suelos")
+    project = Project(name="Agricultura de Precisión")
+    article = Article(title="Detección de Plagas con CNN", project_id=project.id)
 """
 
 import uuid
@@ -131,6 +132,7 @@ class Project(Base):
     articles = relationship("Article", back_populates="project", cascade="all, delete-orphan")
     search_queries = relationship("SearchQuery", back_populates="project", cascade="all, delete-orphan")
     screening_sessions = relationship("ScreeningSession", back_populates="project", cascade="all, delete-orphan")
+    search_sessions = relationship("SearchSession", back_populates="project", cascade="all, delete-orphan")
 
 
 class SearchQuery(Base):
@@ -142,6 +144,7 @@ class SearchQuery(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
+    search_session_id = Column(String, ForeignKey("search_sessions.id"), nullable=True)
     raw_input = Column(Text, nullable=False)  # Entrada en lenguaje natural del usuario
     generated_query = Column(Text, nullable=False)  # Consulta booleana generada por LLM
     databases_used = Column(String(500), nullable=False)  # Bases de datos separadas por coma
@@ -152,6 +155,8 @@ class SearchQuery(Base):
 
     # Relaciones
     project = relationship("Project", back_populates="search_queries")
+    search_session = relationship("SearchSession", back_populates="search_queries")
+    raw_results = relationship("SearchResultRaw", back_populates="search_query")
 
 
 class Article(Base):
@@ -272,3 +277,49 @@ class ScreeningDecision(Base):
     # Relaciones
     session = relationship("ScreeningSession", back_populates="decisions")
     article = relationship("Article", back_populates="screening_decisions")
+
+
+class SearchSession(Base):
+    """
+    Agrupa búsquedas dentro de una sesión de usuario.
+    Permite rastrear el historial de búsquedas por proyecto.
+    """
+
+    __tablename__ = "search_sessions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False)
+    status = Column(String(20), default="active")  # active, completed, aborted
+    started_at = Column(DateTime, default=utcnow)
+    ended_at = Column(DateTime, nullable=True)
+    total_searches = Column(Integer, default=0)
+    user_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+    # Relaciones
+    project = relationship("Project", back_populates="search_sessions")
+    search_queries = relationship("SearchQuery", back_populates="search_session")
+
+
+class SearchResultRaw(Base):
+    """
+    Almacena TODOS los DOIs encontrados en una búsqueda, incluyendo duplicados.
+    Permite auditoría completa y trazabilidad de resultados por BD.
+    """
+
+    __tablename__ = "search_results_raw"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    search_query_id = Column(String, ForeignKey("search_queries.id"), nullable=False)
+    source_database = Column(String(100), nullable=False)
+    doi = Column(String(255), nullable=True, index=True)
+    title = Column(Text, nullable=True)
+    year = Column(Integer, nullable=True)
+    was_duplicate = Column(Boolean, default=False)
+    duplicate_reason = Column(String(50), nullable=True)  # doi_exact, title_fuzzy, project_doi, project_title
+    matched_article_id = Column(String, ForeignKey("articles.id"), nullable=True)
+    action = Column(String(20), default="stored")  # stored, skipped_duplicate, error
+    created_at = Column(DateTime, default=utcnow)
+
+    # Relaciones
+    search_query = relationship("SearchQuery", back_populates="raw_results")
