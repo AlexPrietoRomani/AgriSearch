@@ -67,6 +67,23 @@ def _parse_ss_paper(paper: dict) -> dict[str, Any]:
     oa_pdf = paper.get("openAccessPdf")
     oa_url = oa_pdf.get("url") if oa_pdf else None
 
+    # Map publicationTypes to internal vocabulary
+    _SS_TYPE_MAP = {
+        "JournalArticle": "journal-article",
+        "Review": "journal-article",
+        "Conference": "conference-paper",
+        "Book": "book",
+        "BookSection": "book-chapter",
+        "Thesis": "thesis",
+        "Dataset": "dataset",
+        "ClinicalTrial": "journal-article",
+        "News": "other",
+        "LettersAndComments": "journal-article",
+    }
+    pub_types = paper.get("publicationTypes") or []
+    raw_type = pub_types[0] if pub_types else None
+    doc_type = _SS_TYPE_MAP.get(raw_type, "journal-article") if raw_type else "journal-article"
+
     return {
         "doi": doi,
         "title": paper.get("title", "No Title"),
@@ -78,6 +95,7 @@ def _parse_ss_paper(paper: dict) -> dict[str, Any]:
         "keywords": None,
         "external_id": paper.get("paperId"),
         "open_access_url": oa_url,
+        "document_type": doc_type,
     }
 
 

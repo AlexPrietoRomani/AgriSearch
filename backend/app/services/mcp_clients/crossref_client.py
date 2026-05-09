@@ -81,6 +81,21 @@ def _parse_crossref_work(work: dict) -> dict[str, Any]:
         import re
         abstract = re.sub(r"<[^>]+>", "", abstract).strip()
 
+    _CR_TYPE_MAP = {
+        "journal-article": "journal-article",
+        "book": "book",
+        "book-chapter": "book-chapter",
+        "dissertation": "thesis",
+        "report": "report",
+        "dataset": "dataset",
+        "conference-paper": "conference-paper",
+        "monograph": "book",
+        "reference-book": "book",
+        "edited-book": "book",
+        "posted-content": "preprint",
+    }
+    raw_type = work.get("type", "journal-article")
+
     return {
         "doi": work.get("DOI"),
         "title": work.get("title", [None])[0] if work.get("title") else "No Title",
@@ -92,6 +107,7 @@ def _parse_crossref_work(work: dict) -> dict[str, Any]:
         "keywords": ", ".join(work.get("subject", [])[:10]),
         "external_id": work.get("DOI"),
         "open_access_url": None,
+        "document_type": _CR_TYPE_MAP.get(raw_type, "other") if raw_type else "journal-article",
     }
 
 

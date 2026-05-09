@@ -101,7 +101,32 @@ def _parse_openalex_work(work: dict) -> dict[str, Any]:
         "keywords": ", ".join(keywords_list[:10]),
         "external_id": work.get("id"),
         "open_access_url": oa_url,
+        "document_type": _normalize_doc_type(work.get("type", "journal-article")),
     }
+
+
+_OPENALEX_TYPE_MAP = {
+    "article": "journal-article",
+    "journal-article": "journal-article",
+    "book": "book",
+    "book-chapter": "book-chapter",
+    "dissertation": "thesis",
+    "thesis": "thesis",
+    "preprint": "preprint",
+    "conference-paper": "conference-paper",
+    "report": "report",
+    "dataset": "dataset",
+    "review": "journal-article",
+    "editorial": "journal-article",
+    "letter": "journal-article",
+}
+
+
+def _normalize_doc_type(raw_type: str | None) -> str:
+    """Normaliza el tipo de documento de OpenAlex al vocabulario interno de AgriSearch."""
+    if not raw_type:
+        return "journal-article"
+    return _OPENALEX_TYPE_MAP.get(raw_type.lower(), "other")
 
 
 def _reconstruct_abstract(inverted_index: dict | None) -> str | None:
@@ -168,7 +193,7 @@ async def search_openalex(
                     "mailto": MAILTO,
                     "filter": ",".join(filters),
                     # Optimization from alex-mcp: limit data transferred
-                    "select": "id,doi,title,authorships,publication_year,abstract_inverted_index,primary_location,type,best_oa_location",
+                    "select": "id,doi,title,authorships,publication_year,abstract_inverted_index,keywords,primary_location,type,best_oa_location",
                 }
 
                 async with session.get(f"{OPENALEX_API}/works", params=params) as resp:
