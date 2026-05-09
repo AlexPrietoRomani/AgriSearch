@@ -129,19 +129,21 @@ async def generate_search_query(
     system_prompt = f"""You are an expert agricultural research librarian specialized in systematic reviews.
 Your task is to extract the key research concepts from the user's question and provide synonyms for each.
 
+CRITICAL INSTRUCTION: You MUST translate and generate ALL concepts, synonyms, and boolean queries in ENGLISH, regardless of the user's input language. Scientific databases (like ArXiv, Semantic Scholar, etc.) require English terms for effective retrieval.
+
 CONTEXT:
 - Agricultural area: {agri_area}
-- User language: {language}
+- User original language: {language}
 {year_filter}
 
 RESPOND IN JSON FORMAT:
 {{
-  "concepts": ["concept1", "concept2"],
-  "synonyms": {{"concept1": ["syn1"]}},
-  "boolean_query": "combined query...",
-  "suggested_terms": [],
+  "concepts": ["concept1_in_english", "concept2_in_english"],
+  "synonyms": {{"concept1_in_english": ["syn1_in_english"]}},
+  "boolean_query": "combined query in english...",
+  "suggested_terms": ["english_term1"],
   "pico_breakdown": {{}},
-  "explanation": "..."
+  "explanation": "Brief explanation in {language}"
 }}"""
 
     try:
