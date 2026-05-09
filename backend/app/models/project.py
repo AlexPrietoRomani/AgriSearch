@@ -192,6 +192,10 @@ class Article(Base):
     local_md_path = Column(String(1000), nullable=True)
     parsed_status = Column(String(20), default="pending")  # pending, success, failed
     
+    # --- Tipo de Documento ---
+    # Valores normalizados: journal-article | book | book-chapter | thesis | preprint | conference-paper | report | dataset | other
+    document_type = Column(String(50), default="journal-article", nullable=True)
+    
     # --- Enriquecimiento de Fase 2 ---
     llm_summary = Column(Text, nullable=True)
     relevance_score = Column(Float, default=0.0)

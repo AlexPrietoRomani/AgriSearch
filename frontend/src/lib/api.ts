@@ -288,6 +288,7 @@ export interface ScreeningArticle {
   local_md_path: string | null;
   enriched_summary: string | null;
   parsed_status: boolean;
+  document_type: string | null;
   decision_id: string;
   decision: "pending" | "include" | "exclude" | "maybe";
   exclusion_reason: string | null;

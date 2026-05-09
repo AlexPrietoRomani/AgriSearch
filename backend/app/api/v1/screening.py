@@ -39,7 +39,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -175,6 +175,7 @@ async def enrich_project_articles(
 @router.post("/sessions", response_model=ScreeningSessionResponse, status_code=201)
 async def create_screening_session(
     req: CreateScreeningSessionRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> ScreeningSessionResponse:
     """
@@ -186,6 +187,7 @@ async def create_screening_session(
 
     Args:
         req (CreateScreeningSessionRequest): Petición con el ID del proyecto y parámetros.
+        background_tasks (BackgroundTasks): Tareas en background de FastAPI.
         db (AsyncSession): Sesión asíncrona de base de datos inyectada.
 
     Returns:
@@ -206,8 +208,7 @@ async def create_screening_session(
         logger.warning("Pre-screening enrichment failed (continuing anyway): %s", e)
 
     # 2. Gather unique, non-duplicate articles WITH PDF DOWNLOADED and UNASSIGNED from selected searches
-    from app.models.project import DownloadStatus
-    from app.models.screening_decision import ScreeningDecision
+    from app.models.project import DownloadStatus, ScreeningDecision
     
     stmt = (
         select(Article)
@@ -240,6 +241,7 @@ async def create_screening_session(
     await db.flush()  # Get session.id
 
     # 4. Create a ScreeningDecision for each article
+    decision_ids_to_pretranslate = []
     for idx, article in enumerate(articles):
         decision = ScreeningDecision(
             session_id=session.id,
@@ -247,12 +249,64 @@ async def create_screening_session(
             display_order=idx,
         )
         db.add(decision)
+        await db.flush()  # get decision.id
+        # Collect first 10 articles with abstracts for pre-translation
+        if idx < 10 and article.abstract and req.reading_language != "en":
+            decision_ids_to_pretranslate.append(decision.id)
 
     await db.commit()
     await db.refresh(session)
 
+    # 5. Pre-translate first 10 articles in background
+    if decision_ids_to_pretranslate and req.reading_language != "en":
+        background_tasks.add_task(
+            _pretranslate_decisions,
+            decision_ids_to_pretranslate,
+            req.reading_language,
+            req.translation_model,
+        )
+
     logger.info("Created screening session %s with %d articles (only PDFs)", session.id, len(articles))
     return _session_to_response(session)
+
+
+async def _pretranslate_decisions(
+    decision_ids: list[str],
+    reading_language: str,
+    translation_model: str,
+) -> None:
+    """Background task: pre-translate abstracts for the first N decisions."""
+    from app.db.database import async_session_factory
+    from app.services.llm_service import translate_text
+
+    language_names = {"es": "español", "en": "inglés", "pt": "portugués"}
+    target_name = language_names.get(reading_language, reading_language)
+
+    async with async_session_factory() as db:
+        for decision_id in decision_ids:
+            try:
+                row = await db.execute(
+                    select(ScreeningDecision, Article)
+                    .join(Article, ScreeningDecision.article_id == Article.id)
+                    .where(ScreeningDecision.id == decision_id)
+                )
+                result = row.one_or_none()
+                if not result:
+                    continue
+                decision, article = result
+                if decision.translated_abstract or not article.abstract:
+                    continue
+                translated = await translate_text(
+                    text=article.abstract,
+                    target_language=target_name,
+                    model=translation_model,
+                )
+                decision.translated_abstract = translated
+                decision.original_language = "en"
+                await db.commit()
+                logger.info("[pre-translate] Decision %s translated OK", decision_id)
+            except Exception as e:
+                logger.warning("[pre-translate] Failed for decision %s: %s", decision_id, e)
 
 
 @router.delete("/sessions/{session_id}", status_code=200)
@@ -386,6 +440,7 @@ async def list_screening_articles(
             translated_abstract=decision.translated_abstract,
             display_order=decision.display_order,
             decided_at=decision.decided_at,
+            document_type=article.document_type or "journal-article",
         ))
 
     return response

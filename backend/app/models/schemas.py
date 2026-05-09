@@ -155,6 +155,7 @@ class ArticleResponse(BaseModel):
     methodology_type: str | None = None
     agri_variables_json: str | None = None
     is_duplicate: bool
+    document_type: str | None = "journal-article"
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -275,6 +276,7 @@ class ScreeningArticleResponse(BaseModel):
     relevance_score: float = 0.0
     methodology_type: str | None = None
     agri_variables_json: str | None = None
+    document_type: str | None = "journal-article"
     # Campos de la Decisión
     decision_id: str
     decision: str = "pending"

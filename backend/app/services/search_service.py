@@ -328,6 +328,7 @@ async def execute_search(
             source_database=article_data.get("source_database", "unknown"),
             external_id=article_data.get("external_id"),
             open_access_url=article_data.get("open_access_url"),
+            document_type=article_data.get("document_type", "journal-article"),
         )
         db.add(article)
         stored_articles.append(article)
