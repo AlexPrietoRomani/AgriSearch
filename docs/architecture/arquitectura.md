@@ -443,8 +443,8 @@ sequenceDiagram
     rect rgb(126,107,153)
         Note over API,LLM: Paso 2: Extraccion Semantica con LLM
         API->>LLM: generate_search_query(input, language)
-        Note right of LLM: Prompt de Sistema:<br/>Extraer conceptos PICO<br/>+ sinonimos EN/ES<br/>+ terminos AGROVOC
-        LLM-->>API: JSON conceptos, sinonimos, PICO, keywords
+        Note right of LLM: Prompt de Sistema:<br/>Extraer conceptos PICO<br/>+ traduccion forzada a ingles<br/>+ terminos AGROVOC
+        LLM-->>API: JSON conceptos(EN), sinonimos(EN), PICO, keywords
     end
 
     rect rgb(91,127,165)
@@ -695,51 +695,7 @@ sequenceDiagram
 
 #### Implementación actual
 
-Micro-proceso del sistema de cribado: Cada 10 decisiones del usuario, el sistema re-entrena un clasificador ligero para priorizar los artículos con mayor incertidumbre (uncertainty sampling), maximizando la información ganada por cada decisión humana.
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
-graph TD
-    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
-    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
-    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
-    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
-    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
-    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
-    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
-    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
-    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
-    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
-    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
-    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
-
-    A["Pool de Decisiones del Usuario<br/>(Incluidos + Excluidos)<br/>10+ decisiones"]:::user --> B["Vectorizacion TF-IDF<br/>de abstracts decididos"]:::llm
-    B --> C["Entrenar LogisticRegression<br/>(scikit-learn)<br/>Balanceo de clases"]:::llm
-    C --> D["Predecir P incluir<br/>para cada articulo pendiente"]:::llm
-    D --> E["Calcular Incertidumbre<br/>P incluir - 0.5 < epsilon"]:::common
-
-    E --> F{"Estrategia<br/>de ranking?"}
-    F -->|"Uncertainty<br/>explorar"| G["Priorizar: mayor<br/>incertidumbre primero<br/>(articulos dudosos)"]:::warning
-    F -->|"Most Relevant<br/>explotar"| H["Priorizar: mayor<br/>P incluir primero<br/>(articulos prometedores)"]:::success
-    F -->|"Balanced<br/>por defecto"| I["Combinacion ponderada<br/>incertidumbre x relevancia"]:::backend
-
-    G --> J["Re-ordenar lista<br/>de articulos pendientes"]:::database
-    H --> J
-    I --> J
-
-    J --> K["Actualizar sugerencias<br/>en Frontend<br/>(banner visual + confianza)"]:::frontend
-    K --> L["Usuario decide<br/>(posiblemente influenciado)"]:::user
-    L --> M["Comparar sugerencia<br/>vs decision real<br/>accuracy tracking"]:::common
-    M --> A
-
-    style A fill:#e8edf3,stroke:#7a7a7a,stroke-width:2px,color:#2d3142
-    style J fill:#f0ead5,stroke:#c49a4a,stroke-width:2px,color:#2d3142
-    style K fill:#e8f2ec,stroke:#5a8f7b,stroke-width:2px,color:#2d3142
-```
-
-#### Implementación propuesta
-
-##### Stack Tecnológico Propuesto (Ecosistema Rust)
+##### Stack Tecnológico 
 
 Para materializar esta fusión prescindiendo de dependencias pesadas, el stack óptimo se conforma de la siguiente manera:
 
@@ -1036,7 +992,7 @@ graph TD
     classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
 
     subgraph F1 ["📋 IDENTIFICACIÓN"]
-        A["📋 Proyecto<br/>Creado"]:::user -->|"Crear búsquedas"| B["🔍 Búsquedas<br/>Generadas"]:::frontend
+        A["📋 Proyecto<br/>Creado"]:::user -->|"Crear búsquedas"| B["🔍 Búsquedas Generadas<br/>(LLM: Traducidas a Inglés)"]:::llm
         B -->|"Ejecutar search"| C["📚 Artículos<br/>Identificados<br/>(N de cada base)"]:::external
         C -->|"Deduplicación"| D["🔄 Duplicados<br/>Removidos<br/>(N únicos)"]:::warning
     end
