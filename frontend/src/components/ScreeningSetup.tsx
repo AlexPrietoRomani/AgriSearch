@@ -41,7 +41,7 @@ export default function ScreeningSetup() {
     const [existingSession, setExistingSession] = useState<ScreeningSession | null>(null);
     const [selectedSearchIds, setSelectedSearchIds] = useState<Set<string>>(new Set());
     const [readingLanguage, setReadingLanguage] = useState("es");
-    const [translationModel, setTranslationModel] = useState("deepseek-r1:7b");
+    const [translationModel, setTranslationModel] = useState("");
     const [existingSessionModel, setExistingSessionModel] = useState<string>("");
     const [sessionName, setSessionName] = useState("");
     const [sessionGoal, setSessionGoal] = useState("");
@@ -67,6 +67,10 @@ export default function ScreeningSetup() {
                 setProject(proj);
                 setSessionsCount(sessions.length);
 
+                // Use the project's LLM model as the default translation model
+                const projectModel = proj.llm_model || "qwen2.5:7b";
+                setTranslationModel(projectModel);
+
                 const availableSearches = srch.map((s, i) => ({ ...s, originalIndex: i + 1 })).filter(s => s.unassigned_articles > 0);
                 setSearches(availableSearches);
 
@@ -75,8 +79,8 @@ export default function ScreeningSetup() {
                         ? sessions.find(s => s.id === setupSessionId) || sessions[0]
                         : sessions[0];
                     setExistingSession(targetSession);
-                    let savedModel = targetSession.translation_model || "deepseek-r1:7b";
-                    if (savedModel === "aya-expanse" || savedModel === "aya:8b") savedModel = "deepseek-r1:7b";
+                    // Use session's model, fallback to project model
+                    const savedModel = targetSession.translation_model || projectModel;
                     setExistingSessionModel(savedModel);
 
                     const isRecommended = models.some(m => m.name === savedModel);
@@ -191,13 +195,16 @@ export default function ScreeningSetup() {
         }
     };
 
-    if (loading) return <div style={styles.container}>Cargando...</div>;
+    if (loading) return <div className="max-w-4xl mx-auto mt-8 px-4 text-slate-200">Cargando...</div>;
 
     if (!project || (searches.length === 0 && !existingSession)) {
         return (
-            <div style={styles.container}>
-                <h2>Sin Artículos Elegibles</h2>
-                <a href={`/project?id=${projectId}`} style={styles.backLink}>← Volver</a>
+            <div className="max-w-4xl mx-auto mt-8 px-4 text-slate-200 text-center py-20">
+                <h2 className="text-2xl font-bold text-slate-300 mb-4">Sin Artículos Elegibles</h2>
+                <p className="text-slate-400 mb-8">No hay artículos con PDF descargado disponibles para revisión.</p>
+                <a href={`/project?id=${projectId}`} className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-colors">
+                    ← Volver al Proyecto
+                </a>
             </div>
         );
     }
@@ -211,21 +218,39 @@ export default function ScreeningSetup() {
             ? Math.round((existingSession.reviewed_count / existingSession.total_articles) * 100)
             : 0;
         return (
-            <div style={styles.container}>
-                <div style={styles.header}>
-                    <a href={`/project?id=${projectId}`} style={styles.backLink}>← Volver</a>
-                    <h1 style={styles.title}>🗂️ Screening: {project.name}</h1>
+            <div className="max-w-4xl mx-auto mt-8 px-4 text-slate-200">
+                <div className="mb-8">
+                    <a href={`/project?id=${projectId}`} className="text-slate-400 hover:text-emerald-400 transition-colors flex items-center gap-2 w-fit mb-4">
+                        ← Volver
+                    </a>
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
+                        🗂️ Screening: {project.name}
+                    </h1>
                 </div>
-                <div style={styles.existingCard}>
-                    <h2>📋 {existingSession.name}</h2>
-                    <div style={styles.statsGrid}>
-                        <div style={styles.stat}><span style={styles.statNum}>{existingSession.total_articles}</span><span>Total</span></div>
-                        <div style={styles.stat}><span style={styles.statNum}>{existingSession.reviewed_count}</span><span>Revisados</span></div>
+                <div className="bg-slate-900/60 border border-slate-700/50 p-8 rounded-2xl backdrop-blur-xl shadow-xl">
+                    <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span className="text-2xl">📋</span> {existingSession.name}
+                    </h2>
+                    <div className="flex gap-8 mb-6">
+                        <div className="flex flex-col">
+                            <span className="text-3xl font-black text-slate-200">{existingSession.total_articles}</span>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Total</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-3xl font-black text-emerald-400">{existingSession.reviewed_count}</span>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Revisados</span>
+                        </div>
                     </div>
-                    <div style={styles.progressOuter}><div style={{ ...styles.progressInner, width: `${progress}%` }} /></div>
-                    <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
-                        <button onClick={handleContinueScreening} style={styles.continueButton}>Continuar</button>
-                        <button onClick={handleDeleteSession} style={styles.deleteButton}>Eliminar</button>
+                    <div className="h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700/50 mb-8">
+                        <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500" style={{ width: `${progress}%` }} />
+                    </div>
+                    <div className="flex gap-4">
+                        <button onClick={handleContinueScreening} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-900/20 transition-all">
+                            Continuar Revisión
+                        </button>
+                        <button onClick={handleDeleteSession} className="px-6 py-2.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white font-bold border border-rose-500/20 rounded-xl transition-all">
+                            Eliminar Sesión
+                        </button>
                     </div>
                 </div>
             </div>
@@ -233,50 +258,114 @@ export default function ScreeningSetup() {
     }
 
     return (
-        <div style={styles.container}>
-            <div style={styles.header}>
-                <a href={`/project?id=${projectId}`} style={styles.backLink}>← Volver</a>
-                <h1 style={styles.title}>Nueva Revisión</h1>
+        <div className="max-w-4xl mx-auto mt-8 px-4 text-slate-200">
+            <div className="mb-8">
+                <a href={`/project?id=${projectId}`} className="text-slate-400 hover:text-emerald-400 transition-colors flex items-center gap-2 w-fit mb-4">
+                    ← Volver
+                </a>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
+                    Nueva Revisión
+                </h1>
+                <p className="text-slate-400 mt-2">Configura los parámetros para tu nueva sesión de cribado (screening).</p>
             </div>
-            <div style={styles.card}>
-                <label style={styles.inputLabel}>Nombre de la sesión</label>
-                <input type="text" value={sessionName} onChange={(e) => setSessionName(e.target.value)} style={styles.textInput} />
-            </div>
-            <div style={styles.grid}>
-                <div style={styles.card}>
-                    <h3>Búsquedas</h3>
-                    {searches.map(s => (
-                        <label key={s.id} style={styles.searchItem}>
-                            <input type="checkbox" checked={selectedSearchIds.has(s.id)} onChange={() => toggleSearch(s.id)} />
-                            <span>Búsqueda {s.originalIndex} ({s.unassigned_articles} art.)</span>
-                        </label>
-                    ))}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Columna Izquierda: Configuración Principal */}
+                <div className="flex flex-col gap-6">
+                    <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-2xl backdrop-blur-xl">
+                        <label className="block text-sm font-bold text-slate-300 mb-2">Nombre de la sesión</label>
+                        <input 
+                            type="text" 
+                            value={sessionName} 
+                            onChange={(e) => setSessionName(e.target.value)} 
+                            className="w-full px-4 py-3 bg-slate-950/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                            placeholder="Ej: Revisión Inicial" 
+                        />
+                    </div>
+                    
+                    <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-2xl backdrop-blur-xl">
+                        <label className="block text-sm font-bold text-slate-300 mb-2">Descripción u Objetivo (Opcional)</label>
+                        <textarea 
+                            value={sessionGoal} 
+                            onChange={(e) => setSessionGoal(e.target.value)} 
+                            className="w-full px-4 py-3 bg-slate-950/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-emerald-500 transition-colors min-h-[100px] resize-y"
+                            placeholder="Ej: Identificar algoritmos de IA aplicados en drones..."
+                        />
+                        <p className="text-[11px] text-slate-500 mt-2 font-medium">
+                            Esta descripción ayudará al modelo de Active Learning y al LLM a sugerirte mejores artículos y entender tus criterios de inclusión.
+                        </p>
+                    </div>
+
+                    <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-2xl backdrop-blur-xl">
+                        <label className="block text-sm font-bold text-slate-300 mb-2">Idioma de lectura (Abstracts/Keywords)</label>
+                        <select 
+                            value={readingLanguage} 
+                            onChange={(e) => setReadingLanguage(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-950/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-emerald-500 transition-colors appearance-none"
+                        >
+                            {LANGUAGES.map(lang => (
+                                <option key={lang.code} value={lang.code}>{lang.label}</option>
+                            ))}
+                        </select>
+                        <p className="text-[11px] text-slate-500 mt-2 font-medium">
+                            Si los artículos están en inglés, se traducirán automáticamente al idioma seleccionado para facilitar tu lectura.
+                        </p>
+                    </div>
                 </div>
-                <div style={styles.card}>
-                    <button onClick={handleStartScreening} disabled={creating || !sessionName} style={styles.startButton}>🚀 Iniciar</button>
+
+                {/* Columna Derecha: Búsquedas e Iniciar */}
+                <div className="flex flex-col gap-6">
+                    <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-2xl backdrop-blur-xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-bold text-slate-300">Búsquedas a Incluir</h3>
+                            <div className="flex gap-2">
+                                <button onClick={selectAll} className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 rounded-lg transition-colors">Todas</button>
+                                <button onClick={deselectAll} className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 rounded-lg transition-colors">Ninguna</button>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                            {searches.map(s => (
+                                <label key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedSearchIds.has(s.id) ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:border-slate-700'}`}>
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-900" 
+                                        checked={selectedSearchIds.has(s.id)} 
+                                        onChange={() => toggleSearch(s.id)} 
+                                    />
+                                    <span className="font-medium text-sm">Búsqueda {s.originalIndex} <span className="text-xs opacity-70 ml-1">({s.unassigned_articles} art.)</span></span>
+                                </label>
+                            ))}
+                            {searches.length === 0 && (
+                                <div className="p-4 text-center text-sm text-slate-500">No hay búsquedas con artículos disponibles.</div>
+                            )}
+                        </div>
+                    </div>
+                    
+                    <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-2xl backdrop-blur-xl mt-auto">
+                        <div className="flex items-center justify-between mb-4">
+                            <span className="text-sm font-bold text-slate-400">Total a revisar:</span>
+                            <span className="text-2xl font-black text-emerald-400">{totalArticles}</span>
+                        </div>
+                        <button 
+                            onClick={handleStartScreening} 
+                            disabled={creating || !sessionName || selectedSearchIds.size === 0} 
+                            className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold rounded-xl shadow-lg shadow-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex justify-center items-center gap-2"
+                        >
+                            {creating ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Creando Revisión...
+                                </>
+                            ) : (
+                                <>
+                                    🚀 Iniciar Revisión
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
             <ProgressModal isOpen={showProgressModal} projectId={projectId} onClose={handleProgressDoneEnrich} title="Preparando Revisión" />
         </div>
     );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-    container: { maxWidth: "1000px", margin: "2rem auto", padding: "0 1rem", color: "#e2e8f0" },
-    header: { marginBottom: "2rem" },
-    title: { fontSize: "1.5rem" },
-    backLink: { color: "#94a3b8", textDecoration: "none" },
-    card: { background: "#1e293b", padding: "1.5rem", borderRadius: "12px", marginBottom: "1rem" },
-    existingCard: { background: "#1e293b", padding: "2rem", borderRadius: "16px" },
-    grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" },
-    inputLabel: { display: "block", marginBottom: "0.5rem" },
-    textInput: { width: "100%", padding: "0.5rem", background: "#0f172a", border: "1px solid #334155", color: "#fff" },
-    searchItem: { display: "flex", gap: "0.5rem", padding: "0.5rem" },
-    startButton: { width: "100%", padding: "1rem", background: "#22c55e", borderRadius: "8px", fontWeight: "bold", border: "none" },
-    deleteButton: { background: "none", border: "none", color: "#ef4444", cursor: "pointer" },
-    continueButton: { padding: "0.5rem 1rem", background: "#60a5fa", borderRadius: "4px", border: "none" },
-    progressOuter: { background: "#0f172a", height: "8px", borderRadius: "4px" },
-    progressInner: { background: "#60a5fa", height: "100%" },
-    statNum: { fontSize: "1.2rem", fontWeight: "bold" },
-    statsGrid: { display: "flex", gap: "2rem", margin: "1rem 0" }
-};

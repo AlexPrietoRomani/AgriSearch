@@ -429,14 +429,18 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
                                     </a>
                                 )}
                                 <span style={styles.sourceBadge}>{currentArticle.source_database}</span>
+                                <DocTypeBadge docType={currentArticle.document_type} />
                             </div>
 
                             {/* Keywords */}
                             {currentArticle.keywords && (
-                                <div style={styles.keywords}>
-                                    {currentArticle.keywords.split(",").map((kw, i) => (
-                                        <span key={i} style={styles.keywordBadge}>{kw.trim()}</span>
-                                    ))}
+                                <div style={{ marginBottom: "1.25rem" }}>
+                                    <h3 style={{ ...styles.sectionTitle, marginBottom: "0.5rem" }}>🏷️ Palabras Clave</h3>
+                                    <div style={styles.keywords}>
+                                        {currentArticle.keywords.split(",").map((kw, i) => (
+                                            <span key={i} style={styles.keywordBadge}>{kw.trim()}</span>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
@@ -657,6 +661,41 @@ export default function ScreeningSession({ sessionId: propSessionId, projectId: 
 }
 
 // ── Sub-components ──
+
+/**
+ * Badge de tipo de documento con color según la categoría.
+ */
+const DOC_TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+    "journal-article": { label: "Artículo Científico", color: "#60a5fa", bg: "rgba(96,165,250,0.12)", icon: "📄" },
+    "book":            { label: "Libro",                 color: "#a78bfa", bg: "rgba(167,139,250,0.12)", icon: "📖" },
+    "book-chapter":    { label: "Capítulo de Libro",     color: "#c4b5fd", bg: "rgba(196,181,253,0.12)", icon: "📕" },
+    "thesis":          { label: "Tesis",                 color: "#f59e0b", bg: "rgba(245,158,11,0.12)",  icon: "🎓" },
+    "preprint":        { label: "Preprint",              color: "#34d399", bg: "rgba(52,211,153,0.12)",  icon: "📂" },
+    "conference-paper":{ label: "Conferencia",           color: "#f472b6", bg: "rgba(244,114,182,0.12)", icon: "🎤" },
+    "report":          { label: "Informe",               color: "#fb923c", bg: "rgba(251,146,60,0.12)",  icon: "📋" },
+    "dataset":         { label: "Dataset",               color: "#22d3ee", bg: "rgba(34,211,238,0.12)",  icon: "🗃️" },
+    "other":           { label: "Otro",                  color: "#94a3b8", bg: "rgba(148,163,184,0.12)", icon: "📌" },
+};
+
+function DocTypeBadge({ docType }: { docType: string | null }) {
+    const cfg = DOC_TYPE_CONFIG[docType || "journal-article"] || DOC_TYPE_CONFIG["other"];
+    return (
+        <span style={{
+            background: cfg.bg,
+            color: cfg.color,
+            border: `1px solid ${cfg.color}40`,
+            padding: "0.15rem 0.55rem",
+            borderRadius: "20px",
+            fontSize: "0.72rem",
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.25rem",
+        }}>
+            {cfg.icon} {cfg.label}
+        </span>
+    );
+}
 
 function DecisionBadge({ decision }: { decision: string }) {
     const badgeStyles: Record<string, React.CSSProperties> = {
@@ -1279,5 +1318,20 @@ const styles: Record<string, React.CSSProperties> = {
         borderTopColor: "#94a3b8",
         borderRadius: "50%",
         animation: "spin 1s linear infinite",
+    },
+    // Keywords
+    keywords: {
+        display: "flex",
+        flexWrap: "wrap" as const,
+        gap: "0.4rem",
+    },
+    keywordBadge: {
+        background: "rgba(96, 165, 250, 0.1)",
+        border: "1px solid rgba(96,165,250,0.25)",
+        color: "#93c5fd",
+        padding: "0.2rem 0.6rem",
+        borderRadius: "20px",
+        fontSize: "0.75rem",
+        fontWeight: 500,
     },
 };
