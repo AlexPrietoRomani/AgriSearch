@@ -76,9 +76,6 @@ export default function SearchWizardResults({
 
     const handleProgressClose = (stats?: any) => {
         setShowProgressModal(false);
-        if (stats) {
-            alert(`Proceso completado. ${stats.processed} PDFs reparsados. Fallos: ${stats.failed}`);
-        }
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, articleId: string) => {

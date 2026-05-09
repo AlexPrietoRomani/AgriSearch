@@ -99,7 +99,6 @@ Desde la raíz principal del proyecto, debes instalar las dependencias de ambas 
 > 
 > **Ventana 3 (Frontend):**
 > ```bash
-> cd C:\ruta\donde\clonaste\AgriSearch
 > cd frontend
 > npm install
 > npm run dev
@@ -144,7 +143,6 @@ cargo run --release
 
 **Ventana 3 (Frontend):**
 ```bash
-cd C:\ruta\donde\clonaste\AgriSearch
 cd frontend
 npm run dev
 ```

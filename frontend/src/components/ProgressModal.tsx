@@ -74,9 +74,12 @@ export default function ProgressModal({ isOpen, projectId, onClose, onStop, titl
                         break;
                     case "reparse_end":
                         setStatus("completed");
-                        setMessage("¡Proceso finalizado con éxito!");
+                        setMessage("¡Proceso finalizado con éxito! Cerrando...");
                         setFinalStats(data.stats);
                         eventSource.close();
+                        setTimeout(() => {
+                            onClose(data.stats);
+                        }, 3500);
                         break;
                     case "error":
                         if (data.msg === "Proceso detenido por el usuario.") {

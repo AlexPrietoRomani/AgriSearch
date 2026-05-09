@@ -386,6 +386,17 @@ export default function SearchWizard() {
                     }}
                 />
             )}
+
+            {/* ── STEP 5: Downloading ── */}
+            {step === "downloading" && (
+                <div className="flex flex-col items-center justify-center py-20 bg-slate-900/50 rounded-2xl border border-slate-700/50 mt-6">
+                    <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-6 shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+                    <h2 className="text-2xl text-white font-bold mb-3">Descargando PDFs...</h2>
+                    <p className="text-slate-400 text-center max-w-md">
+                        Estamos procesando los artículos e intentando obtener los PDFs de fuentes de acceso abierto. Este proceso puede tardar varios minutos dependiendo de la cantidad de artículos a descargar.
+                    </p>
+                </div>
+            )}
         </div>
     );
 }
