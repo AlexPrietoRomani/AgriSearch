@@ -34,10 +34,10 @@ Ejecutables desde la raíz de `frontend/` en tu terminal:
 
 | Comando                   | Acción                                           |
 | :------------------------ | :----------------------------------------------- |
-| `npm install`             | Instala dependencias                             |
-| `npm run dev`             | Inicia el servidor de desarrollo (`localhost:4321`) |
-| `npm run build`           | Compila el sitio listo para producción a `./dist/`|
-| `npm run preview`         | Previsualiza el build de producción localmente   |
+| `pnpm install`            | Instala dependencias                             |
+| `pnpm run dev`            | Inicia el servidor de desarrollo (`localhost:4321`) |
+| `pnpm run build`          | Compila el sitio listo para producción a `./dist/`|
+| `pnpm run preview`        | Previsualiza el build de producción localmente   |
 
 ## 🤝 Tecnologías Destacadas
 - **Astro**: Core framework, manejando enrutamiento y SSR liviano.

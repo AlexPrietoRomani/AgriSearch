@@ -100,8 +100,8 @@ Desde la raíz principal del proyecto, debes instalar las dependencias de ambas 
 > **Ventana 3 (Frontend):**
 > ```bash
 > cd frontend
-> npm install
-> npm run dev
+> pnpm install
+> pnpm run dev
 > ```
 > Finalmente, abre en tu navegador web la dirección `http://localhost:4321`.
 
@@ -144,7 +144,7 @@ cargo run --release
 **Ventana 3 (Frontend):**
 ```bash
 cd frontend
-npm run dev
+pnpm run dev
 ```
 Finalmente, abre en tu navegador web la dirección `http://localhost:4321`.
 

@@ -249,8 +249,8 @@ La API estará disponible en `http://localhost:8000` (Swagger en `/docs`).
 
 ```bash
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 La plataforma estará disponible en `http://localhost:4321`.

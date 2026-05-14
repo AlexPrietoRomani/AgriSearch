@@ -41,14 +41,14 @@ pip install -r requirements.txt
 echo [OK] Entorno virtual configurado.
 cd ..
 
-REM --- 3. Verificacion de Entorno Frontend (NPM) ---
+REM --- 3. Verificacion de Entorno Frontend (PNPM) ---
 echo.
-echo [2/4] Verificando entorno de Frontend (NPM)...
+echo [2/4] Verificando entorno de Frontend (PNPM)...
 cd frontend
 
 IF NOT EXIST "node_modules\" (
-    echo [!] Dependencias de Node no encontradas. Instalando (npm install)...
-    call npm install
+    echo [!] Dependencias de Node no encontradas. Instalando (pnpm install)...
+    call pnpm install
 ) ELSE (
     echo [OK] Dependencias de Node encontradas.
 )
@@ -65,7 +65,7 @@ echo Esperando 3 segundos...
 timeout /t 3 /nobreak > nul
 
 echo Iniciando Frontend (Astro)...
-start "AgriSearch Frontend" /D "frontend" cmd /k "npm run dev"
+start "AgriSearch Frontend" /D "frontend" cmd /k "pnpm run dev"
 
 REM --- 5. Apertura ---
 echo.
