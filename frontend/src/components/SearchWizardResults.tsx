@@ -332,6 +332,12 @@ export default function SearchWizardResults({
                                 Año {sortField === "year" && (sortDirection === "asc" ? "↑" : "↓")}
                             </th>
                             <th
+                                className="text-left px-4 py-4 text-slate-400 font-semibold uppercase tracking-wider w-28 cursor-pointer hover:text-emerald-400 transition-colors"
+                                onClick={() => handleSort("document_type")}
+                            >
+                                Tipo {sortField === "document_type" && (sortDirection === "asc" ? "↑" : "↓")}
+                            </th>
+                            <th
                                 className="text-left px-4 py-4 text-slate-400 font-semibold uppercase tracking-wider w-20 text-center"
                             >
                                 Disp.
@@ -380,6 +386,27 @@ export default function SearchWizardResults({
                                     </td>
                                     <td className="px-4 py-5 align-top">
                                         <span className="text-slate-300 font-mono">{a.year || "—"}</span>
+                                    </td>
+                                    <td className="px-4 py-5 align-top">
+                                        {(() => {
+                                            const typeConfig: Record<string, { label: string; cls: string }> = {
+                                                "journal-article": { label: "Artículo", cls: "bg-blue-500/15 text-blue-300 border-blue-500/25" },
+                                                "book": { label: "Libro", cls: "bg-amber-500/15 text-amber-300 border-amber-500/25" },
+                                                "book-chapter": { label: "Cap. Libro", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+                                                "conference-paper": { label: "Conferencia", cls: "bg-purple-500/15 text-purple-300 border-purple-500/25" },
+                                                "thesis": { label: "Tesis", cls: "bg-rose-500/15 text-rose-300 border-rose-500/25" },
+                                                "preprint": { label: "Preprint", cls: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25" },
+                                                "report": { label: "Reporte", cls: "bg-slate-500/15 text-slate-300 border-slate-500/25" },
+                                                "dataset": { label: "Dataset", cls: "bg-teal-500/15 text-teal-300 border-teal-500/25" },
+                                                "other": { label: "Otro", cls: "bg-slate-600/15 text-slate-400 border-slate-600/25" },
+                                            };
+                                            const cfg = typeConfig[a.document_type || "journal-article"] || typeConfig["other"];
+                                            return (
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${cfg.cls}`}>
+                                                    {cfg.label}
+                                                </span>
+                                            );
+                                        })()}
                                     </td>
                                     <td className="px-4 py-5 align-top text-center">
                                         {a.local_pdf_path ? (
@@ -462,7 +489,7 @@ export default function SearchWizardResults({
                                 </tr>
                                 {expandedAbstract === a.id && (
                                     <tr className="bg-slate-800/80 border-b border-indigo-500/20">
-                                        <td colSpan={8} className="p-0 border-none">
+                                        <td colSpan={9} className="p-0 border-none">
                                             <div className="p-6 transition-all duration-300 animate-in fade-in slide-in-from-top-4">
                                                 <div className="max-w-6xl mx-auto space-y-4">
                                                     <h4 className="text-indigo-300 font-bold flex items-center gap-2">

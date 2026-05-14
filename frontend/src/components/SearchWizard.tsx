@@ -100,7 +100,7 @@ export default function SearchWizard() {
             setSelectedDBs(defaultDBs);
         }
     }, [defaultDBs]);
-    const [maxResults, setMaxResults] = useState(50);
+    const [maxResults, setMaxResults] = useState(150);
     const [generatedQuery, setGeneratedQuery] = useState<GeneratedQuery | null>(null);
     const [editedQuery, setEditedQuery] = useState("");
     const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
@@ -358,6 +358,7 @@ export default function SearchWizard() {
                     setEditedQuery={setEditedQuery}
                     setStep={setStep}
                     handleExecuteSearch={handleExecuteSearch}
+                    selectedDBs={selectedDBs}
                 />
             )}
 

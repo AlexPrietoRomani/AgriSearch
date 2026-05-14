@@ -142,6 +142,13 @@ export async function buildQuery(data: {
   return request("/search/build-query", { method: "POST", body: JSON.stringify(data) });
 }
 
+export async function previewQueries(data: {
+  boolean_query: string;
+  databases: string[];
+}): Promise<{ adapted_queries: Record<string, string> }> {
+  return request("/search/preview-queries", { method: "POST", body: JSON.stringify(data) });
+}
+
 export interface Article {
   id: string;
   doi: string | null;
