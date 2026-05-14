@@ -94,6 +94,24 @@ def _parse_scielo_work(item: dict) -> dict[str, Any]:
     else:
         keywords = str(keywords_raw)
 
+    # Tipo de documento desde el campo 'tp' (SciELO usa 'research-article', 'review-article', etc.)
+    _SCIELO_TYPE_MAP = {
+        "research-article": "journal-article",
+        "review-article": "journal-article",
+        "article": "journal-article",
+        "editorial": "other",
+        "letter": "other",
+        "case-report": "journal-article",
+        "brief-report": "journal-article",
+        "book": "book",
+        "thesis": "thesis",
+        "conference": "conference-paper",
+    }
+    raw_doc_type = item.get("document_type") or item.get("tp")
+    if isinstance(raw_doc_type, list):
+        raw_doc_type = raw_doc_type[0] if raw_doc_type else None
+    doc_type = _SCIELO_TYPE_MAP.get(str(raw_doc_type).lower(), "journal-article") if raw_doc_type else "journal-article"
+
     return {
         "doi": item.get("doi"),
         "title": title or "No Title",
@@ -105,6 +123,7 @@ def _parse_scielo_work(item: dict) -> dict[str, Any]:
         "keywords": keywords,
         "external_id": item.get("id") or item.get("pid"),
         "open_access_url": item.get("fulltext_pdf"),
+        "document_type": doc_type,
     }
 
 
@@ -117,8 +136,11 @@ async def search_scielo(
     """
     Busca artículos en SciELO que coincidan con la consulta.
 
+    Intenta primero con la query booleana completa. Si recibe 403 (WAF de SciELO
+    bloquea queries complejas), reintenta con una versión simplificada de texto libre.
+
     Args:
-        query (str): Términos de búsqueda.
+        query (str): Términos de búsqueda (Lucene booleano o texto libre).
         max_results (int): Cantidad máxima de resultados a retornar.
         year_from (int | None): Año inicial del filtro.
         year_to (int | None): Año final del filtro.
@@ -126,51 +148,84 @@ async def search_scielo(
     Returns:
         list[dict[str, Any]]: Lista de artículos normalizados.
     """
+    import json as _json
+
     articles: list[dict[str, Any]] = []
 
+    # Fallback: versión simplificada de texto libre si la booleana da 403
+    simple_query = (
+        query
+        .replace("(", "").replace(")", "")
+        .replace(" OR ", " ").replace(" AND ", " ")
+        .replace('"', "")
+    )
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+        "Referer": "https://search.scielo.org/",
+        "Origin": "https://search.scielo.org",
+    }
+
+    # Dos intentos: query booleana -> query simple
+    queries_to_try = [query, simple_query]
+
     try:
-        async with aiohttp.ClientSession() as session:
-            params = {
-                "q": query,
-                "output": "json",
-                "count": min(max_results, 100),
-                "from": 0,
-                "lang": "en",
-            }
-            if year_from:
-                params["filter[year_cluster][]"] = f"{year_from}-{year_to or 2030}"
+        async with aiohttp.ClientSession(headers=headers) as session:
+            for attempt, q in enumerate(queries_to_try):
+                params: dict = {
+                    "q": q,
+                    "output": "json",
+                    "count": min(max_results, 100),
+                    "from": 0,
+                    "lang": "en",
+                }
+                if year_from:
+                    params["filter[year_cluster][]"] = f"{year_from}-{year_to or 2030}"
 
-            async with session.get(
-                f"{SCIELO_SEARCH_API}/", params=params
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning("SciELO API returned %d", resp.status)
-                    return []
+                async with session.get(f"{SCIELO_SEARCH_API}/", params=params) as resp:
+                    if resp.status == 403:
+                        logger.warning(
+                            "SciELO 403 en intento %d/%d — %s",
+                            attempt + 1, len(queries_to_try),
+                            "probando query simplificada" if attempt == 0 else "ambas bloqueadas por WAF",
+                        )
+                        continue
+                    if resp.status != 200:
+                        logger.warning("SciELO API returned %d en intento %d", resp.status, attempt + 1)
+                        continue
 
-                # SciELO can return HTML sometimes, try JSON
-                content_type = resp.headers.get("Content-Type", "")
-                if "json" in content_type:
-                    data = await resp.json()
-                else:
-                    # Try parsing as JSON anyway
-                    text = await resp.text()
-                    import json
-                    try:
-                        data = json.loads(text)
-                    except json.JSONDecodeError:
-                        logger.warning("SciELO returned non-JSON response")
-                        return []
+                    content_type = resp.headers.get("Content-Type", "")
+                    if "json" in content_type:
+                        data = await resp.json()
+                    else:
+                        text = await resp.text()
+                        try:
+                            data = _json.loads(text)
+                        except Exception:
+                            logger.warning("SciELO returned non-JSON on attempt %d", attempt + 1)
+                            continue
 
-                docs = data.get("response", {}).get("docs", [])
+                    # La respuesta puede usar el formato Elasticsearch hits
+                    hits = data.get("hits", {}).get("hits", [])
+                    # O el formato Solr docs
+                    docs = data.get("response", {}).get("docs", [])
 
-                for doc in docs:
-                    parsed = _parse_scielo_work(doc)
-                    if parsed["title"] and parsed["title"] != "No Title":
-                        articles.append(parsed)
+                    items = [h.get("_source", {}) for h in hits] if hits else docs
 
-        logger.info("SciELO: found %d articles for query: %s", len(articles), query[:60])
+                    for item in items:
+                        parsed = _parse_scielo_work(item)
+                        if parsed["title"] and parsed["title"] != "No Title":
+                            articles.append(parsed)
+                        if len(articles) >= max_results:
+                            break
+
+                    if articles:
+                        break  # No hace falta el fallback
 
     except Exception as e:
         logger.error("SciELO search failed: %s", str(e))
 
+    logger.info("SciELO: found %d articles for query: %s", len(articles), query[:60])
     return articles[:max_results]

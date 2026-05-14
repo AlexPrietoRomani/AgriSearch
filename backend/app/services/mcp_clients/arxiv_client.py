@@ -99,6 +99,7 @@ def _parse_arxiv_entry(entry: ET.Element) -> dict[str, Any]:
         "keywords": ", ".join(categories),
         "external_id": arxiv_id,
         "open_access_url": pdf_url,
+        "document_type": "preprint",  # ArXiv es exclusivamente preprints
     }
 
 
@@ -111,38 +112,51 @@ async def search_arxiv(
     """
     Busca artículos en ArXiv que coincidan con la consulta.
 
-    Utiliza el filtrado nativo por fecha de ArXiv y realiza una validación post-hoc del año.
+    Construye la URL manualmente para evitar que aiohttp re-encodee el operador
+    de rango de fecha `[YYYY+TO+YYYY]` que requiere el signo `+` literal en el
+    parámetro `search_query`. El filtro de fecha se añade solo si no viene ya
+    incluído en la query booleana (detectable por la presencia de `submittedDate`).
 
     Args:
-        query (str): Términos de búsqueda o consulta booleana.
-        max_results (int): Cantidad máxima de resultados a retornar.
+        query (str): Consulta booleana con prefijos `all:`, `ti:`, etc.
+        max_results (int): Máximo de resultados a retornar.
         year_from (int | None): Año de inicio del filtro.
         year_to (int | None): Año final del filtro.
 
     Returns:
         list[dict[str, Any]]: Lista de artículos normalizados.
     """
+    import urllib.parse
+
     articles: list[dict[str, Any]] = []
 
-    # ArXiv supports native date filtering in the search_query:
-    # submittedDate:[YYYYMMDDHHMM TO YYYYMMDDHHMM]
-    # We use +TO+ instead of TO to match URL-encoded spaces correctly if needed,
-    # but the API is very picky about literal '+' for date ranges.
-    date_filter = ""
-    if year_from or year_to:
-        start_date = f"{year_from or 1991}01010000"
-        end_date = f"{year_to or 2026}12312359"
-        date_filter = f" AND submittedDate:[{start_date}+TO+{end_date}]"
+    # Normaliza la query: si viene sin prefijo de campo, añade `all:`
+    if not any(p in query for p in ("all:", "ti:", "au:", "abs:", "submittedDate")):
+        search_query = f"all:{query}"
+    else:
+        search_query = query
+
+    # Añade el rango de fecha SOLO si no viene ya en la query y si se especifica
+    # El operador + debe ir literal (no codificado como %2B) en la URL de ArXiv
+    if (year_from or year_to) and "submittedDate" not in search_query:
+        start_date = f"{year_from or 2000}01010000"
+        end_date = f"{year_to or 2030}12312359"
+        # No usar urllib.parse.urlencode aqui porque el + debe ser literal
+        search_query += f" AND submittedDate:[{start_date}+TO+{end_date}]"
+
+    # Construye la URL manualmente para que el + del rango no sea re-codeado por aiohttp
+    encoded_query = urllib.parse.quote(search_query, safe="+:()\"")
+    url = (
+        f"{ARXIV_API}"
+        f"?search_query={encoded_query}"
+        f"&start=0"
+        f"&max_results={max_results}"
+        f"&sortBy=relevance"
+        f"&sortOrder=descending"
+    )
 
     try:
         async with aiohttp.ClientSession() as session:
-            search_query = query if ("all:" in query or "ti:" in query or "au:" in query) else f"all:{query}"
-            if date_filter:
-                search_query += date_filter
-
-            # We build the URL manually to avoid aiohttp double-encoding the '+' in the date filter
-            url = f"{ARXIV_API}?search_query={search_query}&start=0&max_results={max_results}&sortBy=relevance&sortOrder=descending"
-            
             async with session.get(url) as resp:
                 if resp.status != 200:
                     logger.warning("ArXiv API returned %d", resp.status)
@@ -153,12 +167,15 @@ async def search_arxiv(
 
                 entries = root.findall("atom:entry", NS)
                 if not entries:
-                    logger.warning("ArXiv: No entries found for search_query: %s. ResponseStatus: %d. Body: %s", search_query, resp.status, xml_text[:500])
-                
+                    logger.warning(
+                        "ArXiv: No entries found for search_query: %s. ResponseStatus: %d. Body: %s",
+                        search_query, resp.status, xml_text[:500],
+                    )
+
                 for entry in entries:
                     parsed = _parse_arxiv_entry(entry)
 
-                    # Year filter
+                    # Validación post-hoc del año (refuerza el filtro nativo)
                     if year_from and parsed.get("year") and parsed["year"] < year_from:
                         continue
                     if year_to and parsed.get("year") and parsed["year"] > year_to:

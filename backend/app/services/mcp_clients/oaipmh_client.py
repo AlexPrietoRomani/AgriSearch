@@ -99,6 +99,25 @@ def _parse_oai_record(metadata: dict) -> dict[str, Any]:
                 url = ident
                 break
 
+    # Tipo de documento desde dc:type (Dublin Core)
+    _OAI_TYPE_MAP = {
+        "article": "journal-article",
+        "journal article": "journal-article",
+        "book": "book",
+        "book chapter": "book-chapter",
+        "conference paper": "conference-paper",
+        "conference proceedings": "conference-paper",
+        "thesis": "thesis",
+        "dissertation": "thesis",
+        "report": "report",
+        "dataset": "dataset",
+        "preprint": "preprint",
+        "working paper": "report",
+    }
+    dc_types = metadata.get("type", [])
+    raw_type = (dc_types[0] if isinstance(dc_types, list) and dc_types else str(dc_types)).lower().strip()
+    doc_type = _OAI_TYPE_MAP.get(raw_type, "journal-article")
+
     return {
         "doi": doi,
         "title": title,
@@ -110,6 +129,7 @@ def _parse_oai_record(metadata: dict) -> dict[str, Any]:
         "keywords": keywords,
         "external_id": identifiers[0] if identifiers else None,
         "open_access_url": url,
+        "document_type": doc_type,
     }
 
 
@@ -148,14 +168,19 @@ async def search_oaipmh(
             from sickle import Sickle
             sickle = Sickle(endpoint, max_retries=2, timeout=30)
 
-            # Build date range params
-            kwargs = {"metadataPrefix": "oai_dc"}
+            # Build date range params - sickle requiere 'from_' para evitar conflicto con keyword 'from'
+            # Pero algunos endpoints usan 'from' directamente. Usar solo fechas si se especifican.
+            kwargs: dict = {"metadataPrefix": "oai_dc"}
             if year_from:
                 kwargs["from_"] = f"{year_from}-01-01"
             if year_to:
                 kwargs["until"] = f"{year_to}-12-31"
 
-            records = sickle.ListRecords(**kwargs)
+            try:
+                records = sickle.ListRecords(**kwargs)
+            except Exception:
+                # Fallback: si el endpoint no acepta from_, intentar sin filtro de fecha
+                records = sickle.ListRecords(metadataPrefix="oai_dc")
 
             # Query terms for local filtering
             query_terms = [t.strip().lower() for t in query.split() if len(t.strip()) > 2]
@@ -169,7 +194,8 @@ async def search_oaipmh(
                     break
                 count += 1
 
-                if not record.metadata:
+                # Algunos records pueden ser "deleted" y no tener metadata
+                if not hasattr(record, "metadata") or not record.metadata:
                     continue
 
                 parsed = _parse_oai_record(record.metadata)

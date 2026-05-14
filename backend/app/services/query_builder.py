@@ -1,6 +1,6 @@
 """
 Archivo: query_builder.py
-Modificación: 2026-05-08
+Modificación: 2026-05-14
 Autor: Alex Prieto
 
 Descripción:
@@ -65,29 +65,27 @@ def build_openalex_query(concepts: list[str], synonyms: dict[str, list[str]] | N
     return query
 
 
-def build_semantic_scholar_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
+def build_semantic_scholar_query(
+    concepts: list[str], synonyms: dict[str, list[str]] | None = None
+) -> str:
     """
     Construye una consulta para la API de Semantic Scholar.
 
-    Semantic Scholar funciona mejor con consultas concisas. No soporta lógica booleana anidada.
+    Semantic Scholar utiliza un motor de relevancia semántica (S2) que NO interpreta
+    operadores booleanos explícitos. El mejor rendimiento se obtiene con los términos
+    principales separados por espacios, sin sinónimos redundantes, ya que el motor
+    los expande automáticamente usando embeddings.
 
     Args:
-        concepts (list[str]): Conceptos principales.
-        synonyms (dict[str, list[str]] | None): Sinónimos asociados.
+        concepts (list[str]): Conceptos principales (se toma solo el primario de cada grupo).
+        synonyms (dict[str, list[str]] | None): No utilizado directamente; S2 maneja
+            la expansión semántica internamente.
 
     Returns:
-        str: Cadena de búsqueda.
+        str: Cadena de búsqueda con los conceptos primarios separados por espacios.
     """
-    terms: list[str] = []
-    for concept in concepts:
-        terms.append(concept)
-        if synonyms and concept in synonyms:
-            # Add the first synonym only — SS works best with concise queries
-            for syn in synonyms[concept][:1]:
-                if syn.lower() != concept.lower():
-                    terms.append(syn)
-
-    query = " ".join(terms)
+    # S2 usa relevancia semántica; incluir sinónimos produce ruido, no mejora recall
+    query = " ".join(concepts)
     logger.info("Semantic Scholar query built: %s", query)
     return query
 
@@ -99,22 +97,27 @@ def build_arxiv_query(concepts: list[str], synonyms: dict[str, list[str]] | None
     Requiere prefijos de campo (`all:`) y soporta operadores AND/OR. Los sinónimos
     de un mismo concepto se agrupan con OR.
 
+    NOTA TÉCNICA: Las comillas dentro de `all:"frase"` se codifican como `%22` por
+    urllib.parse.quote, lo que impide que ArXiv las interprete como delimitadores de
+    frase exacta. Por tanto, se usa la sintaxis `all:frase+multipalabra` (sin comillas)
+    que ArXiv acepta correctamente y aplica lógica AND entre las palabras.
+
     Args:
         concepts (list[str]): Conceptos principales (se unen con AND).
         synonyms (dict[str, list[str]] | None): Sinónimos (se unen con OR dentro de cada concepto).
 
     Returns:
-        str: Consulta booleana con prefijos ArXiv.
+        str: Consulta booleana con prefijos ArXiv, sin comillas (URL-safe).
     """
     concept_groups: list[str] = []
 
     for concept in concepts:
-        # Build a group: the concept plus its synonyms joined with OR
-        group_terms = [f'all:"{concept}"']
+        # Usa all:term sin comillas; ArXiv interpreta espacios como AND entre palabras del campo
+        group_terms = [f"all:{concept}"]
         if synonyms and concept in synonyms:
-            for syn in synonyms[concept][:2]:
+            for syn in synonyms[concept][:5]:  # Hasta 5 sinónimos; refleja grupos OR completos de la query maestra
                 if syn.lower() != concept.lower():
-                    group_terms.append(f'all:"{syn}"')
+                    group_terms.append(f"all:{syn}")
 
         if len(group_terms) == 1:
             concept_groups.append(group_terms[0])
@@ -174,28 +177,39 @@ def build_core_query(concepts: list[str], synonyms: dict[str, list[str]] | None 
     return query
 
 
-def build_scielo_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
+def build_scielo_query(
+    concepts: list[str], synonyms: dict[str, list[str]] | None = None
+) -> str:
     """
-    Construye una consulta optimizada para SciELO.
+    Construye una consulta Lucene booleana para la API de SciELO.
 
-    Incluye términos tanto en español como en inglés si están disponibles en los sinónimos.
+    SciELO (basado en Solr/Lucene) acepta operadores AND, OR y frases entre comillas.
+    La estrategia óptima es crear grupos OR para sinónimos de cada concepto y unir
+    los grupos con AND, replicando fielmente la estructura de la query maestra.
 
     Args:
-        concepts (list[str]): Conceptos clave.
-        synonyms (dict[str, list[str]] | None): Sinónimos.
+        concepts (list[str]): Conceptos principales (uno por grupo AND).
+        synonyms (dict[str, list[str]] | None): Sinónimos de cada concepto (forman el OR interno).
 
     Returns:
-        str: Cadena de búsqueda.
+        str: Consulta booleana Lucene lista para el parámetro `q=` de SciELO.
     """
-    terms: list[str] = []
-    for concept in concepts:
-        terms.append(concept)
-        if synonyms and concept in synonyms:
-            for syn in synonyms[concept][:2]:
-                if syn.lower() != concept.lower():
-                    terms.append(syn)
+    concept_groups: list[str] = []
 
-    query = " ".join(terms)
+    for concept in concepts:
+        # Construye el grupo OR: concepto principal + sus sinónimos entre comillas
+        group_terms = [f'"{concept}"']
+        if synonyms and concept in synonyms:
+            for syn in synonyms[concept][:5]:
+                if syn.lower() != concept.lower():
+                    group_terms.append(f'"{syn}"')
+
+        if len(group_terms) == 1:
+            concept_groups.append(group_terms[0])
+        else:
+            concept_groups.append(f"({' OR '.join(group_terms)})")
+
+    query = " AND ".join(concept_groups) if concept_groups else ""
     logger.info("SciELO query built: %s", query)
     return query
 
@@ -224,22 +238,30 @@ def build_redalyc_query(concepts: list[str], synonyms: dict[str, list[str]] | No
     return query
 
 
-def build_oaipmh_query(concepts: list[str], synonyms: dict[str, list[str]] | None = None) -> str:
+def build_oaipmh_query(
+    concepts: list[str], synonyms: dict[str, list[str]] | None = None
+) -> str:
     """
-    Construye una cadena de términos para filtrado local de registros OAI-PMH.
+    Construye una cadena de términos para el filtrado local de registros OAI-PMH.
+
+    OAI-PMH no soporta búsqueda por keywords en el protocolo; el filtrado se realiza
+    localmente comparando los términos contra el título y abstract de cada registro.
+    Por ello se incluyen todos los términos relevantes (conceptos + sinónimos) para
+    maximizar el recall de coincidencias locales.
 
     Args:
         concepts (list[str]): Conceptos clave.
-        synonyms (dict[str, list[str]] | None): Sinónimos.
+        synonyms (dict[str, list[str]] | None): Sinónimos para ampliar la cobertura del filtro local.
 
     Returns:
-        str: Cadena de búsqueda.
+        str: Cadena de todos los términos separados por espacio para filtrado local.
     """
     terms: list[str] = []
     for concept in concepts:
         terms.append(concept)
         if synonyms and concept in synonyms:
-            for syn in synonyms[concept][:1]:
+            # Incluye todos los sinónimos para maximizar el recall en el filtro local
+            for syn in synonyms[concept]:
                 if syn.lower() != concept.lower():
                     terms.append(syn)
 

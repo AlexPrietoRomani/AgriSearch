@@ -29,6 +29,7 @@ Ejemplo de Integración:
     articles = await search_semantic_scholar("climate change impact", max_results=25)
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -120,15 +121,7 @@ async def search_semantic_scholar(
     articles: list[dict[str, Any]] = []
     limit = min(max_results, 100)
     offset = 0
-
-    # Build year filter
-    year_filter = ""
-    if year_from and year_to:
-        year_filter = f"&year={year_from}-{year_to}"
-    elif year_from:
-        year_filter = f"&year={year_from}-"
-    elif year_to:
-        year_filter = f"&year=-{year_to}"
+    max_retries = 3
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -146,29 +139,40 @@ async def search_semantic_scholar(
                 elif year_to:
                     params["year"] = f"-{year_to}"
 
-                async with session.get(f"{SS_API}/paper/search", params=params) as resp:
-                    if resp.status == 429:
-                        logger.warning("Semantic Scholar rate limited. Stopping pagination.")
-                        break
-                    if resp.status != 200:
-                        logger.warning("Semantic Scholar API returned %d", resp.status)
+                resp_data = None
+                for attempt in range(max_retries):
+                    async with session.get(f"{SS_API}/paper/search", params=params) as resp:
+                        if resp.status == 429:
+                            wait_seconds = 2 ** attempt  # 1s, 2s, 4s
+                            logger.warning(
+                                "Semantic Scholar rate limited (attempt %d/%d). Esperando %ds...",
+                                attempt + 1, max_retries, wait_seconds,
+                            )
+                            await asyncio.sleep(wait_seconds)
+                            continue
+                        if resp.status != 200:
+                            logger.warning("Semantic Scholar API returned %d", resp.status)
+                            resp_data = None
+                            break
+                        resp_data = await resp.json()
                         break
 
-                    data = await resp.json()
-                    papers = data.get("data", [])
+                if resp_data is None:
+                    break
 
-                    if not papers:
-                        break
+                papers = resp_data.get("data", [])
+                if not papers:
+                    break
 
-                    for paper in papers:
-                        parsed = _parse_ss_paper(paper)
-                        if parsed["title"] and parsed["title"] != "No Title":
-                            articles.append(parsed)
+                for paper in papers:
+                    parsed = _parse_ss_paper(paper)
+                    if parsed["title"] and parsed["title"] != "No Title":
+                        articles.append(parsed)
 
-                    total = data.get("total", 0)
-                    offset += limit
-                    if offset >= total or offset >= max_results:
-                        break
+                total = resp_data.get("total", 0)
+                offset += limit
+                if offset >= total or offset >= max_results:
+                    break
 
         logger.info("Semantic Scholar: found %d articles for query: %s", len(articles), query[:60])
 

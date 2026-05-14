@@ -67,6 +67,9 @@ DOI_REGEX = re.compile(r"^10\.\d{4,}/\S+$")
 _QUERY_SEPARATORS = re.compile(r'\b(?:AND|OR|NOT|Y|O|E|U|NO)\b', re.IGNORECASE)
 _CLEAN_RE = re.compile(r'[()"\[\]]')
 
+# Detecta rangos de año como (2020:2026) para ignorarlos como conceptos
+_DATE_RANGE_RE = re.compile(r'^\d{4}:\d{4}$')
+
 
 def _extract_concepts_from_query(query: str) -> list[str]:
     """
@@ -124,6 +127,128 @@ def _extract_concepts_from_query(query: str) -> list[str]:
             seen.add(concept)
 
     return concepts[:10]  # Cap at 10 concepts max
+
+
+def _clean_term(term: str) -> str:
+    """
+    Limpia un término de búsqueda eliminando comillas y espacios extra.
+
+    Args:
+        term (str): Término crudo con posibles comillas simples o dobles.
+
+    Returns:
+        str: Término sin comillas y sin espacios laterales.
+    """
+    term = term.strip()
+    # Elimina comillas externas simples o dobles (ej: 'precision agriculture')
+    term = re.sub(r"^['\"]|['\"]$", "", term)
+    return term.strip()
+
+
+def _split_top_level_and(query: str) -> list[str]:
+    """
+    Divide una consulta booleana por los operadores AND de nivel superior.
+
+    Respeta la profundidad de paréntesis para no dividir dentro de grupos OR.
+
+    Args:
+        query (str): Consulta booleana completa.
+
+    Returns:
+        list[str]: Lista de fragmentos AND de nivel superior.
+    """
+    groups: list[str] = []
+    current: list[str] = []
+    depth = 0
+    i = 0
+    query = query.strip()
+
+    while i < len(query):
+        char = query[i]
+        if char == "(":
+            depth += 1
+            current.append(char)
+            i += 1
+        elif char == ")":
+            depth -= 1
+            current.append(char)
+            i += 1
+        elif depth == 0 and query[i : i + 5].upper() == " AND ":
+            # Operador AND en el nivel raíz: delimita un nuevo grupo conceptual
+            groups.append("".join(current).strip())
+            current = []
+            i += 5
+        else:
+            current.append(char)
+            i += 1
+
+    if current:
+        groups.append("".join(current).strip())
+
+    return [g for g in groups if g]
+
+
+def _parse_boolean_query_structure(
+    query: str,
+) -> tuple[list[str], dict[str, list[str]]]:
+    """
+    Analiza la estructura booleana de una consulta y la convierte en conceptos y sinónimos.
+
+    Transforma una query maestra como::
+
+        (Vision Transformer OR ViT) AND (agriculture OR precision agriculture)
+
+    En la representación estructurada::
+
+        concepts = ["Vision Transformer", "agriculture"]
+        synonyms = {"Vision Transformer": ["ViT"], "agriculture": ["precision agriculture"]}
+
+    Args:
+        query (str): Consulta booleana generada por el LLM.
+
+    Returns:
+        tuple[list[str], dict[str, list[str]]]: Par (conceptos_primarios, sinónimos_por_concepto).
+    """
+    # Elimina filtros de rango de año que no son conceptos (ej: AND (2020:2026))
+    cleaned_query = re.sub(r"\s*AND\s*\(\d{4}:\d{4}\)", "", query, flags=re.IGNORECASE)
+    cleaned_query = re.sub(r"\(\d{4}:\d{4}\)", "", cleaned_query).strip()
+
+    concepts: list[str] = []
+    synonyms: dict[str, list[str]] = {}
+
+    # Divide por AND de nivel superior si hay grupos con paréntesis
+    and_groups = _split_top_level_and(cleaned_query) if "(" in cleaned_query else [
+        g.strip() for g in re.split(r"\s+AND\s+", cleaned_query, flags=re.IGNORECASE)
+    ]
+
+    for group in and_groups:
+        # Elimina paréntesis externos del grupo
+        group = group.strip().strip("()")
+
+        # Divide los términos alternativos (sinónimos) dentro del grupo por OR
+        or_terms = [
+            _clean_term(t)
+            for t in re.split(r"\s+OR\s+", group, flags=re.IGNORECASE)
+        ]
+        or_terms = [t for t in or_terms if t and not _DATE_RANGE_RE.match(t)]
+
+        if not or_terms:
+            continue
+
+        main_concept = or_terms[0]
+        if not main_concept:
+            continue
+
+        concepts.append(main_concept)
+        if len(or_terms) > 1:
+            synonyms[main_concept] = or_terms[1:]
+
+    # Fallback: si el parsing no produce resultados, usar extracción básica
+    if not concepts:
+        logger.warning("Structured query parse yielded no concepts; falling back to flat extraction")
+        concepts = _extract_concepts_from_query(query)
+
+    return concepts, synonyms
 
 
 def _normalize_doi(doi: str | None) -> str | None:
@@ -206,8 +331,9 @@ async def execute_search(
     await db.flush()
 
     # ── Build deterministic queries for each DB ──
-    concepts = _extract_concepts_from_query(query)
-    adapted_queries = build_all_queries(concepts=concepts, databases=databases)
+    # Preserva la estructura OR (sinónimos) y AND (conceptos distintos) de la query maestra
+    concepts, synonyms = _parse_boolean_query_structure(query)
+    adapted_queries = build_all_queries(concepts=concepts, synonyms=synonyms, databases=databases)
     search_query.adapted_queries_json = json.dumps(adapted_queries, ensure_ascii=False)
     await db.flush()
 
