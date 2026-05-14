@@ -129,7 +129,7 @@ class SearchExecuteRequest(BaseModel):
                  "core", "scielo", "redalyc", "agecon", "organic_eprints"],
         description="Bases de datos donde buscar",
     )
-    max_results_per_source: int = Field(50, ge=10, le=500, description="Máximo de resultados por fuente")
+    max_results_per_source: int = Field(150, ge=10, le=500, description="Máximo de resultados por fuente")
     year_from: int | None = None
     year_to: int | None = None
 

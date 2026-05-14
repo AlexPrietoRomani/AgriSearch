@@ -104,6 +104,41 @@ async def build_query(payload: SearchBuildQueryRequest) -> GeneratedQuery:
 
 
 @router.post(
+    "/preview-queries",
+    summary="Preview adapted queries per database without executing the search",
+)
+async def preview_queries(payload: dict) -> dict:
+    """
+    Previsualiza las consultas adaptadas para cada base de datos a partir de
+    una query booleana maestra, sin ejecutar la búsqueda real.
+
+    Útil para mostrar al usuario exactamente qué se enviará a cada API
+    antes de confirmar la ejecución.
+
+    Args:
+        payload (dict): Debe contener `boolean_query` (str) y `databases` (list[str]).
+
+    Returns:
+        dict: Mapa de base de datos → consulta adaptada.
+    """
+    from app.services.search_service import _parse_boolean_query_structure
+    from app.services.query_builder import build_all_queries
+
+    boolean_query: str = payload.get("boolean_query", "")
+    databases: list[str] = payload.get("databases", [])
+
+    if not boolean_query or not databases:
+        return {"adapted_queries": {}}
+
+    concepts, synonyms = _parse_boolean_query_structure(boolean_query)
+    adapted_queries = build_all_queries(concepts=concepts, synonyms=synonyms, databases=databases)
+
+    return {"adapted_queries": adapted_queries}
+
+
+
+
+@router.post(
     "/execute",
     response_model=SearchResultsResponse,
     summary="Execute search across scientific databases",
