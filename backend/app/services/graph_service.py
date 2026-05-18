@@ -51,10 +51,13 @@ Ejemplo de Integración:
 """
 
 import json
+import numpy as np
 from pathlib import Path
 from typing import Optional
 
 import networkx as nx
+from numpy.typing import NDArray
+from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -494,3 +497,326 @@ class CitationGraphBuilder:
             })
         
         return {"nodes": nodes, "edges": edges}
+
+
+# ─── Colores para clusters temáticos ───────────────────────────────────
+
+CLUSTER_COLORS = [
+    "#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6",
+    "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#84cc16",
+]
+
+
+# ─── ThematicGraphBuilder ──────────────────────────────────────────────
+
+class ThematicGraphBuilder:
+    """
+    Construye un grafo no-dirigido basado en similitud semántica.
+    
+    Nodos: Artículos incluidos.
+    Aristas: Similitud coseno ≥ umbral (default 0.75).
+    Clusters: Detectados con greedy_modularity_communities.
+    
+    Ejemplo:
+        builder = ThematicGraphBuilder(threshold=0.75)
+        embeddings, dois = await builder.get_or_generate_embeddings(articles)
+        builder.set_embeddings(embeddings, dois)
+        G = builder.build_undirected_graph()
+        clusters = builder.detect_communities()
+        builder.apply_cluster_colors(clusters)
+        result = builder.serialize_and_save("project-id")
+    """
+    
+    def __init__(self, threshold: float = 0.75):
+        """
+        Inicializa el builder temático.
+        
+        Args:
+            threshold: Umbral mínimo de cosine_similarity para crear arista.
+        """
+        self.threshold = threshold
+        self.graph: Optional[nx.Graph] = None
+        self.embeddings: Optional[NDArray[np.float64]] = None
+        self.article_dois: Optional[list[str]] = None
+    
+    def set_embeddings(
+        self,
+        embeddings: NDArray[np.float64],
+        dois: list[str],
+    ) -> None:
+        """
+        Establece embeddings y DOIs directamente (útil para testing).
+        
+        Args:
+            embeddings: Matriz NxM de embeddings.
+            dois: Lista de DOIs correspondientes.
+        """
+        self.embeddings = embeddings
+        self.article_dois = dois
+    
+    async def get_or_generate_embeddings(
+        self,
+        articles: list[dict],
+    ) -> tuple[NDArray[np.float64], list[str]]:
+        """
+        Obtiene o genera embeddings para los artículos.
+        
+        Usa nomic-embed-text vía Ollama.
+        
+        Args:
+            articles: Lista de dicts con {doi, title, abstract}.
+        
+        Returns:
+            (embeddings_matrix, dois_list)
+        """
+        dois = []
+        texts = []
+        
+        for article in articles:
+            doi = article.get("doi")
+            if not doi:
+                continue
+            
+            title = article.get("title", "")
+            abstract = article.get("abstract", "")
+            text = f"{title} {abstract}".strip()
+            
+            if text:
+                dois.append(doi)
+                texts.append(text)
+        
+        if not texts:
+            empty = np.array([])
+            self.set_embeddings(empty, [])
+            return empty, []
+        
+        embeddings = await self._generate_embeddings_ollama(texts)
+        self.set_embeddings(embeddings, dois)
+        
+        return embeddings, dois
+    
+    async def _generate_embeddings_ollama(self, texts: list[str]) -> NDArray[np.float64]:
+        """
+        Genera embeddings usando nomic-embed-text vía Ollama.
+        
+        POST http://localhost:11434/api/embeddings
+        
+        Args:
+            texts: Lista de textos a embeddar.
+        
+        Returns:
+            Matriz Nx768 de embeddings.
+        """
+        import aiohttp
+        
+        embeddings = []
+        async with aiohttp.ClientSession() as session:
+            for text in texts:
+                payload = {
+                    "model": "nomic-embed-text",
+                    "prompt": text,
+                }
+                try:
+                    async with session.post(
+                        "http://localhost:11434/api/embeddings",
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=30),
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            embeddings.append(data["embedding"])
+                        else:
+                            embeddings.append([0.0] * 768)
+                except Exception:
+                    embeddings.append([0.0] * 768)
+        
+        return np.array(embeddings, dtype=np.float64)
+    
+    def compute_similarity_matrix(self) -> NDArray[np.float64]:
+        """
+        Calcula la matriz de similitud coseno.
+        
+        Returns:
+            Matriz NxN de similitudes.
+        """
+        if self.embeddings is None or len(self.embeddings) == 0:
+            return np.array([], dtype=np.float64)
+        
+        return cosine_similarity(self.embeddings)
+    
+    def build_undirected_graph(self) -> nx.Graph:
+        """
+        Construye el grafo no-dirigido aplicando umbral de similitud.
+        
+        Returns:
+            Grafo NetworkX Graph (no-dirigido).
+        """
+        if self.embeddings is None or len(self.article_dois) == 0:
+            self.graph = nx.Graph()
+            return self.graph
+        
+        similarity_matrix = self.compute_similarity_matrix()
+        G = nx.Graph()
+        
+        # Añadir nodos
+        for i, doi in enumerate(self.article_dois):
+            G.add_node(
+                doi,
+                status="included",
+                color={
+                    "background": COLOR_INCLUDED,
+                    "border": COLOR_BORDER_INCLUDED,
+                },
+                shape="dot",
+                size=15,
+            )
+        
+        # Añadir aristas donde similitud >= umbral
+        n = len(self.article_dois)
+        for i in range(n):
+            for j in range(i + 1, n):
+                sim = float(similarity_matrix[i][j])
+                if sim >= self.threshold:
+                    G.add_edge(
+                        self.article_dois[i],
+                        self.article_dois[j],
+                        cosine_similarity=sim,
+                        weight=sim,
+                    )
+        
+        self.graph = G
+        return G
+    
+    def detect_communities(self) -> dict[str, int]:
+        """
+        Detecta clusters temáticos usando greedy_modularity_communities.
+        
+        Returns:
+            Dict {doi: cluster_id}
+        """
+        if self.graph is None or self.graph.number_of_nodes() == 0:
+            return {}
+        
+        try:
+            from networkx.algorithms.community import greedy_modularity_communities
+            communities = greedy_modularity_communities(self.graph)
+        except Exception:
+            return {node: 0 for node in self.graph.nodes()}
+        
+        cluster_map = {}
+        for cluster_id, community in enumerate(communities):
+            for node in community:
+                cluster_map[node] = cluster_id
+        
+        return cluster_map
+    
+    def enrich_edges_with_keywords(
+        self,
+        articles_keywords: dict[str, list[str]],
+    ) -> None:
+        """
+        Añade shared_keywords a cada arista.
+        
+        Args:
+            articles_keywords: Dict {doi: [keywords]}
+        """
+        if self.graph is None:
+            return
+        
+        for source, target in self.graph.edges():
+            source_kws = set(articles_keywords.get(source, []))
+            target_kws = set(articles_keywords.get(target, []))
+            shared = source_kws & target_kws
+            self.graph.edges[source, target]["shared_keywords"] = list(shared)
+    
+    def apply_cluster_colors(self, cluster_map: dict[str, int]) -> None:
+        """
+        Asigna colores a nodos según su cluster.
+        
+        Args:
+            cluster_map: Dict {doi: cluster_id}
+        """
+        if self.graph is None:
+            return
+        
+        for node, cluster_id in cluster_map.items():
+            if node in self.graph:
+                color = CLUSTER_COLORS[cluster_id % len(CLUSTER_COLORS)]
+                self.graph.nodes[node]["color"] = {
+                    "background": color,
+                    "border": color,
+                }
+                self.graph.nodes[node]["cluster"] = cluster_id
+    
+    def serialize_and_save(self, project_id: str, graph_dir: Optional[Path] = None) -> dict:
+        """
+        Serializa el grafo temático a formato vis-network y guarda JSON.
+        
+        Args:
+            project_id: UUID del proyecto.
+            graph_dir: Directorio donde guardar. Default: data/projects/{id}/graphs/
+        
+        Returns:
+            Dict con {graph_type, project_id, nodes, edges, metadata}.
+        """
+        if self.graph is None:
+            return {"nodes": [], "edges": [], "metadata": {}}
+        
+        G = self.graph
+        nodes = []
+        edges = []
+        
+        for node, data in G.nodes(data=True):
+            nodes.append({
+                "id": node,
+                "label": data.get("label", node[:20] + "..."),
+                "title": data.get("title", ""),
+                "color": data.get("color", {}),
+                "size": data.get("size", 15),
+                "shape": data.get("shape", "dot"),
+                "status": data.get("status", "included"),
+                "cluster": data.get("cluster", 0),
+            })
+        
+        for source, target, data in G.edges(data=True):
+            sim = data.get("cosine_similarity", 0)
+            width = 1 + sim * 4
+            edges.append({
+                "from": source,
+                "to": target,
+                "arrows": "to",
+                "color": {"color": "#a78bfa", "highlight": "#8b5cf6"},
+                "width": width,
+                "dashes": [5, 5],
+                "cosine_similarity": round(sim, 3),
+                "shared_keywords": data.get("shared_keywords", []),
+            })
+        
+        cluster_counts = {}
+        for node in G.nodes():
+            cluster = G.nodes[node].get("cluster", 0)
+            cluster_counts[cluster] = cluster_counts.get(cluster, 0) + 1
+        
+        result = {
+            "graph_type": "thematic",
+            "project_id": project_id,
+            "nodes": nodes,
+            "edges": edges,
+            "metadata": {
+                "total_nodes": G.number_of_nodes(),
+                "total_edges": G.number_of_edges(),
+                "threshold": self.threshold,
+                "num_clusters": len(cluster_counts),
+                "cluster_sizes": cluster_counts,
+            },
+        }
+        
+        # Guardar a disco si graph_dir está disponible
+        if graph_dir is None:
+            graph_dir = Path(f"data/projects/{project_id}/graphs")
+        
+        graph_dir.mkdir(parents=True, exist_ok=True)
+        output_path = graph_dir / "thematic_graph.json"
+        output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+        
+        return result
