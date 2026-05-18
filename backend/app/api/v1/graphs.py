@@ -39,14 +39,16 @@ Ejemplo de Integración:
 """
 
 import json
+import logging
+import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
+from app.db.database import get_db, async_session_factory
 from app.models.graph_models import (
     GraphEdge,
     GraphMetadata,
@@ -59,8 +61,29 @@ from app.services.graph_service import (
     CitationGraphBuilder,
     ThematicGraphBuilder,
     get_eligible_articles_for_graphs,
+    has_screening_decisions,
 )
-from app.services.reference_extractor import build_reference_batch
+from app.services.reference_extractor import build_reference_batch_from_md
+from app.api.v1.events import publish_event
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/graphs", tags=["graphs"])
+
+GRAPH_DIR = Path("data/projects")
+
+# ─── In-memory build status tracker ────────────────────────────────────
+_build_statuses: dict[str, dict] = {}
+
+
+def get_build_status(project_id: str) -> Optional[dict]:
+    """Get current build status for a project."""
+    return _build_statuses.get(project_id)
+
+
+def set_build_status(project_id: str, status: dict):
+    """Update build status for a project."""
+    _build_statuses[project_id] = status
 
 router = APIRouter(prefix="/graphs", tags=["graphs"])
 
@@ -71,30 +94,205 @@ class BuildGraphRequest(BaseModel):
     screening_status: str = "included"
 
 
-@router.post("/{project_id}/build")
+async def _build_graphs_background(
+    project_id: str,
+    screening_status: str,
+):
+    """
+    Background task that builds both graphs and publishes SSE progress events.
+    
+    Flujo:
+    1. Extract references from local .md files
+    2. Build citation graph
+    3. Build thematic graph
+    4. Publish success/error event
+    """
+    from app.db.database import async_session_factory
+    
+    build_id = str(uuid.uuid4())[:8]
+    set_build_status(project_id, {
+        "build_id": build_id,
+        "status": "running",
+        "progress": 0,
+        "step": "initializing",
+        "screening_status": screening_status,
+    })
+    
+    await publish_event(project_id, {
+        "type": "graph_build_progress",
+        "build_id": build_id,
+        "progress": 0,
+        "step": "initializing",
+        "message": "Iniciando construcción del grafo...",
+    })
+    
+    try:
+        async with async_session_factory() as db:
+            # Step 1: Extract references from MD (25%)
+            await publish_event(project_id, {
+                "type": "graph_build_progress",
+                "build_id": build_id,
+                "progress": 10,
+                "step": "extracting_references",
+                "message": "Extrayendo referencias desde archivos Markdown...",
+            })
+            
+            ref_stats = await build_reference_batch_from_md(project_id, db, screening_status)
+            
+            await publish_event(project_id, {
+                "type": "graph_build_progress",
+                "build_id": build_id,
+                "progress": 25,
+                "step": "references_complete",
+                "message": f"Referencias extraídas: {ref_stats['total_references_extracted']}",
+                "details": ref_stats,
+            })
+            
+            # Step 2: Build citation graph (50%)
+            await publish_event(project_id, {
+                "type": "graph_build_progress",
+                "build_id": build_id,
+                "progress": 30,
+                "step": "building_citation_graph",
+                "message": "Construyendo grafo de citaciones...",
+            })
+            
+            citation_builder = CitationGraphBuilder(db, project_id)
+            await citation_builder.build_directed_graph(screening_status)
+            citation_path = citation_builder.save_graph(suffix=screening_status)
+            citation_metrics = citation_builder.calculate_metrics()
+            
+            await publish_event(project_id, {
+                "type": "graph_build_progress",
+                "build_id": build_id,
+                "progress": 50,
+                "step": "citation_graph_complete",
+                "message": f"Grafo de citaciones: {citation_metrics.get('nodes', 0)} nodos, {citation_metrics.get('edges', 0)} aristas",
+                "details": citation_metrics,
+            })
+            
+            # Step 3: Build thematic graph (75%)
+            await publish_event(project_id, {
+                "type": "graph_build_progress",
+                "build_id": build_id,
+                "progress": 55,
+                "step": "building_thematic_graph",
+                "message": "Construyendo grafo temático...",
+            })
+            
+            thematic_builder = ThematicGraphBuilder()
+            thematic_dir = GRAPH_DIR / project_id / "graphs"
+            
+            eligible_articles = await get_eligible_articles_for_graphs(
+                project_id, db, screening_status
+            )
+            
+            articles_for_embeddings = [
+                {
+                    "doi": a.doi,
+                    "title": a.title or "",
+                    "abstract": a.abstract or "",
+                }
+                for a in eligible_articles
+            ]
+            
+            if articles_for_embeddings:
+                embeddings, dois = await thematic_builder.get_or_generate_embeddings(
+                    articles_for_embeddings
+                )
+                if len(dois) > 0:
+                    thematic_builder.build_undirected_graph()
+                    thematic_builder.detect_communities()
+                    thematic_builder.apply_cluster_colors(thematic_builder.detect_communities())
+            
+            thematic_data = thematic_builder.serialize_and_save(
+                project_id, thematic_dir, suffix=screening_status
+            )
+            
+            await publish_event(project_id, {
+                "type": "graph_build_progress",
+                "build_id": build_id,
+                "progress": 75,
+                "step": "thematic_graph_complete",
+                "message": f"Grafo temático: {thematic_data.get('metadata', {}).get('nodes', 0)} nodos",
+                "details": thematic_data.get("metadata", {}),
+            })
+            
+            # Step 4: Complete (100%)
+            await publish_event(project_id, {
+                "type": "graph_build_success",
+                "build_id": build_id,
+                "progress": 100,
+                "step": "complete",
+                "message": "Construcción completada exitosamente",
+                "results": {
+                    "screening_status": screening_status,
+                    "reference_extraction": ref_stats,
+                    "citation_graph": citation_metrics,
+                    "thematic_graph": thematic_data.get("metadata", {}),
+                    "citation_path": str(citation_path),
+                },
+            })
+            
+            set_build_status(project_id, {
+                "build_id": build_id,
+                "status": "completed",
+                "progress": 100,
+                "step": "complete",
+                "screening_status": screening_status,
+                "results": {
+                    "reference_extraction": ref_stats,
+                    "citation_graph": citation_metrics,
+                    "thematic_graph": thematic_data.get("metadata", {}),
+                },
+            })
+            
+    except Exception as e:
+        logger.exception(f"Graph build failed for project {project_id}")
+        
+        await publish_event(project_id, {
+            "type": "graph_build_error",
+            "build_id": build_id,
+            "progress": -1,
+            "step": "error",
+            "message": f"Error durante la construcción: {str(e)}",
+            "error": str(e),
+        })
+        
+        set_build_status(project_id, {
+            "build_id": build_id,
+            "status": "failed",
+            "progress": -1,
+            "step": "error",
+            "screening_status": screening_status,
+            "error": str(e),
+        })
+
+
+@router.post("/{project_id}/build", status_code=202)
 async def build_graphs(
     project_id: str,
+    background_tasks: BackgroundTasks,
     request: BuildGraphRequest = BuildGraphRequest(),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Dispara la construcción de ambos grafos (citación + temático).
+    Dispara la construcción asíncrona de ambos grafos (citación + temático).
     
     Flujo:
-    1. Extraer referencias de artículos del proyecto.
-    2. Construir grafo de citaciones (dirigido).
-    3. Construir grafo temático (no-dirigido).
-    4. Guardar ambos grafos como JSON en disco.
-    
-    Retorna estadísticas del proceso completo.
+    1. Valida screening_status.
+    2. Inicia BackgroundTask que extrae referencias y construye grafos.
+    3. Retorna 202 Accepted inmediatamente con build_id.
+    4. El frontend subscribe a SSE /events/{project_id} para progreso.
     
     Args:
         project_id: UUID del proyecto.
+        background_tasks: FastAPI BackgroundTasks.
         request: Body con screening_status (included/maybe/all).
         db: Sesión de base de datos (inyectada por FastAPI).
     
     Returns:
-        Dict con estadísticas de extracción, citación y temático.
+        202 Accepted con build_id y status endpoint.
     """
     screening_status = request.screening_status
     if screening_status not in ("included", "maybe", "all"):
@@ -103,61 +301,61 @@ async def build_graphs(
             detail="screening_status debe ser 'included', 'maybe' o 'all'."
         )
     
-    try:
-        # Paso 1: Extraer referencias
-        ref_stats = await build_reference_batch(project_id, db)
-        
-        # Paso 2: Construir grafo de citaciones
-        citation_builder = CitationGraphBuilder(db, project_id)
-        await citation_builder.build_directed_graph(screening_status)
-        citation_path = citation_builder.save_graph(suffix=screening_status)
-        citation_metrics = citation_builder.calculate_metrics()
-        
-        # Paso 3: Construir grafo temático
-        thematic_builder = ThematicGraphBuilder()
-        thematic_dir = GRAPH_DIR / project_id / "graphs"
-        
-        # Obtener artículos elegibles con filtro estricto + screening
-        eligible_articles = await get_eligible_articles_for_graphs(
-            project_id, db, screening_status
-        )
-        
-        # Convertir a formato esperado por thematic builder
-        articles_for_embeddings = [
-            {
-                "doi": a.doi,
-                "title": a.title or "",
-                "abstract": a.abstract or "",
-            }
-            for a in eligible_articles
-        ]
-        
-        # Generar embeddings y construir grafo
-        if articles_for_embeddings:
-            embeddings, dois = await thematic_builder.get_or_generate_embeddings(
-                articles_for_embeddings
+    # Auto-fallback a "all" si no hay decisiones de screening
+    applied_fallback = False
+    if screening_status != "all":
+        has_decisions = await has_screening_decisions(project_id, db)
+        if not has_decisions:
+            logger.info(
+                f"No screening decisions for project {project_id}, "
+                f"falling back to screening_status='all'"
             )
-            if len(dois) > 0:
-                thematic_builder.build_undirected_graph()
-                thematic_builder.detect_communities()
-                thematic_builder.apply_cluster_colors(thematic_builder.detect_communities())
-        
-        thematic_data = thematic_builder.serialize_and_save(
-            project_id, thematic_dir, suffix=screening_status
-        )
-        
+            screening_status = "all"
+            applied_fallback = True
+    
+    build_id = str(uuid.uuid4())[:8]
+    
+    background_tasks.add_task(
+        _build_graphs_background,
+        project_id,
+        screening_status,
+    )
+    
+    return {
+        "status": "accepted",
+        "build_id": build_id,
+        "message": "Construcción de grafos iniciada en segundo plano",
+        "screening_status": screening_status,
+        "applied_fallback": applied_fallback,
+        "progress_endpoint": f"/api/v1/events/{project_id}",
+        "status_endpoint": f"/api/v1/graphs/{project_id}/build/{build_id}/status",
+    }
+
+
+@router.get("/{project_id}/build/{build_id}/status")
+async def get_build_status_endpoint(project_id: str, build_id: str):
+    """
+    Consulta el estado actual de una construcción de grafo.
+    
+    Args:
+        project_id: UUID del proyecto.
+        build_id: ID de la construcción.
+    
+    Returns:
+        Estado actual del build (running, completed, failed).
+    """
+    status = get_build_status(project_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="No hay construcción activa para este proyecto.")
+    
+    if status.get("build_id") != build_id:
         return {
-            "status": "complete",
-            "screening_status": screening_status,
-            "reference_extraction": ref_stats,
-            "citation_graph": citation_metrics,
-            "thematic_graph": thematic_data.get("metadata", {}),
-            "citation_path": str(citation_path),
+            "status": "mismatch",
+            "message": "El build_id no coincide con la construcción actual",
+            "current_build_id": status.get("build_id"),
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    
+    return status
 
 
 @router.get("/{project_id}/citation", response_model=GraphResponse)

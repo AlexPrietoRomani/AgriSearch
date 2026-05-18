@@ -68,6 +68,31 @@ from app.services.reference_extractor import normalize_doi
 
 # ─── Filtro estricto de artículos para grafos ──────────────────────────
 
+async def has_screening_decisions(
+    project_id: str,
+    db_session: AsyncSession,
+) -> bool:
+    """
+    Verifica si existen decisiones de screening para un proyecto.
+    
+    Args:
+        project_id: UUID del proyecto.
+        db_session: Sesión async de SQLAlchemy.
+    
+    Returns:
+        True si hay al menos una decisión de screening, False en caso contrario.
+    """
+    stmt = (
+        select(ScreeningDecision)
+        .join(Article, ScreeningDecision.article_id == Article.id)
+        .join(SearchQuery, Article.search_query_id == SearchQuery.id)
+        .where(SearchQuery.project_id == project_id)
+        .limit(1)
+    )
+    result = await db_session.execute(stmt)
+    return result.scalar_one_or_none() is not None
+
+
 async def get_eligible_articles_for_graphs(
     project_id: str,
     db_session: AsyncSession,
