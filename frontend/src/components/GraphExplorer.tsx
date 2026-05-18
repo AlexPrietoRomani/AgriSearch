@@ -7,6 +7,7 @@ import GraphVisualization from "./GraphVisualization";
 import GraphToolbar from "./GraphToolbar";
 import GraphStatsBar from "./GraphStatsBar";
 import GraphNodePanel from "./GraphNodePanel";
+import GraphBuildModal from "./GraphBuildModal";
 
 export default function GraphExplorer() {
   const [projectId, setProjectId] = useState("");
@@ -22,6 +23,8 @@ export default function GraphExplorer() {
   const [screeningStatus, setScreeningStatus] = useState<"included" | "maybe" | "all">("included");
   const [hasScreeningData, setHasScreeningData] = useState(true);
   const [layout, setLayout] = useState<"hierarchical" | "force" | "circular">("force");
+  const [showBuildModal, setShowBuildModal] = useState(false);
+  const [currentBuildId, setCurrentBuildId] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -46,18 +49,22 @@ export default function GraphExplorer() {
   }
 
   const handleBuild = async () => {
-    setBuilding(true);
     setError(null);
     try {
-      await buildGraphs(projectId, screeningStatus);
-      await loadStats(projectId);
-      await loadGraph(projectId, graphType);
+      const response = await buildGraphs(projectId, screeningStatus);
+      setCurrentBuildId(response.build_id);
+      setShowBuildModal(true);
     } catch (e: any) {
       setError(e.message || "Error al construir los grafos");
-    } finally {
-      setBuilding(false);
     }
   };
+
+  const handleBuildComplete = useCallback(async () => {
+    setShowBuildModal(false);
+    setCurrentBuildId(null);
+    await loadStats(projectId);
+    await loadGraph(projectId, graphType);
+  }, [projectId, graphType]);
 
   const loadGraph = async (id: string, type: "citation" | "thematic") => {
     setLoading(true);
@@ -125,7 +132,7 @@ export default function GraphExplorer() {
         <GraphStatsBar
           stats={stats}
           onBuild={handleBuild}
-          building={building}
+          building={false}
           onLoadGraph={loadGraph}
           graphType={graphType}
           loading={loading}
@@ -200,6 +207,15 @@ export default function GraphExplorer() {
           <GraphNodePanel node={selectedNode} onClose={() => setSelectedNode(null)} />
         )}
       </div>
+
+      {/* Build Progress Modal */}
+      <GraphBuildModal
+        projectId={projectId}
+        buildId={currentBuildId}
+        isOpen={showBuildModal}
+        onClose={() => setShowBuildModal(false)}
+        onComplete={handleBuildComplete}
+      />
     </div>
   );
 }

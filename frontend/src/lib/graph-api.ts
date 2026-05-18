@@ -92,12 +92,31 @@ export interface BuildGraphsResponse {
   citation_path: string;
 }
 
+export interface BuildGraphsAcceptedResponse {
+  status: "accepted";
+  build_id: string;
+  message: string;
+  progress_endpoint: string;
+  status_endpoint: string;
+}
+
+export interface GraphBuildProgressEvent {
+  type: "graph_build_progress" | "graph_build_success" | "graph_build_error";
+  build_id: string;
+  progress: number;
+  step: string;
+  message: string;
+  details?: Record<string, any>;
+  results?: Record<string, any>;
+  error?: string;
+}
+
 // ── Graph API ──
 
 export async function buildGraphs(
   projectId: string,
   screeningStatus: "included" | "maybe" | "all" = "included",
-): Promise<BuildGraphsResponse> {
+): Promise<BuildGraphsAcceptedResponse> {
   return request(`/graphs/${projectId}/build`, {
     method: "POST",
     body: JSON.stringify({ screening_status: screeningStatus }),
