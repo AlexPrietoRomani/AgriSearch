@@ -40,7 +40,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.db.database import init_db
-from app.api.v1 import projects, search, screening, system, events
+from app.api.v1 import projects, search, screening, system, events, graphs
 
 # Parche para los deadlocks de aiosqlite/SQLAlchemy en Windows
 if sys.platform == "win32":
@@ -89,6 +89,7 @@ app.include_router(events.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(screening.router, prefix="/api/v1")
+app.include_router(graphs.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["System"])
