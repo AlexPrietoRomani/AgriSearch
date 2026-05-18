@@ -43,6 +43,7 @@ Ejemplo de Integración:
 
 import re
 import asyncio
+from pathlib import Path
 from typing import Optional
 
 import aiohttp
@@ -447,5 +448,210 @@ async def build_reference_batch(
     
     await db_session.commit()
     await extractor.close()
+    
+    return stats
+
+
+# ─── Extracción de referencias desde Markdown parseado ─────────────────────
+
+REF_SECTION_PATTERNS = [
+    r'(?mi)^#{1,3}\s*References\s*$',
+    r'(?mi)^#{1,3}\s*Referencias\s*$',
+    r'(?mi)^#{1,3}\s*Bibliography\s*$',
+    r'(?mi)^#{1,3}\s*Referências\s*$',
+    r'(?mi)^#{1,3}\s*Works\s+Cited\s*$',
+]
+
+DOI_PATTERN = r'10\.\d{4,}[^\s"<>]+'
+YEAR_PATTERN = r'(?:19|20)\d{2}'
+
+
+def extract_references_from_markdown(md_path: Path) -> list[dict]:
+    """
+    Extrae referencias bibliográficas desde un archivo Markdown parseado.
+    
+    Flujo:
+    1. Leer contenido del .md
+    2. Localizar sección de referencias
+    3. Parsear cada entrada de referencia
+    4. Extraer DOI, título, autores, año
+    5. Retornar lista de referencias estructuradas
+    
+    Args:
+        md_path: Ruta al archivo .md del artículo.
+    
+    Returns:
+        Lista de dicts: [{"cited_doi": "...", "cited_title": "...", ...}]
+    """
+    if not md_path.exists():
+        return []
+    
+    content = md_path.read_text(encoding="utf-8")
+    
+    # 1. Localizar sección de referencias
+    ref_section_start = None
+    ref_section_end = None
+    
+    for pattern in REF_SECTION_PATTERNS:
+        match = re.search(pattern, content)
+        if match:
+            ref_section_start = match.start()
+            break
+    
+    if ref_section_start is None:
+        return []
+    
+    # 2. Determinar fin de la sección (próximo heading o fin del documento)
+    remaining = content[ref_section_start:]
+    next_heading = re.search(r'\n#{1,3}\s+', remaining[10:])
+    if next_heading:
+        ref_section_end = ref_section_start + 10 + next_heading.start()
+    else:
+        ref_section_end = len(content)
+    
+    ref_section = content[ref_section_start:ref_section_end]
+    
+    # 3. Separar en bloques de referencia
+    ref_blocks = re.split(r'\n\n+', ref_section)
+    
+    references = []
+    for block in ref_blocks:
+        ref = _parse_reference_block(block)
+        if ref and ref.get("cited_doi"):
+            references.append(ref)
+    
+    return references
+
+
+def _parse_reference_block(block: str) -> Optional[dict]:
+    """Parsea un bloque de texto de referencia individual."""
+    doi_match = re.search(DOI_PATTERN, block)
+    doi = doi_match.group(0) if doi_match else None
+    
+    year_match = re.search(YEAR_PATTERN, block)
+    year = year_match.group(0) if year_match else None
+    
+    title_match = re.search(r'"([^"]{10,})"', block)
+    title = title_match.group(1) if title_match else None
+    
+    if not title:
+        lines = [l.strip() for l in block.split('\n') if l.strip()]
+        for line in lines:
+            cleaned = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+            if len(cleaned) > 15 and not cleaned.lower().startswith('doi'):
+                title = cleaned[:200]
+                break
+    
+    author_patterns = [
+        r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+,\s*[A-Z]\.(?:\s*,\s*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+,\s*[A-Z]\.)*)',
+        r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+et\s+al\.?)',
+    ]
+    authors = None
+    for pat in author_patterns:
+        auth_match = re.search(pat, block)
+        if auth_match:
+            authors = auth_match.group(1)
+            break
+    
+    if not doi:
+        return None
+    
+    return {
+        "cited_doi": doi,
+        "cited_title": title or "",
+        "cited_authors": authors or "",
+        "cited_year": year,
+        "extraction_source": "markdown_parse",
+    }
+
+
+async def build_reference_batch_from_md(
+    project_id: str,
+    db_session: AsyncSession,
+    screening_status: str = "included",
+) -> dict:
+    """
+    Extrae referencias desde archivos Markdown parseados (sin APIs externas).
+    
+    Flujo:
+    1. Obtener artículos elegibles (filtro estricto + screening)
+    2. Para cada artículo con local_md_path, extraer referencias del MD
+    3. Marcar is_in_project comparando DOIs
+    4. Insertar/actualizar en article_references (upsert)
+    5. Retornar estadísticas
+    
+    Args:
+        project_id: UUID del proyecto.
+        db_session: Sesión async de SQLAlchemy.
+        screening_status: "included", "maybe", o "all".
+    
+    Returns:
+        Dict con estadísticas de extracción.
+    """
+    from app.services.graph_service import get_eligible_articles_for_graphs
+    
+    articles = await get_eligible_articles_for_graphs(
+        project_id, db_session, screening_status
+    )
+    
+    project_dois = {
+        normalize_doi(a.doi) for a in articles if a.doi
+    }
+    
+    stats = {
+        "total_articles": len(articles),
+        "articles_with_md": 0,
+        "total_references_extracted": 0,
+        "references_in_project": 0,
+        "references_external": 0,
+        "errors": 0,
+    }
+    
+    for article in articles:
+        if not article.local_md_path:
+            continue
+        
+        md_path = Path(article.local_md_path)
+        if not md_path.exists():
+            continue
+        
+        stats["articles_with_md"] += 1
+        
+        try:
+            references = extract_references_from_markdown(md_path)
+            
+            for ref in references:
+                ref_doi = ref["cited_doi"]
+                is_in_project = ref_doi in project_dois
+                
+                if is_in_project:
+                    stats["references_in_project"] += 1
+                else:
+                    stats["references_external"] += 1
+                
+                existing = await db_session.execute(
+                    select(ArticleReference).where(
+                        ArticleReference.source_article_id == article.id,
+                        ArticleReference.cited_doi == ref_doi,
+                    )
+                )
+                
+                if not existing.scalar_one_or_none():
+                    db_session.add(ArticleReference(
+                        source_article_id=article.id,
+                        cited_doi=ref_doi,
+                        cited_title=ref.get("cited_title", ""),
+                        cited_authors=ref.get("cited_authors", ""),
+                        cited_year=ref.get("cited_year"),
+                        extraction_source=ref.get("extraction_source", "markdown_parse"),
+                        is_in_project=is_in_project,
+                    ))
+            
+            stats["total_references_extracted"] += len(references)
+            
+        except Exception:
+            stats["errors"] += 1
+    
+    await db_session.commit()
     
     return stats
