@@ -82,28 +82,28 @@ Desde la raíz principal del proyecto, debes instalar las dependencias de ambas 
 
 📄 `start_agrisearch.cmd`
 
-> **¿El doble clic no funciona o la ventana se cierra instantáneamente?**
-> Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **tres ventanas separadas**:
-> 
-> **Ventana 1 (Backend):** 
-> ```powershell
-> cd backend
-> uv run uvicorn app.main:app --port 8000 --reload
-> ```
-> 
-> **Ventana 2 (Active Learning Worker):**
-> ```powershell
-> cd active_learning_worker
-> cargo run --release
-> ```
-> 
-> **Ventana 3 (Frontend):**
-> ```bash
-> cd frontend
-> pnpm install
-> pnpm run dev
-> ```
-> Finalmente, abre en tu navegador web la dirección `http://localhost:4321`.
+**¿El doble clic no funciona o la ventana se cierra instantáneamente?**
+Abre una terminal genérica (CMD o PowerShell) dentro de la carpeta del proyecto y ejecuta estos comandos manualmente en **tres ventanas separadas**:
+
+**Ventana 1 (Backend):** 
+```powershell
+cd backend
+uv run uvicorn app.main:app --port 8000 --reload
+```
+
+**Ventana 2 (Active Learning Worker):**
+```powershell
+cd active_learning_worker
+cargo run --release
+```
+
+**Ventana 3 (Frontend):**
+```bash
+cd frontend
+pnpm install
+pnpm run dev
+```
+Finalmente, abre en tu navegador web la dirección `http://localhost:4321`.
 
 ---
 
