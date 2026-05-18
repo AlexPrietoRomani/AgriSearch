@@ -210,6 +210,7 @@ class Article(Base):
     # Relaciones
     project = relationship("Project", back_populates="articles")
     screening_decisions = relationship("ScreeningDecision", back_populates="article", cascade="all, delete-orphan")
+    references = relationship("ArticleReference", back_populates="source_article", cascade="all, delete-orphan")
 
 
 class ScreeningSession(Base):
