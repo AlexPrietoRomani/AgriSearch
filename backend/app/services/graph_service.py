@@ -61,9 +61,64 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.project import Article
+from app.models.project import Article, SearchQuery, ScreeningDecision
 from app.models.article_reference import ArticleReference
 from app.services.reference_extractor import normalize_doi
+
+
+# ─── Filtro estricto de artículos para grafos ──────────────────────────
+
+async def get_eligible_articles_for_graphs(
+    project_id: str,
+    db_session: AsyncSession,
+    screening_status: str = "included",
+) -> list[Article]:
+    """
+    Obtiene artículos elegibles para grafos con filtros estrictos.
+    
+    Criterios estrictos (siempre aplicados):
+    1. doi IS NOT NULL y empieza con '10.'
+    2. download_status = 'SUCCESS'
+    3. local_md_path IS NOT NULL
+    4. parsed_status = 'success'
+    
+    Filtro de screening (opcional):
+    - "included": solo ScreeningDecision.decision = 'include'
+    - "maybe": solo ScreeningDecision.decision = 'maybe'
+    - "all": sin filtro de screening (solo filtros estrictos)
+    
+    Args:
+        project_id: UUID del proyecto.
+        db_session: Sesión async de SQLAlchemy.
+        screening_status: "included" (default), "maybe", o "all".
+    
+    Returns:
+        Lista de Article que cumplen todos los criterios.
+    """
+    # Query base con filtros estrictos
+    base_query = (
+        select(Article)
+        .join(SearchQuery, Article.search_query_id == SearchQuery.id)
+        .where(
+            SearchQuery.project_id == project_id,
+            Article.doi.isnot(None),
+            Article.download_status == "SUCCESS",
+            Article.local_md_path.isnot(None),
+            Article.parsed_status == "success",
+        )
+    )
+    
+    # Aplicar filtro de screening si no es "all"
+    if screening_status != "all":
+        decision_value = "include" if screening_status == "included" else "maybe"
+        base_query = (
+            base_query
+            .join(ScreeningDecision, ScreeningDecision.article_id == Article.id)
+            .where(ScreeningDecision.decision == decision_value)
+        )
+    
+    result = await db_session.execute(base_query)
+    return list(result.scalars().all())
 
 
 # ─── Colores para vis-network ──────────────────────────────────────────
@@ -106,16 +161,19 @@ class CitationGraphBuilder:
         self.project_id = project_id
         self.graph: Optional[nx.DiGraph] = None
     
-    async def load_project_articles(self) -> dict[str, dict]:
+    async def load_project_articles(self, screening_status: str = "included") -> dict[str, dict]:
         """
-        Carga artículos del proyecto con sus metadatos.
+        Carga artículos del proyecto con filtros estrictos + screening.
+        
+        Args:
+            screening_status: "included" (default), "maybe", o "all".
         
         Returns:
             Dict {doi_normalized: {title, authors, year, article_id, abstract, doi_original}}
         """
-        stmt = select(Article).where(Article.project_id == self.project_id)
-        result = await self.db_session.execute(stmt)
-        articles = result.scalars().all()
+        articles = await get_eligible_articles_for_graphs(
+            self.project_id, self.db_session, screening_status
+        )
         
         articles_map = {}
         for article in articles:
@@ -133,16 +191,30 @@ class CitationGraphBuilder:
         
         return articles_map
     
-    async def load_references(self) -> list[dict]:
+    async def load_references(self, screening_status: str = "included") -> list[dict]:
         """
-        Carga todas las referencias del proyecto desde BD.
+        Carga referencias del proyecto filtradas por screening_status.
+        
+        Las referencias se filtran para incluir solo aquellas cuyo artículo
+        fuente cumple con el screening_status especificado.
+        
+        Args:
+            screening_status: "included" (default), "maybe", o "all".
         
         Returns:
             Lista de dicts con referencias.
         """
-        stmt = select(ArticleReference).join(
-            Article, ArticleReference.source_article_id == Article.id
-        ).where(Article.project_id == self.project_id)
+        eligible_articles = await get_eligible_articles_for_graphs(
+            self.project_id, self.db_session, screening_status
+        )
+        eligible_ids = {a.id for a in eligible_articles}
+        
+        if not eligible_ids:
+            return []
+        
+        stmt = select(ArticleReference).where(
+            ArticleReference.source_article_id.in_(eligible_ids)
+        )
         result = await self.db_session.execute(stmt)
         refs = result.scalars().all()
         
@@ -159,14 +231,17 @@ class CitationGraphBuilder:
             for ref in refs
         ]
     
-    async def build_directed_graph(self) -> nx.DiGraph:
+    async def build_directed_graph(self, screening_status: str = "included") -> nx.DiGraph:
         """
-        Construye el grafo dirigido de citaciones.
+        Construye el grafo dirigido de citaciones con filtros estrictos.
+        
+        Args:
+            screening_status: "included" (default), "maybe", o "all".
         
         Flujo:
-        1. Cargar artículos del proyecto (nodos verdes)
-        2. Cargar referencias
-        3. Crear nodos para artículos incluidos
+        1. Cargar artículos elegibles (nodos verdes)
+        2. Cargar referencias filtradas
+        3. Crear nodos para artículos elegibles
         4. Crear nodos para artículos externos citados
         5. Crear aristas dirigidas (source → cited)
         6. Calcular métricas (in-degree, bridge articles)
@@ -174,8 +249,8 @@ class CitationGraphBuilder:
         Returns:
             Grafo NetworkX DiGraph construido.
         """
-        articles_map = await self.load_project_articles()
-        references = await self.load_references()
+        articles_map = await self.load_project_articles(screening_status)
+        references = await self.load_references(screening_status)
         
         G = self._build_graph_from_data(articles_map, references)
         self.graph = G
@@ -384,12 +459,13 @@ class CitationGraphBuilder:
             "metadata": metadata,
         }
     
-    def save_graph(self, graph_dir: Optional[Path] = None) -> Path:
+    def save_graph(self, graph_dir: Optional[Path] = None, suffix: str = "included") -> Path:
         """
         Guarda el grafo serializado como JSON en disco.
         
         Args:
             graph_dir: Directorio donde guardar. Default: data/projects/{id}/graphs/
+            suffix: Suffix para el archivo (screening_status). Default: "included"
         
         Returns:
             Ruta del archivo JSON guardado.
@@ -401,7 +477,7 @@ class CitationGraphBuilder:
             graph_dir = Path(f"data/projects/{self.project_id}/graphs")
         
         graph_dir.mkdir(parents=True, exist_ok=True)
-        output_path = graph_dir / "citation_graph.json"
+        output_path = graph_dir / f"citation_graph_{suffix}.json"
         
         data = self.serialize_to_vis_network()
         output_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -409,13 +485,14 @@ class CitationGraphBuilder:
         return output_path
     
     @staticmethod
-    def load_graph(project_id: str, graph_dir: Optional[Path] = None) -> Optional[dict]:
+    def load_graph(project_id: str, graph_dir: Optional[Path] = None, suffix: str = "included") -> Optional[dict]:
         """
         Carga un grafo previamente guardado desde JSON.
         
         Args:
             project_id: UUID del proyecto.
             graph_dir: Directorio del grafo. Default: data/projects/{id}/graphs/
+            suffix: Suffix del archivo (screening_status). Default: "included"
         
         Returns:
             Dict con nodos y aristas, o None si no existe.
@@ -423,7 +500,7 @@ class CitationGraphBuilder:
         if graph_dir is None:
             graph_dir = Path(f"data/projects/{project_id}/graphs")
         
-        json_path = graph_dir / "citation_graph.json"
+        json_path = graph_dir / f"citation_graph_{suffix}.json"
         if not json_path.exists():
             return None
         
@@ -748,13 +825,14 @@ class ThematicGraphBuilder:
                 }
                 self.graph.nodes[node]["cluster"] = cluster_id
     
-    def serialize_and_save(self, project_id: str, graph_dir: Optional[Path] = None) -> dict:
+    def serialize_and_save(self, project_id: str, graph_dir: Optional[Path] = None, suffix: str = "included") -> dict:
         """
         Serializa el grafo temático a formato vis-network y guarda JSON.
         
         Args:
             project_id: UUID del proyecto.
             graph_dir: Directorio donde guardar. Default: data/projects/{id}/graphs/
+            suffix: Suffix para el archivo (screening_status). Default: "included"
         
         Returns:
             Dict con {graph_type, project_id, nodes, edges, metadata}.
@@ -808,6 +886,7 @@ class ThematicGraphBuilder:
                 "threshold": self.threshold,
                 "num_clusters": len(cluster_counts),
                 "cluster_sizes": cluster_counts,
+                "screening_status": suffix,
             },
         }
         
@@ -816,7 +895,7 @@ class ThematicGraphBuilder:
             graph_dir = Path(f"data/projects/{project_id}/graphs")
         
         graph_dir.mkdir(parents=True, exist_ok=True)
-        output_path = graph_dir / "thematic_graph.json"
+        output_path = graph_dir / f"thematic_graph_{suffix}.json"
         output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
         
         return result

@@ -29,12 +29,13 @@ Salidas / Efectos:
 Ejemplo de Integración:
     # Construir grafos:
     POST /api/v1/graphs/{project_id}/build
+    {"screening_status": "included"}
     
     # Obtener grafo de citaciones:
-    GET /api/v1/graphs/{project_id}/citation?status=included&depth=1
+    GET /api/v1/graphs/{project_id}/citation?screening_status=included&depth=1
     
     # Obtener grafo temático:
-    GET /api/v1/graphs/{project_id}/thematic?threshold=0.75
+    GET /api/v1/graphs/{project_id}/thematic?threshold=0.75&screening_status=included
 """
 
 import json
@@ -42,6 +43,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -53,7 +55,11 @@ from app.models.graph_models import (
     GraphStatsResponse,
     NeighborResponse,
 )
-from app.services.graph_service import CitationGraphBuilder, ThematicGraphBuilder
+from app.services.graph_service import (
+    CitationGraphBuilder,
+    ThematicGraphBuilder,
+    get_eligible_articles_for_graphs,
+)
 from app.services.reference_extractor import build_reference_batch
 
 router = APIRouter(prefix="/graphs", tags=["graphs"])
@@ -61,9 +67,14 @@ router = APIRouter(prefix="/graphs", tags=["graphs"])
 GRAPH_DIR = Path("data/projects")
 
 
+class BuildGraphRequest(BaseModel):
+    screening_status: str = "included"
+
+
 @router.post("/{project_id}/build")
 async def build_graphs(
     project_id: str,
+    request: BuildGraphRequest = BuildGraphRequest(),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -79,28 +90,65 @@ async def build_graphs(
     
     Args:
         project_id: UUID del proyecto.
+        request: Body con screening_status (included/maybe/all).
         db: Sesión de base de datos (inyectada por FastAPI).
     
     Returns:
         Dict con estadísticas de extracción, citación y temático.
     """
+    screening_status = request.screening_status
+    if screening_status not in ("included", "maybe", "all"):
+        raise HTTPException(
+            status_code=400,
+            detail="screening_status debe ser 'included', 'maybe' o 'all'."
+        )
+    
     try:
         # Paso 1: Extraer referencias
         ref_stats = await build_reference_batch(project_id, db)
         
         # Paso 2: Construir grafo de citaciones
         citation_builder = CitationGraphBuilder(db, project_id)
-        await citation_builder.build_directed_graph()
-        citation_path = citation_builder.save_graph()
+        await citation_builder.build_directed_graph(screening_status)
+        citation_path = citation_builder.save_graph(suffix=screening_status)
         citation_metrics = citation_builder.calculate_metrics()
         
         # Paso 3: Construir grafo temático
         thematic_builder = ThematicGraphBuilder()
         thematic_dir = GRAPH_DIR / project_id / "graphs"
-        thematic_data = thematic_builder.serialize_and_save(project_id, thematic_dir)
+        
+        # Obtener artículos elegibles con filtro estricto + screening
+        eligible_articles = await get_eligible_articles_for_graphs(
+            project_id, db, screening_status
+        )
+        
+        # Convertir a formato esperado por thematic builder
+        articles_for_embeddings = [
+            {
+                "doi": a.doi,
+                "title": a.title or "",
+                "abstract": a.abstract or "",
+            }
+            for a in eligible_articles
+        ]
+        
+        # Generar embeddings y construir grafo
+        if articles_for_embeddings:
+            embeddings, dois = await thematic_builder.get_or_generate_embeddings(
+                articles_for_embeddings
+            )
+            if len(dois) > 0:
+                thematic_builder.build_undirected_graph()
+                thematic_builder.detect_communities()
+                thematic_builder.apply_cluster_colors(thematic_builder.detect_communities())
+        
+        thematic_data = thematic_builder.serialize_and_save(
+            project_id, thematic_dir, suffix=screening_status
+        )
         
         return {
             "status": "complete",
+            "screening_status": screening_status,
             "reference_extraction": ref_stats,
             "citation_graph": citation_metrics,
             "thematic_graph": thematic_data.get("metadata", {}),
@@ -115,6 +163,7 @@ async def build_graphs(
 @router.get("/{project_id}/citation", response_model=GraphResponse)
 async def get_citation_graph(
     project_id: str,
+    screening_status: str = Query("included", description="Filtrar por screening: included | maybe | all"),
     year_min: Optional[int] = Query(None, description="Año mínimo de filtrado"),
     year_max: Optional[int] = Query(None, description="Año máximo de filtrado"),
     status: Optional[str] = Query(None, description="Filtrar por status: included | cited_external"),
@@ -124,12 +173,14 @@ async def get_citation_graph(
     Retorna el grafo de citaciones completo.
     
     Filtros opcionales:
+    - screening_status: "included" (default), "maybe", o "all".
     - year_min/year_max: rango de años de los artículos.
     - status: "included" para artículos del proyecto, "cited_external" para externos.
     - depth: profundidad de expansión del grafo.
     
     Args:
         project_id: UUID del proyecto.
+        screening_status: Screening status del grafo.
         year_min: Año mínimo.
         year_max: Año máximo.
         status: Status del nodo.
@@ -141,11 +192,17 @@ async def get_citation_graph(
     Raises:
         404: Si el grafo no ha sido construido.
     """
-    graph_data = CitationGraphBuilder.load_graph(project_id)
+    if screening_status not in ("included", "maybe", "all"):
+        raise HTTPException(
+            status_code=400,
+            detail="screening_status debe ser 'included', 'maybe' o 'all'."
+        )
+    
+    graph_data = CitationGraphBuilder.load_graph(project_id, suffix=screening_status)
     if graph_data is None:
         raise HTTPException(
             status_code=404,
-            detail="Grafo no construido. Ejecuta POST /graphs/{project_id}/build primero.",
+            detail=f"Grafo no construido para screening_status='{screening_status}'. Ejecuta POST /graphs/{{project_id}}/build primero.",
         )
     
     # Aplicar filtros
@@ -192,6 +249,7 @@ async def get_citation_graph(
 @router.get("/{project_id}/thematic", response_model=GraphResponse)
 async def get_thematic_graph(
     project_id: str,
+    screening_status: str = Query("included", description="Filtrar por screening: included | maybe | all"),
     threshold: float = Query(0.75, ge=0.0, le=1.0, description="Umbral mínimo de cosine_similarity"),
 ):
     """
@@ -203,6 +261,7 @@ async def get_thematic_graph(
     
     Args:
         project_id: UUID del proyecto.
+        screening_status: Screening status del grafo.
         threshold: Umbral de similitud (0.0 a 1.0).
     
     Returns:
@@ -211,11 +270,17 @@ async def get_thematic_graph(
     Raises:
         404: Si el grafo temático no ha sido construido.
     """
-    thematic_path = GRAPH_DIR / project_id / "graphs" / "thematic_graph.json"
+    if screening_status not in ("included", "maybe", "all"):
+        raise HTTPException(
+            status_code=400,
+            detail="screening_status debe ser 'included', 'maybe' o 'all'."
+        )
+    
+    thematic_path = GRAPH_DIR / project_id / "graphs" / f"thematic_graph_{screening_status}.json"
     if not thematic_path.exists():
         raise HTTPException(
             status_code=404,
-            detail="Grafo temático no construido. Ejecuta POST /graphs/{project_id}/build primero.",
+            detail=f"Grafo temático no construido para screening_status='{screening_status}'. Ejecuta POST /graphs/{{project_id}}/build primero.",
         )
     
     data = json.loads(thematic_path.read_text(encoding="utf-8"))
@@ -242,6 +307,7 @@ async def get_thematic_graph(
 async def get_article_neighbors(
     project_id: str,
     doi: str,
+    screening_status: str = Query("included", description="Filtrar por screening: included | maybe | all"),
     depth: int = Query(1, ge=1, le=3, description="Profundidad de expansión"),
 ):
     """
@@ -254,6 +320,7 @@ async def get_article_neighbors(
     Args:
         project_id: UUID del proyecto.
         doi: DOI del artículo (con path encoding).
+        screening_status: Screening status del grafo.
         depth: Profundidad de expansión (1-3).
     
     Returns:
@@ -262,7 +329,13 @@ async def get_article_neighbors(
     Raises:
         404: Si el grafo no existe o el DOI no se encuentra.
     """
-    graph_data = CitationGraphBuilder.load_graph(project_id)
+    if screening_status not in ("included", "maybe", "all"):
+        raise HTTPException(
+            status_code=400,
+            detail="screening_status debe ser 'included', 'maybe' o 'all'."
+        )
+    
+    graph_data = CitationGraphBuilder.load_graph(project_id, suffix=screening_status)
     if graph_data is None:
         raise HTTPException(status_code=404, detail="Grafo no construido.")
     
@@ -328,7 +401,10 @@ async def get_article_neighbors(
 
 
 @router.get("/{project_id}/stats", response_model=GraphStatsResponse)
-async def get_graph_stats(project_id: str):
+async def get_graph_stats(
+    project_id: str,
+    screening_status: str = Query("included", description="Filtrar por screening: included | maybe | all"),
+):
     """
     Retorna estadísticas de ambos grafos para un proyecto.
     
@@ -339,12 +415,19 @@ async def get_graph_stats(project_id: str):
     
     Args:
         project_id: UUID del proyecto.
+        screening_status: Screening status del grafo.
     
     Returns:
         GraphStatsResponse con estadísticas completas.
     """
-    citation_path = GRAPH_DIR / project_id / "graphs" / "citation_graph.json"
-    thematic_path = GRAPH_DIR / project_id / "graphs" / "thematic_graph.json"
+    if screening_status not in ("included", "maybe", "all"):
+        raise HTTPException(
+            status_code=400,
+            detail="screening_status debe ser 'included', 'maybe' o 'all'."
+        )
+    
+    citation_path = GRAPH_DIR / project_id / "graphs" / f"citation_graph_{screening_status}.json"
+    thematic_path = GRAPH_DIR / project_id / "graphs" / f"thematic_graph_{screening_status}.json"
     
     citation_data = None
     thematic_data = None
