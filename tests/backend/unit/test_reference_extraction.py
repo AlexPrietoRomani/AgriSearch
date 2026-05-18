@@ -204,3 +204,316 @@ class TestArticleReferencesModel:
 
         external_doi = "10.9999/unknown.2023"
         assert external_doi not in project_dois
+
+
+# ──────────────────────────────────────────────
+# Tests del servicio ReferenceExtractor
+# ──────────────────────────────────────────────
+
+class TestReferenceExtractorService:
+    """Tests para el servicio ReferenceExtractor implementado."""
+
+    def test_normalize_doi_clean(self):
+        """DOI limpio se retorna sin cambios."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi("10.1038/s41586-021-03819-2") == "10.1038/s41586-021-03819-2"
+
+    def test_normalize_doi_https_url(self):
+        """URL https://doi.org/ se strippea correctamente."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi("https://doi.org/10.1038/test") == "10.1038/test"
+
+    def test_normalize_doi_http_url(self):
+        """URL http://dx.doi.org/ se strippea correctamente."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi("http://dx.doi.org/10.1000/xyz") == "10.1000/xyz"
+
+    def test_normalize_doi_prefix(self):
+        """Prefijo doi: se strippea correctamente."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi("doi:10.1000/abc") == "10.1000/abc"
+
+    def test_normalize_doi_urn_prefix(self):
+        """Prefijo urn:doi: se strippea correctamente."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi("urn:doi:10.1000/def") == "10.1000/def"
+
+    def test_normalize_doi_with_spaces(self):
+        """Espacios alrededor del DOI se limpian."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi("  10.1000/test  ") == "10.1000/test"
+
+    def test_normalize_doi_invalid(self):
+        """String que no es DOI retorna None."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi("not-a-doi") is None
+
+    def test_normalize_doi_empty(self):
+        """String vacío retorna None."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi("") is None
+
+    def test_normalize_doi_none(self):
+        """None retorna None."""
+        from app.services.reference_extractor import normalize_doi
+        assert normalize_doi(None) is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_from_openalex_success(self):
+        """OpenAlex retorna referencias cuando la API responde OK."""
+        from app.services.reference_extractor import ReferenceExtractor
+
+        mock_work_response = {
+            "doi": "https://doi.org/10.1038/source",
+            "title": "Source Paper",
+            "publication_year": 2023,
+            "referenced_works": ["https://openalex.org/W1234"],
+        }
+        mock_ref_response = {
+            "doi": "https://doi.org/10.1000/ref1",
+            "title": "Referenced Paper",
+            "publication_year": 2020,
+            "authorships": [
+                {"author": {"display_name": "Alice Smith"}},
+                {"author": {"display_name": "Bob Jones"}},
+            ],
+        }
+
+        extractor = ReferenceExtractor()
+
+        class MockResponse:
+            def __init__(self, status, json_data):
+                self.status = status
+                self._json_data = json_data
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            async def json(self):
+                return self._json_data
+
+        def mock_get(url, *args, **kwargs):
+            if "doi:10.1038/source" in url:
+                return MockResponse(200, mock_work_response)
+            elif "W1234" in url:
+                return MockResponse(200, mock_ref_response)
+            return MockResponse(404, {})
+
+        with patch.object(extractor, '_get_session') as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_session.get = mock_get
+            mock_session_factory.return_value = mock_session
+
+            refs = await extractor.fetch_from_openalex("10.1038/source")
+
+            assert len(refs) == 1
+            assert refs[0]["cited_doi"] == "10.1000/ref1"
+            assert refs[0]["cited_title"] == "Referenced Paper"
+            assert "Alice Smith" in refs[0]["cited_authors"]
+            assert refs[0]["cited_year"] == "2020"
+            assert refs[0]["extraction_source"] == "openalex"
+
+    @pytest.mark.asyncio
+    async def test_fetch_from_openalex_empty_refs(self):
+        """OpenAlex retorna lista vacía cuando no hay referenced_works."""
+        from app.services.reference_extractor import ReferenceExtractor
+
+        mock_response = {
+            "doi": "https://doi.org/10.1038/test",
+            "title": "Test Paper",
+            "referenced_works": [],
+        }
+
+        extractor = ReferenceExtractor()
+
+        class MockResponse:
+            def __init__(self, status, json_data):
+                self.status = status
+                self._json_data = json_data
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            async def json(self):
+                return self._json_data
+
+        def mock_get(url, *args, **kwargs):
+            return MockResponse(200, mock_response)
+
+        with patch.object(extractor, '_get_session') as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_session.get = mock_get
+            mock_session_factory.return_value = mock_session
+
+            refs = await extractor.fetch_from_openalex("10.1038/test")
+            assert refs == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_from_openalex_api_error(self):
+        """OpenAlex retorna lista vacía cuando la API falla."""
+        from app.services.reference_extractor import ReferenceExtractor
+
+        extractor = ReferenceExtractor()
+
+        class MockResponse:
+            def __init__(self, status):
+                self.status = status
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            async def json(self):
+                return {}
+
+        def mock_get(url, *args, **kwargs):
+            return MockResponse(500)
+
+        with patch.object(extractor, '_get_session') as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_session.get = mock_get
+            mock_session_factory.return_value = mock_session
+
+            refs = await extractor.fetch_from_openalex("10.1038/test")
+            assert refs == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_from_semantic_scholar_success(self):
+        """Semantic Scholar retorna referencias con metadatos completos."""
+        from app.services.reference_extractor import ReferenceExtractor
+
+        mock_response = {
+            "references": [
+                {
+                    "title": "Deep Learning Paper",
+                    "year": 2021,
+                    "externalIds": {"DOI": "10.1000/dl2021"},
+                    "authors": [
+                        {"name": "Geoffrey Hinton"},
+                        {"name": "Yann LeCun"},
+                    ],
+                },
+                {
+                    "title": "No DOI Paper",
+                    "year": 2019,
+                    "externalIds": {},
+                    "authors": [{"name": "Unknown"}],
+                },
+            ]
+        }
+
+        extractor = ReferenceExtractor()
+
+        class MockResponse:
+            def __init__(self, status, json_data):
+                self.status = status
+                self._json_data = json_data
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            async def json(self):
+                return self._json_data
+
+        def mock_get(url, *args, **kwargs):
+            return MockResponse(200, mock_response)
+
+        with patch.object(extractor, '_get_session') as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_session.get = mock_get
+            mock_session_factory.return_value = mock_session
+
+            refs = await extractor.fetch_from_semantic_scholar("10.1038/test")
+
+            assert len(refs) == 1  # Solo la que tiene DOI
+            assert refs[0]["cited_doi"] == "10.1000/dl2021"
+            assert refs[0]["cited_title"] == "Deep Learning Paper"
+            assert "Geoffrey Hinton" in refs[0]["cited_authors"]
+            assert refs[0]["cited_year"] == "2021"
+            assert refs[0]["extraction_source"] == "semantic_scholar"
+
+    @pytest.mark.asyncio
+    async def test_extract_references_deduplication(self):
+        """extract_references deduplica por DOI y fusiona extraction_source."""
+        from app.services.reference_extractor import ReferenceExtractor
+
+        extractor = ReferenceExtractor()
+
+        # Mock: ambas APIs retornan la misma referencia
+        with patch.object(extractor, 'fetch_from_openalex', new_callable=AsyncMock) as mock_oa:
+            mock_oa.return_value = [
+                {
+                    "cited_doi": "10.1000/shared",
+                    "cited_title": "Shared Paper",
+                    "cited_authors": "Author A",
+                    "cited_year": "2020",
+                    "extraction_source": "openalex",
+                }
+            ]
+            with patch.object(extractor, 'fetch_from_semantic_scholar', new_callable=AsyncMock) as mock_ss:
+                mock_ss.return_value = [
+                    {
+                        "cited_doi": "10.1000/shared",
+                        "cited_title": "Shared Paper",
+                        "cited_authors": "Author A, Author B",
+                        "cited_year": "2020",
+                        "extraction_source": "semantic_scholar",
+                    },
+                    {
+                        "cited_doi": "10.1000/unique-ss",
+                        "cited_title": "SS Only Paper",
+                        "cited_authors": "Author C",
+                        "cited_year": "2021",
+                        "extraction_source": "semantic_scholar",
+                    },
+                ]
+
+                refs = await extractor.extract_references("10.1038/test")
+
+                # Debe haber 2 referencias únicas (1 shared + 1 unique)
+                assert len(refs) == 2
+
+                # La shared debe tener ambas fuentes
+                shared = next(r for r in refs if r["cited_doi"] == "10.1000/shared")
+                assert "openalex" in shared["extraction_source"]
+                assert "semantic_scholar" in shared["extraction_source"]
+
+                # La unique-ss solo debe tener semantic_scholar
+                unique = next(r for r in refs if r["cited_doi"] == "10.1000/unique-ss")
+                assert unique["extraction_source"] == "semantic_scholar"
+
+    @pytest.mark.asyncio
+    async def test_extract_references_handles_exceptions(self):
+        """extract_references maneja excepciones de una API gracefully."""
+        from app.services.reference_extractor import ReferenceExtractor
+
+        extractor = ReferenceExtractor()
+
+        with patch.object(extractor, 'fetch_from_openalex', new_callable=AsyncMock) as mock_oa:
+            mock_oa.side_effect = Exception("OpenAlex API down")
+            with patch.object(extractor, 'fetch_from_semantic_scholar', new_callable=AsyncMock) as mock_ss:
+                mock_ss.return_value = [
+                    {
+                        "cited_doi": "10.1000/ss-only",
+                        "cited_title": "SS Paper",
+                        "cited_authors": "Author X",
+                        "cited_year": "2022",
+                        "extraction_source": "semantic_scholar",
+                    }
+                ]
+
+                refs = await extractor.extract_references("10.1038/test")
+
+                assert len(refs) == 1
+                assert refs[0]["cited_doi"] == "10.1000/ss-only"
+
+    @pytest.mark.asyncio
+    async def test_close_session(self):
+        """close() cierra la sesión HTTP correctamente."""
+        from app.services.reference_extractor import ReferenceExtractor
+
+        extractor = ReferenceExtractor()
+        session = await extractor._get_session()
+        assert not session.closed
+
+        await extractor.close()
+        assert session.closed
