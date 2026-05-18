@@ -154,3 +154,6 @@ active_learning_worker/target/
 *.onnx
 datos_cribado.sqlite
 active_learning_worker/models/
+
+# --- Tests ---
+/tests/backend/integration/fixtures/
