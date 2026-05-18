@@ -130,3 +130,6 @@ docs/
 
 # --- Project Specific ---
 **/plan_a_seguir.md
+
+# --- Test ---
+tests/
