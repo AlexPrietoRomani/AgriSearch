@@ -333,16 +333,26 @@ class TestCitationGraphBuilderWithMocks:
         from app.services.graph_service import CitationGraphBuilder
 
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-
+        
+        # Mock para artículos elegibles (primera llamada a execute)
+        mock_article = self._make_mock_article("a1", "10.1111/test1", "SUCCESS", "/path/md.md", "success", "sq1")
+        mock_article_result = MagicMock()
+        mock_article_scalars = MagicMock()
+        mock_article_scalars.all.return_value = [mock_article]
+        mock_article_result.scalars.return_value = mock_article_scalars
+        
+        # Mock para referencias (segunda llamada a execute)
         refs = [
             self._make_mock_reference("a1", "10.3333/ext1", "Ext Paper", "Brown L.", 2019, False),
             self._make_mock_reference("a1", "10.2222/test2", "Paper 2", "Jones K.", 2021, True),
         ]
-        mock_scalars.all.return_value = refs
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_ref_result = MagicMock()
+        mock_ref_scalars = MagicMock()
+        mock_ref_scalars.all.return_value = refs
+        mock_ref_result.scalars.return_value = mock_ref_scalars
+        
+        # Configurar execute para retornar diferentes resultados en cada llamada
+        mock_session.execute.side_effect = [mock_article_result, mock_ref_result]
 
         builder = CitationGraphBuilder(mock_session, "proj-001")
         result = await builder.load_references()
@@ -873,3 +883,249 @@ class TestThematicGraphBuilder:
         assert result["metadata"]["num_clusters"] >= 1
         assert "cluster_sizes" in result["metadata"]
         assert result["metadata"]["total_nodes"] == 4
+
+
+# ──────────────────────────────────────────────
+# Tests de Filtro Estricto + Screening (TASK 4.6.4)
+# ──────────────────────────────────────────────
+
+class TestStrictFiltering:
+    """Tests de filtrado estricto para artículos elegibles."""
+
+    def _make_mock_article(self, article_id, doi, download_status, local_md_path, parsed_status, search_query_id):
+        """Crea un mock Article con campos de filtro estricto."""
+        class MockArticle:
+            pass
+        a = MockArticle()
+        a.id = article_id
+        a.doi = doi
+        a.download_status = download_status
+        a.local_md_path = local_md_path
+        a.parsed_status = parsed_status
+        a.search_query_id = search_query_id
+        a.title = "Test Article"
+        a.authors = "Test Author"
+        a.year = 2024
+        a.abstract = "Test abstract"
+        return a
+
+    def _make_mock_search_query(self, query_id, project_id):
+        """Crea un mock SearchQuery."""
+        class MockQuery:
+            pass
+        q = MockQuery()
+        q.id = query_id
+        q.project_id = project_id
+        return q
+
+    def _make_mock_decision(self, article_id, decision):
+        """Crea un mock ScreeningDecision."""
+        class MockDecision:
+            pass
+        d = MockDecision()
+        d.article_id = article_id
+        d.decision = decision
+        return d
+
+    @pytest.mark.asyncio
+    async def test_strict_filter_all_criteria_met(self):
+        """Artículo con todos los criterios estrictos pasa el filtro."""
+        from app.services.graph_service import get_eligible_articles_for_graphs
+
+        mock_session = AsyncMock()
+        mock_article = self._make_mock_article(
+            "a1", "10.1111/test", "SUCCESS", "/path/to/md.md", "success", "sq1"
+        )
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_article]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        articles = await get_eligible_articles_for_graphs("proj-001", mock_session, "all")
+
+        assert len(articles) == 1
+        assert articles[0].doi == "10.1111/test"
+
+    @pytest.mark.asyncio
+    async def test_strict_filter_missing_doi(self):
+        """Artículo sin DOI es excluido."""
+        from app.services.graph_service import get_eligible_articles_for_graphs
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        articles = await get_eligible_articles_for_graphs("proj-001", mock_session, "all")
+
+        assert len(articles) == 0
+
+    @pytest.mark.asyncio
+    async def test_strict_filter_download_not_success(self):
+        """Artículo con download_status != SUCCESS es excluido."""
+        from app.services.graph_service import get_eligible_articles_for_graphs
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        articles = await get_eligible_articles_for_graphs("proj-001", mock_session, "all")
+
+        assert len(articles) == 0
+
+    @pytest.mark.asyncio
+    async def test_strict_filter_missing_md_path(self):
+        """Artículo sin local_md_path es excluido."""
+        from app.services.graph_service import get_eligible_articles_for_graphs
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        articles = await get_eligible_articles_for_graphs("proj-001", mock_session, "all")
+
+        assert len(articles) == 0
+
+    @pytest.mark.asyncio
+    async def test_strict_filter_parsed_status_not_success(self):
+        """Artículo con parsed_status != success es excluido."""
+        from app.services.graph_service import get_eligible_articles_for_graphs
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        articles = await get_eligible_articles_for_graphs("proj-001", mock_session, "all")
+
+        assert len(articles) == 0
+
+    @pytest.mark.asyncio
+    async def test_screening_filter_included(self):
+        """Filtro screening=included solo retorna artículos con decision=include."""
+        from app.services.graph_service import get_eligible_articles_for_graphs
+
+        mock_session = AsyncMock()
+        mock_article = self._make_mock_article(
+            "a1", "10.1111/test", "SUCCESS", "/path/to/md.md", "success", "sq1"
+        )
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_article]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        articles = await get_eligible_articles_for_graphs("proj-001", mock_session, "included")
+
+        assert len(articles) == 1
+
+    @pytest.mark.asyncio
+    async def test_screening_filter_maybe(self):
+        """Filtro screening=maybe solo retorna artículos con decision=maybe."""
+        from app.services.graph_service import get_eligible_articles_for_graphs
+
+        mock_session = AsyncMock()
+        mock_article = self._make_mock_article(
+            "a1", "10.1111/test", "SUCCESS", "/path/to/md.md", "success", "sq1"
+        )
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_article]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        articles = await get_eligible_articles_for_graphs("proj-001", mock_session, "maybe")
+
+        assert len(articles) == 1
+
+    @pytest.mark.asyncio
+    async def test_screening_filter_all_no_decision_join(self):
+        """Filtro screening=all no hace JOIN con ScreeningDecision."""
+        from app.services.graph_service import get_eligible_articles_for_graphs
+
+        mock_session = AsyncMock()
+        mock_article = self._make_mock_article(
+            "a1", "10.1111/test", "SUCCESS", "/path/to/md.md", "success", "sq1"
+        )
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_article]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        articles = await get_eligible_articles_for_graphs("proj-001", mock_session, "all")
+
+        assert len(articles) == 1
+        # Verificar que la query se ejecutó correctamente
+        mock_session.execute.assert_called_once()
+
+    def test_save_graph_with_suffix(self, tmp_path):
+        """save_graph genera archivo con suffix correcto."""
+        from app.services.graph_service import CitationGraphBuilder
+
+        builder = CitationGraphBuilder(AsyncMock(), "proj-001")
+        G = nx.DiGraph()
+        G.add_node("10.1111/a", status="included", label="A (2020)", title="Paper A",
+                   color={"background": "#22c55e", "border": "#16a34a"}, size=20, shape="dot")
+        builder.graph = G
+
+        path = builder.save_graph(graph_dir=tmp_path, suffix="maybe")
+        assert path.name == "citation_graph_maybe.json"
+        assert path.exists()
+
+    def test_load_graph_with_suffix(self, tmp_path):
+        """load_graph carga archivo con suffix correcto."""
+        from app.services.graph_service import CitationGraphBuilder
+
+        data = {
+            "graph_type": "citation",
+            "nodes": [{"id": "10.1111/a", "status": "included"}],
+            "edges": [],
+            "metadata": {},
+        }
+        json_path = tmp_path / "citation_graph_included.json"
+        json_path.write_text(json.dumps(data), encoding="utf-8")
+
+        result = CitationGraphBuilder.load_graph("proj-001", graph_dir=tmp_path, suffix="included")
+        assert result is not None
+        assert result["graph_type"] == "citation"
+
+    def test_load_graph_wrong_suffix_returns_none(self, tmp_path):
+        """load_graph con suffix incorrecto retorna None."""
+        from app.services.graph_service import CitationGraphBuilder
+
+        data = {
+            "graph_type": "citation",
+            "nodes": [],
+            "edges": [],
+            "metadata": {},
+        }
+        json_path = tmp_path / "citation_graph_included.json"
+        json_path.write_text(json.dumps(data), encoding="utf-8")
+
+        result = CitationGraphBuilder.load_graph("proj-001", graph_dir=tmp_path, suffix="maybe")
+        assert result is None
+
+    def test_serialize_thematic_with_suffix(self, tmp_path):
+        """serialize_and_save genera archivo temático con suffix correcto."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.0)
+        builder.article_dois = ["A", "B"]
+        builder.embeddings = np.array([[1, 0], [0.9, 0.1]], dtype=float)
+        builder.build_undirected_graph()
+
+        result = builder.serialize_and_save("test-project", graph_dir=tmp_path, suffix="maybe")
+        assert result["metadata"]["screening_status"] == "maybe"
+        assert (tmp_path / "thematic_graph_maybe.json").exists()
