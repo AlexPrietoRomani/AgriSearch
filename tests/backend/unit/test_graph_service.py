@@ -22,8 +22,11 @@ Ejemplo de Ejecución:
 
 import json
 import pytest
+import numpy as np
 import networkx as nx
 from pathlib import Path
+from numpy.typing import NDArray
+from sklearn.metrics.pairwise import cosine_similarity
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -550,3 +553,323 @@ class TestCitationGraphBuilderWithMocks:
         builder = CitationGraphBuilder(AsyncMock(), "proj-001")
         label = builder._make_label("", "2020")
         assert label == "Unknown (2020)"
+
+
+# ──────────────────────────────────────────────
+# Tests de Cosine Similarity (TASK 4.3.2)
+# ──────────────────────────────────────────────
+
+class TestCosineSimilarity:
+    """Tests de similitud coseno para grafo temático."""
+
+    def test_cosine_similarity_identical_vectors(self):
+        """Vectores idénticos tienen similitud 1.0."""
+        v = np.array([[1, 2, 3]], dtype=float)
+        sim = cosine_similarity(v, v)
+        assert np.isclose(sim[0][0], 1.0)
+
+    def test_cosine_similarity_orthogonal_vectors(self):
+        """Vectores ortogonales tienen similitud ≈ 0.0."""
+        v1 = np.array([[1, 0, 0]], dtype=float)
+        v2 = np.array([[0, 1, 0]], dtype=float)
+        sim = cosine_similarity(v1, v2)
+        assert np.isclose(sim[0][0], 0.0)
+
+    def test_cosine_similarity_opposite_vectors(self):
+        """Vectores opuestos tienen similitud -1.0."""
+        v1 = np.array([[1, 0, 0]], dtype=float)
+        v2 = np.array([[-1, 0, 0]], dtype=float)
+        sim = cosine_similarity(v1, v2)
+        assert np.isclose(sim[0][0], -1.0)
+
+    def test_cosine_similarity_matrix_shape(self):
+        """Matriz de similitud tiene forma NxN."""
+        embeddings = np.random.rand(10, 768)
+        sim = cosine_similarity(embeddings)
+        assert sim.shape == (10, 10)
+        assert np.allclose(np.diag(sim), 1.0)
+
+
+# ──────────────────────────────────────────────
+# Tests de Community Detection (TASK 4.3.3)
+# ──────────────────────────────────────────────
+
+class TestCommunityDetection:
+    """Tests de detección de comunidades."""
+
+    def test_community_detection_returns_clusters(self):
+        """Detecta al menos 1 cluster."""
+        G = nx.Graph()
+        for i in range(5):
+            G.add_node(f"a{i}")
+            G.add_node(f"b{i}")
+
+        for i in range(5):
+            for j in range(i + 1, 5):
+                G.add_edge(f"a{i}", f"a{j}")
+
+        for i in range(5):
+            for j in range(i + 1, 5):
+                G.add_edge(f"b{i}", f"b{j}")
+
+        G.add_edge("a0", "b0")
+
+        communities = nx.algorithms.community.greedy_modularity_communities(G)
+        assert len(communities) >= 1
+
+    def test_community_detection_single_cluster(self):
+        """Grafo completamente conectado retorna 1 cluster."""
+        G = nx.complete_graph(5)
+        communities = nx.algorithms.community.greedy_modularity_communities(G)
+        assert len(communities) == 1
+
+
+# ──────────────────────────────────────────────
+# Tests de ThematicGraphBuilder (TASK 4.3.1 + 4.3.4)
+# ──────────────────────────────────────────────
+
+class TestThematicGraphBuilder:
+    """Tests del grafo temático."""
+
+    def test_cluster_colors_constant(self):
+        """CLUSTER_COLORS tiene 10 colores."""
+        from app.services.graph_service import CLUSTER_COLORS
+        assert len(CLUSTER_COLORS) == 10
+        assert CLUSTER_COLORS[0] == "#22c55e"
+
+    def test_threshold_filtering_default(self):
+        """Umbral default 0.75 filtra correctamente."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.75)
+        builder.article_dois = ["A", "B", "C"]
+        builder.embeddings = np.array([
+            [1, 0, 0],
+            [0.9, 0.1, 0],
+            [0, 1, 0],
+        ], dtype=float)
+
+        G = builder.build_undirected_graph()
+
+        assert G.has_edge("A", "B")
+        assert not G.has_edge("A", "C")
+
+    def test_threshold_strict(self):
+        """Umbral estricto 0.95 filtra más aristas."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.95)
+        builder.article_dois = ["A", "B"]
+        # [1,0,0] y [0.5,0.5,0] tienen cos_sim ≈ 0.707 < 0.95
+        builder.embeddings = np.array([
+            [1, 0, 0],
+            [0.5, 0.5, 0],
+        ], dtype=float)
+
+        G = builder.build_undirected_graph()
+        assert not G.has_edge("A", "B")
+
+    def test_threshold_relaxed(self):
+        """Umbral relajado 0.0 conecta todo."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.0)
+        builder.article_dois = ["A", "B", "C"]
+        builder.embeddings = np.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+        ], dtype=float)
+
+        G = builder.build_undirected_graph()
+        assert G.has_edge("A", "B")
+        assert G.has_edge("A", "C")
+        assert G.has_edge("B", "C")
+
+    def test_undirected_graph_construction(self):
+        """Grafo es no-dirigido."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.0)
+        builder.article_dois = ["A", "B"]
+        builder.embeddings = np.array([[1, 0], [0, 1]], dtype=float)
+
+        G = builder.build_undirected_graph()
+        assert not G.is_directed()
+
+    def test_edge_thickness_proportional_to_similarity(self):
+        """Grosor de arista proporcional a similitud."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.0)
+        builder.article_dois = ["A", "B", "C"]
+        builder.embeddings = np.array([
+            [1, 0, 0],
+            [0.9, 0.1, 0],
+            [0.1, 0.9, 0],
+        ], dtype=float)
+
+        G = builder.build_undirected_graph()
+
+        sim_ab = G.edges["A", "B"]["cosine_similarity"]
+        sim_ac = G.edges["A", "C"]["cosine_similarity"]
+
+        assert sim_ab > sim_ac
+
+    def test_serialize_thematic_graph(self):
+        """Serialización produce formato vis-network con aristas punteadas."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.0)
+        builder.article_dois = ["A", "B"]
+        builder.embeddings = np.array([[1, 0], [0.9, 0.1]], dtype=float)
+
+        G = builder.build_undirected_graph()
+
+        cluster_map = builder.detect_communities()
+        builder.apply_cluster_colors(cluster_map)
+
+        result = builder.serialize_and_save("test-project")
+
+        assert result["graph_type"] == "thematic"
+        assert len(result["nodes"]) == 2
+        assert len(result["edges"]) == 1
+        assert result["edges"][0]["dashes"] == [5, 5]
+        assert "cosine_similarity" in result["edges"][0]
+
+    def test_detect_communities_returns_dict(self):
+        """detect_communities retorna dict {doi: cluster_id}."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.0)
+        builder.article_dois = ["A", "B", "C"]
+        builder.embeddings = np.array([
+            [1, 0, 0],
+            [0.9, 0.1, 0],
+            [0.1, 0.9, 0],
+        ], dtype=float)
+
+        builder.build_undirected_graph()
+        clusters = builder.detect_communities()
+
+        assert isinstance(clusters, dict)
+        assert len(clusters) == 3
+        assert all(isinstance(v, int) for v in clusters.values())
+
+    def test_enrich_edges_with_keywords(self):
+        """enrich_edges_with_keywords añade shared_keywords."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.0)
+        builder.article_dois = ["A", "B"]
+        builder.embeddings = np.array([[1, 0], [0.9, 0.1]], dtype=float)
+        builder.build_undirected_graph()
+
+        builder.enrich_edges_with_keywords({
+            "A": ["ml", "deep-learning", "nlp"],
+            "B": ["ml", "computer-vision", "nlp"],
+        })
+
+        shared = builder.graph.edges["A", "B"]["shared_keywords"]
+        assert "ml" in shared
+        assert "nlp" in shared
+        assert "deep-learning" not in shared
+
+    def test_apply_cluster_colors(self):
+        """apply_cluster_colors asigna colores por cluster."""
+        from app.services.graph_service import ThematicGraphBuilder, CLUSTER_COLORS
+
+        builder = ThematicGraphBuilder(threshold=0.0)
+        builder.article_dois = ["A", "B", "C"]
+        builder.embeddings = np.array([
+            [1, 0, 0],
+            [0.9, 0.1, 0],
+            [0.1, 0.9, 0],
+        ], dtype=float)
+        builder.build_undirected_graph()
+
+        cluster_map = {"A": 0, "B": 0, "C": 1}
+        builder.apply_cluster_colors(cluster_map)
+
+        assert builder.graph.nodes["A"]["color"]["background"] == CLUSTER_COLORS[0]
+        assert builder.graph.nodes["C"]["color"]["background"] == CLUSTER_COLORS[1]
+        assert builder.graph.nodes["A"]["cluster"] == 0
+        assert builder.graph.nodes["C"]["cluster"] == 1
+
+    def test_build_empty_embeddings(self):
+        """Embeddings vacíos retorna grafo vacío."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder()
+        builder.article_dois = []
+        builder.embeddings = np.array([], dtype=float)
+
+        G = builder.build_undirected_graph()
+        assert G.number_of_nodes() == 0
+        assert G.number_of_edges() == 0
+
+    def test_compute_similarity_matrix_empty(self):
+        """compute_similarity_matrix con embeddings vacíos retorna array vacío."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder()
+        builder.embeddings = None
+
+        result = builder.compute_similarity_matrix()
+        assert len(result) == 0
+
+    def test_set_embeddings(self):
+        """set_embeddings establece embeddings y dois correctamente."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder()
+        embeddings = np.array([[1, 0], [0, 1]], dtype=float)
+        builder.set_embeddings(embeddings, ["A", "B"])
+
+        assert builder.embeddings is not None
+        assert builder.article_dois == ["A", "B"]
+        assert builder.embeddings.shape == (2, 2)
+
+    def test_detect_communities_empty_graph(self):
+        """detect_communities con grafo vacío retorna dict vacío."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder()
+        builder.graph = nx.Graph()
+
+        result = builder.detect_communities()
+        assert result == {}
+
+    def test_serialize_empty_graph(self):
+        """serialize_and_save con grafo vacío retorna estructura vacía."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder()
+        builder.graph = None
+
+        result = builder.serialize_and_save("test-project")
+        assert result == {"nodes": [], "edges": [], "metadata": {}}
+
+    def test_metadata_includes_threshold_and_clusters(self):
+        """Metadata incluye threshold, num_clusters y cluster_sizes."""
+        from app.services.graph_service import ThematicGraphBuilder
+
+        builder = ThematicGraphBuilder(threshold=0.5)
+        builder.article_dois = ["A", "B", "C", "D"]
+        builder.embeddings = np.array([
+            [1, 0, 0],
+            [0.95, 0.05, 0],
+            [0, 1, 0],
+            [0.05, 0.95, 0],
+        ], dtype=float)
+
+        G = builder.build_undirected_graph()
+        clusters = builder.detect_communities()
+        builder.apply_cluster_colors(clusters)
+
+        result = builder.serialize_and_save("test-project")
+
+        assert result["metadata"]["threshold"] == 0.5
+        assert result["metadata"]["num_clusters"] >= 1
+        assert "cluster_sizes" in result["metadata"]
+        assert result["metadata"]["total_nodes"] == 4
