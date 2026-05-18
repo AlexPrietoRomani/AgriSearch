@@ -65,17 +65,13 @@ SAMPLE_META_NONSCIENTIFIC = {
 
 def find_arxiv_pdf() -> Path | None:
     """
-    Busca un PDF válido para las pruebas de integración.
+    Busca un PDF válido para las pruebas de integración en fixtures.
 
     Returns:
         Path | None: Ruta al archivo PDF o None si no se encuentra ninguno.
     """
     for pdf in SAMPLE_INPUTS.rglob("*.pdf"):
         return pdf
-    data_dir = backend_dir / "data" / "projects"
-    if data_dir.exists():
-        for pdf in data_dir.rglob("*.pdf"):
-            return pdf
     return None
 
 

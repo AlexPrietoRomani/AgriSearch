@@ -65,19 +65,14 @@ SAMPLE_META = {
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _find_any_pdf() -> Path | None:
     """
-    Busca un PDF de prueba en fixtures o en el directorio de datos real.
+    Busca un PDF de prueba en fixtures.
 
     Returns:
         Path | None: Ruta al PDF encontrado o None si no existe ninguno.
     """
-    # 1. Buscar en fixtures
+    # Buscar únicamente en fixtures/sample_inputs/
     for pdf in SAMPLE_INPUTS.glob("*.pdf"):
         return pdf
-    # 2. Buscar en data real del proyecto
-    data_dir = Path(__file__).parent.parent.parent.parent / "backend" / "data" / "projects"
-    if data_dir.exists():
-        for pdf in data_dir.rglob("*.pdf"):
-            return pdf
     return None
 
 
