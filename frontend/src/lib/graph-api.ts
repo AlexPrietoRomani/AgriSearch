@@ -94,13 +94,20 @@ export interface BuildGraphsResponse {
 
 // ── Graph API ──
 
-export async function buildGraphs(projectId: string): Promise<BuildGraphsResponse> {
-  return request(`/graphs/${projectId}/build`, { method: "POST" });
+export async function buildGraphs(
+  projectId: string,
+  screeningStatus: "included" | "maybe" | "all" = "included",
+): Promise<BuildGraphsResponse> {
+  return request(`/graphs/${projectId}/build`, {
+    method: "POST",
+    body: JSON.stringify({ screening_status: screeningStatus }),
+  });
 }
 
 export async function getCitationGraph(
   projectId: string,
   params?: {
+    screening_status?: "included" | "maybe" | "all";
     year_min?: number;
     year_max?: number;
     status?: "included" | "cited_external";
@@ -108,6 +115,7 @@ export async function getCitationGraph(
   },
 ): Promise<GraphResponse> {
   const qs = new URLSearchParams();
+  if (params?.screening_status) qs.set("screening_status", params.screening_status);
   if (params?.year_min) qs.set("year_min", String(params.year_min));
   if (params?.year_max) qs.set("year_max", String(params.year_max));
   if (params?.status) qs.set("status", params.status);
@@ -118,19 +126,30 @@ export async function getCitationGraph(
 
 export async function getThematicGraph(
   projectId: string,
-  threshold = 0.75,
+  params?: {
+    screening_status?: "included" | "maybe" | "all";
+    threshold?: number;
+  },
 ): Promise<GraphResponse> {
-  return request(`/graphs/${projectId}/thematic?threshold=${threshold}`);
+  const qs = new URLSearchParams();
+  if (params?.screening_status) qs.set("screening_status", params.screening_status);
+  if (params?.threshold) qs.set("threshold", String(params.threshold));
+  const query = qs.toString();
+  return request(`/graphs/${projectId}/thematic${query ? `?${query}` : ""}`);
 }
 
 export async function getArticleNeighbors(
   projectId: string,
   doi: string,
+  screeningStatus: "included" | "maybe" | "all" = "included",
   depth = 1,
 ): Promise<NeighborResponse> {
-  return request(`/graphs/${projectId}/article/${encodeURIComponent(doi)}/neighbors?depth=${depth}`);
+  return request(`/graphs/${projectId}/article/${encodeURIComponent(doi)}/neighbors?screening_status=${screeningStatus}&depth=${depth}`);
 }
 
-export async function getGraphStats(projectId: string): Promise<GraphStatsResponse> {
-  return request(`/graphs/${projectId}/stats`);
+export async function getGraphStats(
+  projectId: string,
+  screeningStatus: "included" | "maybe" | "all" = "included",
+): Promise<GraphStatsResponse> {
+  return request(`/graphs/${projectId}/stats?screening_status=${screeningStatus}`);
 }

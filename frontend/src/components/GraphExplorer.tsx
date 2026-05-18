@@ -19,6 +19,8 @@ export default function GraphExplorer() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [threshold, setThreshold] = useState(0.75);
   const [statusFilter, setStatusFilter] = useState<"all" | "included" | "cited_external">("all");
+  const [screeningStatus, setScreeningStatus] = useState<"included" | "maybe" | "all">("included");
+  const [hasScreeningData, setHasScreeningData] = useState(true);
   const [layout, setLayout] = useState<"hierarchical" | "force" | "circular">("force");
 
   useEffect(() => {
@@ -31,8 +33,13 @@ export default function GraphExplorer() {
 
   async function loadStats(id: string) {
     try {
-      const s = await getGraphStats(id);
+      const s = await getGraphStats(id, screeningStatus);
       setStats(s);
+      // Fallback to "all" if no screening data exists
+      if (s.total_included_articles === 0 && s.total_references === 0) {
+        setHasScreeningData(false);
+        setScreeningStatus("all");
+      }
     } catch (e: any) {
       console.error("Failed to load graph stats", e);
     }
@@ -42,7 +49,7 @@ export default function GraphExplorer() {
     setBuilding(true);
     setError(null);
     try {
-      await buildGraphs(projectId);
+      await buildGraphs(projectId, screeningStatus);
       await loadStats(projectId);
       await loadGraph(projectId, graphType);
     } catch (e: any) {
@@ -60,10 +67,14 @@ export default function GraphExplorer() {
       let data: GraphResponse;
       if (type === "citation") {
         data = await getCitationGraph(id, {
+          screening_status: screeningStatus,
           status: statusFilter === "all" ? undefined : statusFilter,
         });
       } else {
-        data = await getThematicGraph(id, threshold);
+        data = await getThematicGraph(id, {
+          screening_status: screeningStatus,
+          threshold,
+        });
       }
       setGraphData(data);
       setGraphType(type);
@@ -87,6 +98,11 @@ export default function GraphExplorer() {
   const handleStatusFilterChange = (s: "all" | "included" | "cited_external") => {
     setStatusFilter(s);
     if (graphType === "citation") loadGraph(projectId, "citation");
+  };
+
+  const handleScreeningStatusChange = (s: "included" | "maybe" | "all") => {
+    setScreeningStatus(s);
+    loadGraph(projectId, graphType);
   };
 
   const handleLayoutChange = (l: "hierarchical" | "force" | "circular") => {
@@ -130,13 +146,16 @@ export default function GraphExplorer() {
           graphType={graphType}
           threshold={threshold}
           statusFilter={statusFilter}
+          screeningStatus={screeningStatus}
           layout={layout}
           onThresholdChange={handleThresholdChange}
           onStatusFilterChange={handleStatusFilterChange}
+          onScreeningStatusChange={handleScreeningStatusChange}
           onLayoutChange={handleLayoutChange}
           onGraphTypeChange={(t) => loadGraph(projectId, t)}
           nodeCount={graphData.nodes.length}
           edgeCount={graphData.edges.length}
+          hasScreeningData={hasScreeningData}
         />
       )}
 
