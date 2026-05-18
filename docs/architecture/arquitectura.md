@@ -17,6 +17,7 @@ Ubicación: `/frontend`
 | `project.astro` | `/project` | `<ProjectDashboard />` |
 | `search.astro` | `/search` | `<SearchWizard />` |
 | `screening.astro` | `/screening` | `<ScreeningPage />` |
+| `graphs.astro` | `/graphs` | `<GraphExplorer />` |
 
 **Componentes React** (`src/components/*.tsx`) — toda la lógica dinámica:
 
@@ -33,8 +34,15 @@ Ubicación: `/frontend`
 | `ScreeningSetup.tsx` | Configuración de sesión: selección de búsquedas, idioma, modelo de traducción, continuar/eliminar existentes. |
 | `ScreeningSession.tsx` | Interfaz de cribado artículo por artículo (estilo Rayyan.ai): atajos de teclado, traducción de abstracts, sugerencias AI, vista tarjeta/tabla. |
 | `ProgressModal.tsx` | Modal de progreso en tiempo real vía SSE para tareas de fondo (reparseo, enriquecimiento). |
+| `GraphExplorer.tsx` | Orquestador de exploración de grafos: tabs citación/temático, carga de datos, gestión de estado, filtros. |
+| `GraphVisualization.tsx` | Wrapper de vis-network: renderiza grafo interactivo con 3 layouts (fuerza, jerárquico, circular), zoom, drag, click events. |
+| `GraphNodePanel.tsx` | Panel lateral de detalles del nodo seleccionado: título, DOI, estado, cluster, tamaño. |
+| `GraphStatsBar.tsx` | Barra de estadísticas: estado de construcción, contadores, botones para cargar cada tipo de grafo. |
+| `GraphToolbar.tsx` | Barra de herramientas: toggle citación/temático, slider de umbral, filtro por status, selector de layout. |
 
 **Cliente API** (`src/lib/api.ts`) — 29 funciones exportadas, todas tipadas con TypeScript. Realiza peticiones `fetch()` HTTP hacia `http://localhost:8000/api/v1`. Maneja errores, parsing JSON, y multipart para subida de PDFs.
+
+**Cliente de Grafos** (`src/lib/graph-api.ts`) — 6 funciones exportadas para visualización de grafos bibliográficos. Tipadas con TypeScript, compatibles con formato vis-network. Incluye `buildGraphs`, `getCitationGraph`, `getThematicGraph`, `getArticleNeighbors`, `getGraphStats`, y tipos `GraphNode`, `GraphEdge`, `GraphResponse`, `GraphStatsResponse`.
 
 ### **B. Lógica de Servidor y REST API (Backend: FastAPI + Python + SQLAlchemy)**
 Ubicación: `/backend/app`
@@ -48,6 +56,7 @@ Ubicación: `/backend/app`
 | `screening.py` | `/screening` | Sesiones de cribado, decisiones, sugerencias AI, reranking, traducción, análisis profundo. |
 | `events.py` | `/events` | Stream SSE para notificaciones de progreso en tiempo real. |
 | `system.py` | `/system` | Estado del sistema y modelos Ollama disponibles. |
+| `graphs.py` | `/graphs` | Construcción, consulta y exploración de grafos de citación y temáticos. |
 
 - **Servicios (`services/*.py`)** — lógica de negocio pesada:
 
@@ -63,10 +72,14 @@ Ubicación: `/backend/app`
 | `active_learning_service.py` | Clasificador TF-IDF + LogisticRegression para priorización de artículos en screening (uncertainty sampling). |
 | `summarization_service.py` | Generación de resúmenes estructurados via LLM (objetivo, metodología, resultados, relevancia agrícola). |
 | `pdf_parser.py` | Parser Docling legacy para enriquecimiento (ruta alternativa). |
+| `graph_service.py` | Construcción de grafos: `CitationGraphBuilder` (grafo dirigido de citaciones con métricas) + `ThematicGraphBuilder` (grafo no-dirigido con cosine similarity y community detection). |
+| `reference_extractor.py` | Extracción de referencias bibliográficas desde OpenAlex y Semantic Scholar, normalización de DOIs, deduplicación cruzada. |
 
 - **Modelos y Schemas (`models/*.py`)**:
   - `project.py`, `screening.py`: SQLAlchemy ORM — tablas SQLite (Project, SearchQuery, Article, ScreeningSession, ScreeningDecision).
+  - `article_reference.py`: SQLAlchemy ORM — tabla `article_references` para rastrear citas extraídas.
   - `schemas.py`: Clases Pydantic para validación estricta de request/response.
+  - `graph_models.py`: Modelos Pydantic para respuestas de grafos (`GraphNode`, `GraphEdge`, `GraphResponse`, `GraphStatsResponse`, `NeighborResponse`).
 
 ### **C. MCP Clients y LLM**
 Ubicación: `/backend/app/services/mcp_clients`
@@ -83,6 +96,11 @@ AgriSearch se abstrae a través del *Model Context Protocol* para enviar tareas 
 | `scielo_client.py` | SciELO | REST API, literatura LATAM |
 | `redalyc_client.py` | Redalyc | API propia, revistas iberoamericanas |
 | `oai_pmh_client.py` | AgEcon + Organic Eprints | OAI-PMH harvesting, post-filtrado local |
+
+**Extracción de Referencias** (`reference_extractor.py`): Reutiliza los clientes de OpenAlex y Semantic Scholar para extraer referencias bibliográficas de artículos incluidos:
+- OpenAlex: campo `referenced_works` → metadatos de cada work citado.
+- Semantic Scholar: campo `references` → DOI, título, autores, año.
+- Deduplicación cruzada: mismo DOI en ambas fuentes se fusiona con `extraction_source="openalex;semantic_scholar"`.
 
 **Motor LLM** (`llm_service.py`): Abstracción sobre LiteLLM/Ollama para todas las inferencias:
 
@@ -247,6 +265,84 @@ El ruteo de Astro sirve las 4 páginas base. Cada una delega en un React Island 
 - **"Eliminación Segura":** Destruye la sesión y todas sus `ScreeningDecision`, pero **los PDFs descargados no se alteran**.
 - Los artículos permanecen en la tabla `Article` y siguen disponibles para ser asignados a una nueva sesión de screening.
 - `ProjectDashboard` refresca la lista de revisiones post-borrado.
+
+---
+
+## 3.5 Flujo - Exploración de Grafos Bibliográficos
+
+### Navegación a Grafos
+
+```
+/project?id=X  →  click "GRAFOS" en ProjectDashboard  →  /graphs?id=X
+```
+
+El botón "GRAFOS" aparece en `ProjectDashboard.tsx` solo cuando el proyecto tiene al menos una búsqueda realizada (`searches.length > 0`). Se ubica entre los botones "BÚSQUEDA IA" y "REVISIONES".
+
+### Flujo de Exploración (`GraphExplorer.tsx`)
+
+1. **Carga inicial:** Al montar, extrae `?id=` de la URL y llama `GET /api/v1/graphs/{id}/stats` para verificar el estado de construcción de los grafos.
+2. **Estado `not_built`:** Muestra pantalla con botón "CONSTRUIR GRAFOS". Al presionar, invoca `POST /api/v1/graphs/{id}/build` que ejecuta el pipeline completo:
+   - **Paso 1:** `build_reference_batch()` — extrae referencias de todos los artículos incluidos via OpenAlex + Semantic Scholar.
+   - **Paso 2:** `CitationGraphBuilder.build_directed_graph()` — construye grafo dirigido (nodos verdes = incluidos, nodos azules = externos citados).
+   - **Paso 3:** `ThematicGraphBuilder` — genera embeddings con `nomic-embed-text`, calcula cosine similarity, detecta comunidades con `greedy_modularity_communities`.
+   - **Paso 4:** Serializa ambos grafos a JSON en `data/projects/{id}/graphs/`.
+3. **Estado `ready` o `partial`:** Muestra `GraphStatsBar` con contadores y botones para cargar cada tipo de grafo.
+4. **Grafo de Citación:** `GET /api/v1/graphs/{id}/citation?status=all` — retorna nodos y aristas dirigidas. Filtros disponibles:
+   - `status=included` / `status=cited_external` — filtra por tipo de nodo.
+   - `year_min` / `year_max` — rango de años.
+   - `depth` (1-3) — profundidad de expansión.
+5. **Grafo Temático:** `GET /api/v1/graphs/{id}/thematic?threshold=0.75` — retorna nodos con colores por cluster y aristas ponderadas por similitud coseno. El slider de umbral (0.0 a 1.0) filtra aristas dinámicamente.
+6. **Visualización (`GraphVisualization.tsx`):** Wrapper de `vis-network` con:
+   - **3 layouts:** Fuerza (forceAtlas2Based), Jerárquico (hubsize, dirección UD), Circular.
+   - **Interacción:** Zoom, drag de nodos/vista, hover tooltips, click para seleccionar, double-click para focus.
+   - **Colores:** Clusters temáticos con paleta de 10 colores; citación usa verde (incluidos) y azul (externos).
+7. **Panel de Nodo (`GraphNodePanel.tsx`):** Al hacer click en un nodo, se abre panel lateral con título completo, DOI, estado, cluster y tamaño.
+8. **Exploración de Vecinos:** `GET /api/v1/graphs/{id}/article/{doi}/neighbors?depth=1` — retorna predecesores (artículos que citan) y sucesores (artículos citados) del nodo seleccionado.
+
+### Arquitectura de Grafos
+
+```
+Frontend                              Backend
+────────                              ───────
+GraphExplorer.tsx                     graphs.py (5 endpoints)
+  ├─ GraphStatsBar.tsx                  ├─ POST /{id}/build
+  ├─ GraphToolbar.tsx                   ├─ GET  /{id}/citation
+  ├─ GraphVisualization.tsx             ├─ GET  /{id}/thematic
+  │   └─ vis-network (Network)          ├─ GET  /{id}/article/{doi}/neighbors
+  ├─ GraphNodePanel.tsx                 └─ GET  /{id}/stats
+  └─ graph-api.ts (6 funciones)
+                                          ├─ graph_service.py
+                                          │   ├─ CitationGraphBuilder (NetworkX DiGraph)
+                                          │   └─ ThematicGraphBuilder (NetworkX Graph)
+                                          ├─ reference_extractor.py
+                                          │   └─ ReferenceExtractor (OpenAlex + SS)
+                                          └─ graph_models.py (Pydantic)
+
+Almacenamiento
+──────────────
+  ├─ SQLite: article_references (citas extraídas)
+  └─ JSON: data/projects/{id}/graphs/
+      ├─ citation_graph.json
+      └─ thematic_graph.json
+```
+
+### Persistencia de Grafos
+
+Los grafos se almacenan como archivos JSON en disco, uno por proyecto:
+- `data/projects/{project_id}/graphs/citation_graph.json` — grafo dirigido de citaciones.
+- `data/projects/{project_id}/graphs/thematic_graph.json` — grafo no-dirigido temático.
+
+Cada JSON contiene: `{graph_type, project_id, nodes[], edges[], metadata{}}`. El formato es compatible directamente con vis-network, evitando transformaciones adicionales en el frontend.
+
+### Endpoints de Grafos
+
+| Método | Ruta | Función | Respuesta |
+|---|---|---|---|
+| `POST` | `/graphs/{id}/build` | Construir ambos grafos | Stats de extracción, citación y temático |
+| `GET` | `/graphs/{id}/citation` | Obtener grafo de citaciones | `GraphResponse` (nodas + aristas dirigidas) |
+| `GET` | `/graphs/{id}/thematic` | Obtener grafo temático | `GraphResponse` (nodos + aristas con cosine_similarity) |
+| `GET` | `/graphs/{id}/article/{doi}/neighbors` | Vecinos de un artículo | `NeighborResponse` (nodos conectados + aristas) |
+| `GET` | `/graphs/{id}/stats` | Estadísticas de construcción | `GraphStatsResponse` (build_status, contadores) |
 
 ---
 
@@ -832,6 +928,8 @@ erDiagram
     SearchQuery ||--o{ Article : "produce"
     ScreeningSession ||--o{ ScreeningDecision : "genera"
     Article ||--o{ ScreeningDecision : "evalúa"
+    Article ||--o{ ArticleReference : "cita"
+    ArticleReference }o--|| Article : "referencia a"
 
     Project {
         uuid id PK
@@ -871,6 +969,18 @@ erDiagram
         string parsed_status
         float relevance_score
         text llm_summary
+    }
+
+    ArticleReference {
+        uuid id PK
+        uuid source_article_id FK
+        string cited_doi
+        text cited_title
+        text cited_authors
+        string cited_year
+        string extraction_source
+        boolean is_in_project
+        datetime created_at
     }
 
     ScreeningSession {
@@ -930,14 +1040,14 @@ graph LR
 
     subgraph FrontendLayer ["🌐 Frontend — localhost:4321"]
         direction TB
-        Astro["Astro SSR<br/>Pages: index, project,<br/>search, screening"]:::frontend
-        React["React Islands<br/>Dashboard, SearchWizard,<br/>ScreeningSession"]:::frontend
+        Astro["Astro SSR<br/>Pages: index, project,<br/>search, screening, graphs"]:::frontend
+        React["React Islands<br/>Dashboard, SearchWizard,<br/>ScreeningSession, GraphExplorer"]:::frontend
     end
 
     subgraph BackendLayer ["⚙️ Backend — localhost:8000"]
         direction TB
-        FastAPI["FastAPI Server<br/>5 route modules:<br/>projects, search, screening,<br/>events, system"]:::backend
-        Services["Servicios Core<br/>search_service, llm_service,<br/>query_builder, download_service,<br/>vector_service, active_learning"]:::backend
+        FastAPI["FastAPI Server<br/>6 route modules:<br/>projects, search, screening,<br/>events, system, graphs"]:::backend
+        Services["Servicios Core<br/>search_service, llm_service,<br/>query_builder, download_service,<br/>vector_service, active_learning,<br/>graph_service, reference_extractor"]:::backend
         MCPClients["MCP Clients (9)<br/>OpenAlex, Semantic Scholar,<br/>ArXiv, Crossref, CORE,<br/>SciELO, Redalyc, OAI-PMH"]:::external
         Parsers["Dual Parser<br/>OpenDataLoader (Java)<br/>MarkItDown (Python)"]:::common
     end
@@ -945,9 +1055,10 @@ graph LR
     subgraph Infrastructure ["💾 Almacenamiento & IA"]
         direction LR
         subgraph DataLayer ["Almacenamiento Local"]
-            SQLite[("SQLite<br/>agrisearch.db")]:::database
+            SQLite[("SQLite<br/>agrisearch.db<br/>+ article_references")]:::database
             Qdrant[("Qdrant<br/>Vector DB<br/>localhost:6333")]:::database
             PDFs["📁 data/projects/{id}/<br/>pdfs/ + parsed/"]:::database
+            Graphs["📁 data/projects/{id}/<br/>graphs/ (JSON)"]:::database
         end
 
         subgraph LLLayer ["Inferencia Local"]
@@ -965,8 +1076,224 @@ graph LR
     Services <--> SQLite
     Services <--> Qdrant
     Services <--> PDFs
+    Services <--> Graphs
     Services <-->|"LiteLLM"| Ollama
     Ollama --- Models
+
+    subgraph GraphLayer ["🕸️ Grafos Bibliográficos"]
+        direction TB
+        GraphExplorer["GraphExplorer.tsx<br/>+ GraphVisualization.tsx<br/>(vis-network)"]:::frontend
+        GraphAPI["graphs.py<br/>5 endpoints REST"]:::backend
+        GraphSvc["graph_service.py<br/>CitationGraphBuilder<br/>ThematicGraphBuilder"]:::backend
+        RefExt["reference_extractor.py<br/>ReferenceExtractor"]:::backend
+        GraphJSON["📁 citation_graph.json<br/>thematic_graph.json"]:::database
+        ArtRef[("article_references<br/>SQLite")]:::database
+    end
+
+    GraphExplorer <-->|"graph-api.ts"| GraphAPI
+    GraphAPI <--> GraphSvc
+    GraphAPI <--> RefExt
+    GraphSvc <--> GraphJSON
+    GraphSvc <--> ArtRef
+    RefExt <-->|"OpenAlex + SS"| MCPClients
+    GraphSvc <-->|"nomic-embed-text"| Ollama
+```
+
+---
+
+### 4.12 Flujo de Construcción de Grafos — Pipeline Completo
+
+Micro-proceso de Fase 4: Desde la extracción de referencias bibliográficas hasta la visualización interactiva en el frontend. El pipeline construye dos grafos complementarios: uno dirigido de citaciones y otro no-dirigido de similitud temática.
+
+```mermaid
+sequenceDiagram
+    box rgb(122,122,122) Investigador
+        actor User as Investigador
+    end
+    box rgb(91,127,165) Frontend
+        participant PD as ProjectDashboard
+        participant GE as GraphExplorer
+        participant GV as GraphVisualization
+    end
+    box rgb(90,143,123) Backend FastAPI
+        participant API as graphs.py
+        participant Ref as reference_extractor.py
+        participant CG as CitationGraphBuilder
+        participant TG as ThematicGraphBuilder
+    end
+    box rgb(196,154,74) Persistencia
+        participant DB as SQLite
+        participant JSON as JSON en Disco
+    end
+    box rgb(126,107,153) IA Local
+        participant OLL as Ollama (nomic-embed-text)
+    end
+    box rgb(184,92,92) APIs Externas
+        participant OA as OpenAlex
+        participant SS as Semantic Scholar
+    end
+
+    autonumber
+
+    rect rgb(91,127,165)
+        Note over User,PD: Navegacion a Grafos
+        User->>PD: Click "GRAFOS" en ProjectDashboard
+        PD->>GE: Navega a /graphs?id=X
+    end
+
+    rect rgb(90,143,123)
+        Note over GE,API: Verificacion de Estado
+        GE->>API: GET /graphs/{id}/stats
+        API->>JSON: Verificar citation_graph.json + thematic_graph.json
+        alt Grafos no existen
+            API-->>GE: build_status = "not_built"
+            GE->>User: Mostrar "CONSTRUIR GRAFOS"
+            User->>GE: Click construir
+            GE->>API: POST /graphs/{id}/build
+        else Grafos existen
+            API-->>GE: build_status = "ready"
+            GE->>API: GET /graphs/{id}/citation
+            API->>JSON: Leer citation_graph.json
+            API-->>GE: GraphResponse (nodes + edges)
+        end
+    end
+
+    rect rgb(90,143,123)
+        Note over API,SS: Pipeline de Construccion
+        API->>Ref: build_reference_batch(project_id, db)
+        Ref->>DB: SELECT articles WHERE project_id = X
+        loop Cada articulo con DOI
+            Ref->>OA: GET /works/doi:{doi} → referenced_works
+            OA-->>Ref: Lista de OpenAlex IDs
+            Ref->>OA: GET /works/{id} para cada referencia
+            OA-->>Ref: DOI + titulo + autores + anio
+            Ref->>SS: GET /paper/DOI:{doi}?fields=references
+            SS-->>Ref: Lista de referencias con DOI
+            Ref->>Ref: Deduplicar por DOI (OA + SS fusion)
+        end
+        Ref->>DB: INSERT article_references (upsert)
+        Ref-->>API: Stats de extraccion
+    end
+
+    rect rgb(90,143,123)
+        Note over API,CG: Grafo de Citaciones
+        API->>CG: CitationGraphBuilder(db, project_id)
+        CG->>DB: Cargar articulos + referencias
+        CG->>CG: Crear nodos verdes (incluidos)
+        CG->>CG: Crear nodos azules (externos citados)
+        CG->>CG: Crear aristas dirigidas (cita → citado)
+        CG->>CG: Calcular in-degree + bridge articles
+        CG->>JSON: Guardar citation_graph.json
+        CG-->>API: Metrics (nodes, edges, density)
+    end
+
+    rect rgb(126,107,153)
+        Note over API,OLL: Grafo Tematico
+        API->>TG: ThematicGraphBuilder()
+        TG->>DB: Cargar articulos incluidos (title + abstract)
+        TG->>OLL: POST /api/embeddings (nomic-embed-text)
+        OLL-->>TG: Embeddings 768d por articulo
+        TG->>TG: cosine_similarity(embeddings)
+        TG->>TG: Filtrar aristas >= threshold (0.75)
+        TG->>TG: greedy_modularity_communities()
+        TG->>TG: Asignar colores por cluster
+        TG->>JSON: Guardar thematic_graph.json
+        TG-->>API: Metadata (clusters, threshold)
+    end
+
+    rect rgb(91,127,165)
+        Note over GE,User: Visualizacion
+        API-->>GE: {status: "complete", citation_graph, thematic_graph}
+        GE->>GV: setData(nodes, edges, layout="force")
+        GV->>User: Renderiza grafo interactivo vis-network
+        User->>GV: Click en nodo
+        GV->>GE: onNodeSelect(node)
+        GE->>User: Muestra GraphNodePanel con detalles
+    end
+```
+
+---
+
+### 4.13 Arquitectura de Grafos — Componentes y Datos
+
+Vista estructural de los componentes del sistema de grafos bibliográficos, sus relaciones y el flujo de datos entre frontend, backend y almacenamiento.
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#5b7fa5', 'primaryTextColor': '#fff', 'lineColor': '#8b8fa3', 'textColor': '#2d3142'}}}%%
+graph TD
+    classDef frontend fill:#5b7fa5,stroke:#3d5a80,color:#ffffff,stroke-width:2px
+    classDef backend fill:#5a8f7b,stroke:#3d6b5e,color:#ffffff,stroke-width:2px
+    classDef llm fill:#7e6b99,stroke:#5e4d7a,color:#ffffff,stroke-width:2px
+    classDef database fill:#c49a4a,stroke:#9c7a30,color:#ffffff,stroke-width:2px
+    classDef external fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef user fill:#7a7a7a,stroke:#555555,color:#ffffff,stroke-width:2px
+    classDef success fill:#5a9e6f,stroke:#3d7a4f,color:#ffffff,stroke-width:2px
+    classDef warning fill:#c9a94e,stroke:#9c8230,color:#ffffff,stroke-width:2px
+    classDef error fill:#b85c5c,stroke:#8c3e3e,color:#ffffff,stroke-width:2px
+    classDef parser_odl fill:#4a7ab5,stroke:#345a8a,color:#ffffff,stroke-width:2px
+    classDef parser_mit fill:#7b6199,stroke:#5c4577,color:#ffffff,stroke-width:2px
+    classDef common fill:#5a8f6e,stroke:#3d6b52,color:#ffffff,stroke-width:2px
+
+    subgraph Frontend ["🌐 Frontend — localhost:4321"]
+        direction TB
+        GE["GraphExplorer.tsx<br/>Orquestador principal"]:::frontend
+        GS["GraphStatsBar.tsx<br/>Estado + contadores"]:::frontend
+        GT["GraphToolbar.tsx<br/>Filtros + layout"]:::frontend
+        GV["GraphVisualization.tsx<br/>vis-network Network"]:::frontend
+        GP["GraphNodePanel.tsx<br/>Detalles del nodo"]:::frontend
+        GA["graph-api.ts<br/>6 funciones tipadas"]:::frontend
+
+        GE --> GS
+        GE --> GT
+        GE --> GV
+        GE --> GP
+        GE --> GA
+    end
+
+    subgraph Backend ["⚙️ Backend — localhost:8000"]
+        direction TB
+        GR["graphs.py<br/>5 endpoints REST"]:::backend
+        GSVC["graph_service.py<br/>CitationGraphBuilder"]:::backend
+        GSVT["graph_service.py<br/>ThematicGraphBuilder"]:::backend
+        REF["reference_extractor.py<br/>ReferenceExtractor"]:::backend
+        GM["graph_models.py<br/>Pydantic schemas"]:::backend
+
+        GR --> GSVC
+        GR --> GSVT
+        GR --> REF
+        GR --> GM
+    end
+
+    subgraph Persistencia ["💾 Almacenamiento"]
+        direction TB
+        ART[("SQLite<br/>articles")]:::database
+        AREF[("SQLite<br/>article_references")]:::database
+        CGJSON["📁 citation_graph.json<br/>data/projects/{id}/graphs/"]:::database
+        TGJSON["📁 thematic_graph.json<br/>data/projects/{id}/graphs/"]:::database
+    end
+
+    subgraph Externos ["🔗 APIs Externas"]
+        direction TB
+        OA["OpenAlex API<br/>referenced_works"]:::external
+        SS["Semantic Scholar API<br/>references"]:::external
+        OLL["Ollama<br/>nomic-embed-text"]:::llm
+    end
+
+    GA -->|"HTTP REST"| GR
+    GSVC -->|"query"| ART
+    GSVC -->|"query"| AREF
+    GSVC -->|"save"| CGJSON
+    GSVT -->|"query"| ART
+    GSVT -->|"embeddings"| OLL
+    GSVT -->|"save"| TGJSON
+    REF -->|"fetch"| OA
+    REF -->|"fetch"| SS
+    REF -->|"insert"| AREF
+
+    style Frontend fill:#e8edf3,stroke:#5b7fa5,stroke-width:2px,color:#2d3142
+    style Backend fill:#e8f2ec,stroke:#5a8f7b,stroke-width:2px,color:#2d3142
+    style Persistencia fill:#f5edd5,stroke:#c49a4a,stroke-width:2px,color:#2d3142
+    style Externos fill:#f5e0e0,stroke:#b85c5c,stroke-width:2px,color:#2d3142
 ```
 
 ---
