@@ -5,13 +5,13 @@ Autor: Alex Prieto
 
 Descripción:
 Script de ejecución completa para el pipeline de integración Dual-Parser.
-Automatiza la validación de componentes críticos: ParserRouter, OpenDataLoader,
+Automatiza la validación de componentes críticos: ParserRouter, Strata Reader,
 MarkItDown, TableFlattener y la generación de metadatos YAML. 
 Diseñado para ser ejecutado como un proceso independiente para pruebas rápidas de humo.
 
 Acciones Principales:
     - Validación de ruteo de archivos por extensión y contexto científico.
-    - Ejecución de pipelines reales de conversión para MarkItDown y OpenDataLoader.
+    - Ejecución de pipelines reales de conversión para MarkItDown y Strata Reader.
     - Verificación de la integridad de los metadatos YAML inyectados en el Markdown.
     - Medición de tiempos de ejecución para control de performance.
 
@@ -80,7 +80,7 @@ def find_arxiv_pdf() -> Path | None:
 # ==============================================================================
 
 def test_router_pdf_cientifico_usa_opendataloader():
-    """Valida ruteo: PDF + fuente arxiv -> OpenDataLoader."""
+    """Valida ruteo: PDF + fuente arxiv -> Strata Reader."""
     from app.services.document_parser_service import ParserRouter
     
     router = ParserRouter()
@@ -93,9 +93,9 @@ def test_router_pdf_cientifico_usa_opendataloader():
         opendataloader_parser="odl_mock",
         markitdown_parser="mit_mock",
     )
-    assert engine == "opendataloader"
+    assert engine == "strata-reader"
     assert result == "odl_mock"
-    print("OK - PDF cientifico -> OpenDataLoader")
+    print("OK - PDF cientifico -> Strata Reader")
 
 
 def test_router_docx_siempre_markitdown():
@@ -162,14 +162,14 @@ def test_router_parametrizado():
     router = ParserRouter()
     scientific_meta = {"source_database": "arxiv"}
     
-    # PDF cientifico -> opendataloader
+    # PDF cientifico -> strata-reader
     result, engine = router.select_parser(
         file_path=Path("paper.pdf"),
         article_meta=scientific_meta,
         opendataloader_parser="odl",
         markitdown_parser="mit",
     )
-    assert engine == "opendataloader"
+    assert engine == "strata-reader"
     
     # Cada formato no-PDF -> markitdown
     for ext in [".docx", ".pptx", ".xlsx", ".html", ".epub", ".csv"]:
@@ -253,7 +253,7 @@ async def pipeline_markitdown() -> bool:
 
 async def pipeline_opendataloader() -> bool:
     """
-    Ejecuta el pipeline completo con OpenDataLoader sobre un PDF real.
+    Ejecuta el pipeline completo con Strata Reader sobre un PDF real.
 
     Returns:
         bool: True si el test pasó exitosamente.
@@ -263,11 +263,11 @@ async def pipeline_opendataloader() -> bool:
     )
     
     print("\n" + "="*70)
-    print("  PIPELINE: OpenDataLoader sobre PDF real (Java+CPU)")
+    print("  PIPELINE: Strata Reader sobre PDF real (Rust+CPU)")
     print("="*70)
     
     if not OPENDATALOADER_AVAILABLE:
-        print("WARN - OpenDataLoader no disponible. Saltando test.")
+        print("WARN - Strata Reader no disponible. Saltando test.")
         return True
     
     pdf_path = find_arxiv_pdf()
@@ -280,7 +280,7 @@ async def pipeline_opendataloader() -> bool:
     odl_parser = OpenDataLoaderParser()
     mit_parser = MarkItDownParser()
     router = ParserRouter()
-    print("[OK] OpenDataLoaderParser + MarkItDownParser inicializados")
+    print("[OK] StrataReaderParser + MarkItDownParser inicializados")
     
     selected, engine = router.select_parser(
         file_path=pdf_path,
@@ -288,15 +288,15 @@ async def pipeline_opendataloader() -> bool:
         opendataloader_parser=odl_parser,
         markitdown_parser=mit_parser,
     )
-    assert engine == "opendataloader", f"Router debio seleccionar opendataloader, obtuvo {engine}"
-    print(f"[OK] Ruteo correcto: PDF cientifico -> OpenDataLoader")
+    assert engine == "strata-reader", f"Router debio seleccionar strata-reader, obtuvo {engine}"
+    print(f"[OK] Ruteo correcto: PDF cientifico -> Strata Reader")
     
     start = time.perf_counter()
     try:
         final_md = await selected.parse_document(pdf_path, SAMPLE_META_SCIENTIFIC)
         elapsed = time.perf_counter() - start
     except Exception as e:
-        print(f"FAIL - OpenDataLoader error: {e}")
+        print(f"FAIL - Strata Reader error: {e}")
         if any(kw in str(e).lower() for kw in ["java", "jvm", "command", "not found"]):
             print("WARN - Java no disponible. Saltando test de conversion.")
             return True
@@ -306,26 +306,26 @@ async def pipeline_opendataloader() -> bool:
     print(f"    Tiempo: {elapsed:.1f}s")
     print(f"    Longitud: {len(final_md)} chars")
     print(f"    Front-matter: {'OK' if final_md.startswith('---') else 'FAIL'}")
-    print(f"    parser_engine: {'OK' if 'parser_engine: opendataloader' in final_md else 'FAIL'}")
+    print(f"    parser_engine: {'OK' if 'parser_engine: strata-reader' in final_md else 'FAIL'}")
     print(f"    Headings: {'OK' if '#' in final_md else 'WARN'}")
     
     if final_md.startswith('---'):
         yaml_block = final_md.split('---')[1]
         data = yaml.safe_load(yaml_block)
-        assert data["parser_engine"] == "opendataloader"
+        assert data["parser_engine"] == "strata-reader"
         assert data["source_database"] == "arxiv"
         print(f"    YAML valido: {list(data.keys())}")
     
-    output_path = EXPECTED_OUTPUTS / f"{pdf_path.stem}_opendataloader_pipeline.md"
+    output_path = EXPECTED_OUTPUTS / f"{pdf_path.stem}_stratareader_pipeline.md"
     output_path.write_text(final_md, encoding="utf-8")
     print(f"    Output guardado: {output_path}")
     
     assert len(final_md) > 200, f"Markdown muy corto: {len(final_md)} chars"
     assert final_md.startswith('---'), "Falta front-matter YAML"
-    assert 'parser_engine: opendataloader' in final_md, "Falta parser_engine en YAML"
+    assert 'parser_engine: strata-reader' in final_md, "Falta parser_engine en YAML"
     assert elapsed < 60.0, f"Conversion muy lenta: {elapsed:.1f}s"
     
-    print(f"\n[OK] PIPELINE OPENDATALOADER - PASO")
+    print(f"\n[OK] PIPELINE STRATA READER - PASO")
     n = min(len(final_md), 300)
     print(f"  Preview ({n} chars): {final_md[:n]}")
     return True
@@ -356,7 +356,7 @@ async def main() -> bool:
     test_router_parametrizado()
     
     results["markitdown"] = await pipeline_markitdown()
-    results["opendataloader"] = await pipeline_opendataloader()
+    results["strata-reader"] = await pipeline_opendataloader()
     
     print("\n" + "="*70)
     print("  RESUMEN FINAL")

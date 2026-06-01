@@ -99,47 +99,33 @@ class PDFParserProvider(ABC):
         ...
 
 
-# ─── Proveedor: OpenDataLoader (subproceso asíncrono) ─────────────────────
+# ─── Proveedor: Strata Reader (Rust in-process) ──────────────────────────
 
-class OpenDataLoaderSubprocessProvider(PDFParserProvider):
+try:
+    import strata_reader
+    STRATA_READER_AVAILABLE = True
+except ImportError:
+    strata_reader = None
+    STRATA_READER_AVAILABLE = False
+
+
+class StrataReaderProvider(PDFParserProvider):
     """
-    Proveedor de OpenDataLoader ejecutado como subproceso asíncrono controlable.
+    Proveedor de Strata Reader (ex-OpenDataLoader) ejecutado en pool de hilos.
     
-    Reemplaza run_in_executor() por asyncio.create_subprocess_exec para:
-    - Timeout real con process.kill()
-    - No dejar procesos Java huérfanos
-    - Streams redirigidos a DEVNULL (sin pipe deadlocks en Windows)
-    - Memoria liberada instantáneamente al matar el proceso
+    No requiere JVM/Java, corre nativamente en Rust y libera el GIL para excelente concurrencia.
     """
     
     DEFAULT_TIMEOUT = 90.0  # segundos
     
     def __init__(self, timeout: float = DEFAULT_TIMEOUT):
         self.timeout = timeout
-        self._jar_path: Optional[str] = None
-        self._locate_jar()
-    
-    def _locate_jar(self) -> None:
-        """Localiza el JAR embebido de opendataloader-pdf."""
-        try:
-            import importlib.resources as resources
-            self._jar_path = str(
-                resources.files("opendataloader_pdf").joinpath("jar", "opendataloader-pdf-cli.jar")
-            )
-        except Exception:
-            try:
-                import opendataloader_pdf
-                self._jar_path = str(
-                    Path(opendataloader_pdf.__file__).parent / "jar" / "opendataloader-pdf-cli.jar"
-                )
-            except ImportError:
-                self._jar_path = None
     
     def get_engine_name(self) -> str:
-        return "opendataloader"
+        return "strata-reader"
     
     def is_available(self) -> bool:
-        return self._jar_path is not None and Path(self._jar_path).exists()
+        return STRATA_READER_AVAILABLE
     
     async def parse(
         self,
@@ -149,7 +135,7 @@ class OpenDataLoaderSubprocessProvider(PDFParserProvider):
         project_id: str = None,
     ) -> str:
         if not self.is_available():
-            raise ParserError("OpenDataLoader JAR no encontrado")
+            raise ParserError("Strata Reader no está instalado")
         
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
@@ -157,57 +143,73 @@ class OpenDataLoaderSubprocessProvider(PDFParserProvider):
         if publish_event and project_id:
             await publish_event(project_id, {
                 "type": "sub_progress",
-                "msg": f"Convirtiendo PDF con OpenDataLoader (timeout: {self.timeout}s)..."
+                "msg": f"Convirtiendo PDF con Strata Reader (timeout: {self.timeout}s)..."
             })
         
+        loop = asyncio.get_running_loop()
+        
         with tempfile.TemporaryDirectory() as tmp_dir:
-            cmd = [
-                "java", "-jar", self._jar_path,
-                str(pdf_path),
-                "--output-dir", tmp_dir,
-                "--format", "markdown",
-                "--table-method", "cluster",
-                "--reading-order", "xycut",
-            ]
+            convert_kwargs = {
+                "input_path": str(pdf_path),
+                "output_dir": tmp_dir,
+                "format": "md",
+                "profile": "scientific",
+                "use_ia": False,
+                "show_progress": False
+            }
             
-            # Subproceso asíncrono con streams a DEVNULL
-            # Esto previene deadlocks en pipes de Windows y permite matar el proceso limpiamente
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            
-            logger.debug(f"OpenDataLoader PID: {process.pid} para {pdf_path.name}")
-            
+            # Ejecutar en thread pool y respetar timeout
             try:
-                # Esperar con un límite estricto para evitar bucles infinitos en Java
-                await asyncio.wait_for(process.wait(), timeout=self.timeout)
+                await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, lambda: strata_reader.convert(**convert_kwargs)
+                    ),
+                    timeout=self.timeout
+                )
             except asyncio.TimeoutError:
                 logger.warning(
-                    f"Timeout ({self.timeout}s) en OpenDataLoader para {pdf_path.name}. "
-                    f"Matando proceso {process.pid}..."
+                    f"Timeout ({self.timeout}s) en Strata Reader para {pdf_path.name}."
                 )
-                try:
-                    process.kill()
-                    await process.wait()
-                except Exception as kill_err:
-                    logger.error(f"No se pudo matar el proceso java {process.pid}: {kill_err}")
                 raise ParserTimeoutError(
-                    f"OpenDataLoader excedió {self.timeout}s para {pdf_path.name}"
+                    f"Strata Reader excedió {self.timeout}s para {pdf_path.name}"
                 )
+            except Exception as parse_err:
+                raise ParserError(f"Error en Strata Reader: {parse_err}")
             
             # Leer resultado
             md_files = list(Path(tmp_dir).glob("*.md"))
-            if not md_files:
-                raise ParserError(f"OpenDataLoader no generó .md para {pdf_path.name}")
+            md_content = ""
+            if md_files:
+                md_content = md_files[0].read_text(encoding="utf-8")
             
-            md_content = md_files[0].read_text(encoding="utf-8")
+            # Fallback a profile="fast" si el contenido quedó vacío (típico en modo demo sin licencia)
+            if not md_content.strip():
+                logger.info(f"Strata Reader retornó contenido vacío para {pdf_path.name}. Reintentando con profile='fast'...")
+                convert_kwargs["profile"] = "fast"
+                try:
+                    await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None, lambda: strata_reader.convert(**convert_kwargs)
+                        ),
+                        timeout=self.timeout
+                    )
+                    md_files = list(Path(tmp_dir).glob("*.md"))
+                    if md_files:
+                        md_content = md_files[0].read_text(encoding="utf-8")
+                except Exception as parse_err:
+                    raise ParserError(f"Error en Strata Reader (fallback): {parse_err}")
+
+            if not md_content:
+                raise ParserError(f"Strata Reader no generó .md para {pdf_path.name}")
             
             if len(md_content.strip()) < 50:
-                logger.warning(f"Contenido muy corto de OpenDataLoader: {len(md_content)} chars")
+                logger.warning(f"Contenido muy corto de Strata Reader: {len(md_content)} chars")
             
             return md_content
+
+
+# Alias de compatibilidad
+OpenDataLoaderSubprocessProvider = StrataReaderProvider
 
 
 # ─── Proveedor: MarkItDown (CPU puro) ─────────────────────────────────────

@@ -59,13 +59,14 @@ except ImportError:
     ImageRefMode = None
     DOCLING_AVAILABLE = False
 
-# ─── OpenDataLoader PDF (Java + CPU, #1 en benchmarks) ──────────────────
+# ─── Strata Reader PDF (Rust + CPU, #1 en benchmarks) ──────────────────
 try:
-    import opendataloader_pdf
-    OPENDATALOADER_AVAILABLE = True
+    import strata_reader
+    STRATA_READER_AVAILABLE = True
 except ImportError:
-    opendataloader_pdf = None
-    OPENDATALOADER_AVAILABLE = False
+    strata_reader = None
+    STRATA_READER_AVAILABLE = False
+OPENDATALOADER_AVAILABLE = STRATA_READER_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -642,30 +643,29 @@ class MarkItDownParser:
         return await self.parse_document(*args, **kwargs)
 
 
-# ─── OpenDataLoader PDF Parser (Java + CPU, #1 en benchmarks) ────────────
+# ─── OpenDataLoader PDF Parser (Strata Reader: Rust + CPU, #1 en benchmarks) ────────────
 
 
 class OpenDataLoaderParser:
     """
-    Convierte PDFs de artículos científicos a Markdown usando OpenDataLoader PDF.
+    Convierte PDFs de artículos científicos a Markdown usando Strata Reader.
     Motor de alta precisión para tablas y layouts complejos de doble columna.
     """
 
     def __init__(self, hybrid_mode: bool = False, hybrid_port: int = 5002):
         """
-        Inicializa el parser OpenDataLoader basado en Java JVM.
+        Inicializa el parser Strata Reader.
         """
-        if not OPENDATALOADER_AVAILABLE:
+        if not STRATA_READER_AVAILABLE:
             raise ImportError(
-                "OpenDataLoader PDF no está instalado. "
-                "Ejecuta: uv add opendataloader-pdf\n"
-                "También requiere Java 11+: java -version"
+                "strata-reader no está instalado. "
+                "Ejecuta: uv add strata-reader\n"
             )
         
         self.hybrid_mode = hybrid_mode
         self.hybrid_port = hybrid_port
         logger.info(
-            f"OpenDataLoaderParser inicializado (Java+CPU) | "
+            f"OpenDataLoaderParser (Strata Reader) inicializado (Rust+CPU) | "
             f"Híbrido: {'activo' if hybrid_mode else 'inactivo'}"
         )
 
@@ -677,7 +677,7 @@ class OpenDataLoaderParser:
         project_id: str = None,
     ) -> str:
         """
-        Convierte un PDF científico a Markdown estructurado usando la JVM de Java.
+        Convierte un PDF científico a Markdown estructurado usando Strata Reader.
         """
         if isinstance(pdf_path, str):
             pdf_path = Path(pdf_path)
@@ -685,41 +685,49 @@ class OpenDataLoaderParser:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
 
-        # ── 1. Conversión PDF → Markdown (Java JVM, CPU) ─────────────
+        # ── 1. Conversión PDF → Markdown (Strata Reader Rust, CPU) ─────────────
         if publish_event and project_id:
             await publish_event(project_id, {
                 "type": "sub_progress",
-                "msg": f"Convirtiendo PDF con OpenDataLoader (layout + tablas)..."
+                "msg": f"Convirtiendo PDF con Strata Reader (layout + tablas)..."
             })
 
         loop = asyncio.get_running_loop()
         
         with tempfile.TemporaryDirectory() as tmp_dir:
-            # Ejecutar en thread pool (Java JVM es bloqueante)
             convert_kwargs = {
                 "input_path": str(pdf_path),
                 "output_dir": tmp_dir,
-                "format": "markdown",
-                "use_struct_tree": True,
-                "table_method": "cluster",
-                "reading_order": "xycut",
+                "format": "md",
+                "profile": "scientific",
+                "use_ia": False,
+                "show_progress": False
             }
             
-            if self.hybrid_mode:
-                convert_kwargs["hybrid"] = "docling-fast"
-                convert_kwargs["hybrid_mode"] = "auto"
-            
             await loop.run_in_executor(
-                None, lambda: opendataloader_pdf.convert(**convert_kwargs)
+                None, lambda: strata_reader.convert(**convert_kwargs)
             )
             
             # Leer el .md generado
             md_files = list(Path(tmp_dir).glob("*.md"))
-            if not md_files:
-                logger.warning(f"OpenDataLoader no generó .md para {pdf_path.name}")
-                md_content = f"<!-- OpenDataLoader: conversión vacía para {pdf_path.name} -->"
-            else:
+            md_content = ""
+            if md_files:
                 md_content = md_files[0].read_text(encoding="utf-8")
+
+            # Fallback a profile="fast" si el contenido quedó vacío (típico en modo demo sin licencia)
+            if not md_content.strip():
+                logger.info(f"Strata Reader retornó contenido vacío para {pdf_path.name}. Reintentando con profile='fast'...")
+                convert_kwargs["profile"] = "fast"
+                await loop.run_in_executor(
+                    None, lambda: strata_reader.convert(**convert_kwargs)
+                )
+                md_files = list(Path(tmp_dir).glob("*.md"))
+                if md_files:
+                    md_content = md_files[0].read_text(encoding="utf-8")
+
+            if not md_content:
+                logger.warning(f"Strata Reader no generó .md para {pdf_path.name}")
+                md_content = f"<!-- Strata Reader: conversión vacía para {pdf_path.name} -->"
 
         if len(md_content.strip()) < 50:
             logger.warning(f"Contenido muy corto para {pdf_path.name}: {len(md_content)} chars")
@@ -745,7 +753,7 @@ class OpenDataLoaderParser:
             "journal": article_meta.get("journal"),
             "keywords": article_meta.get("keywords") or [],
             "source_database": article_meta.get("source_database"),
-            "parser_engine": "opendataloader",
+            "parser_engine": "strata-reader",
         }
         yaml_str = yaml.dump(front_matter, allow_unicode=True, sort_keys=False)
         final_md = f"---\n{yaml_str}---\n\n{md_content}"
@@ -806,10 +814,10 @@ class ParserRouter:
             logger.info(f"Router: {ext} → MarkItDown (formato no-PDF)")
             return markitdown_parser, "markitdown"
 
-        # Regla 2: PDF científico → OpenDataLoader
+        # Regla 2: PDF científico → Strata Reader
         if ext == ".pdf" and is_scientific and opendataloader_parser:
-            logger.info(f"Router: PDF científico ({source}) → OpenDataLoader")
-            return opendataloader_parser, "opendataloader"
+            logger.info(f"Router: PDF científico ({source}) → Strata Reader")
+            return opendataloader_parser, "strata-reader"
 
         # Regla 3: PDF no-científico o fallback → MarkItDown
         if ext == ".pdf":

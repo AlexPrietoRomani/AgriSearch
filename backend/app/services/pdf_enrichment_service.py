@@ -243,9 +243,9 @@ async def enrich_articles_from_pdfs(db, project_id: str, article_ids: list[str] 
         
         if OPENDATALOADER_AVAILABLE:
             parsers["opendataloader"] = OpenDataLoaderParser()
-            logger.info("OpenDataLoaderParser inicializado (Java+CPU) para PDFs científicos")
+            logger.info("StrataReaderParser inicializado (Rust+CPU) para PDFs científicos")
         else:
-            logger.warning("OpenDataLoader no disponible. Todos los PDFs irán a MarkItDown.")
+            logger.warning("Strata Reader no disponible. Todos los PDFs irán a MarkItDown.")
         
         # Configurar VLM via Ollama
         vlm_model = project.llm_model or settings.litellm_model

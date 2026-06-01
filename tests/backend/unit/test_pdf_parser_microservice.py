@@ -95,60 +95,43 @@ class TestParserExceptions:
 # Tests de OpenDataLoaderSubprocessProvider
 # ──────────────────────────────────────────────
 
-class TestOpenDataLoaderSubprocessProvider:
-    """Tests del proveedor OpenDataLoader por subproceso."""
-
-    def test_jar_location(self):
-        """Localiza el JAR correctamente si está instalado."""
-        from app.services.pdf_parser_microservice import OpenDataLoaderSubprocessProvider
-        provider = OpenDataLoaderSubprocessProvider()
-        # Debe ser None o una ruta válida
-        assert provider._jar_path is None or Path(provider._jar_path).exists()
+class TestStrataReaderProvider:
+    """Tests del proveedor StrataReaderProvider (ex OpenDataLoader por subproceso)."""
 
     def test_is_available_returns_bool(self):
         """is_available retorna booleano."""
-        from app.services.pdf_parser_microservice import OpenDataLoaderSubprocessProvider
-        provider = OpenDataLoaderSubprocessProvider()
+        from app.services.pdf_parser_microservice import StrataReaderProvider
+        provider = StrataReaderProvider()
         assert isinstance(provider.is_available(), bool)
 
     def test_get_engine_name(self):
-        """Retorna 'opendataloader'."""
-        from app.services.pdf_parser_microservice import OpenDataLoaderSubprocessProvider
-        provider = OpenDataLoaderSubprocessProvider()
-        assert provider.get_engine_name() == "opendataloader"
+        """Retorna 'strata-reader'."""
+        from app.services.pdf_parser_microservice import StrataReaderProvider
+        provider = StrataReaderProvider()
+        assert provider.get_engine_name() == "strata-reader"
 
     def test_default_timeout(self):
         """Timeout por defecto es 90 segundos."""
-        from app.services.pdf_parser_microservice import OpenDataLoaderSubprocessProvider
-        provider = OpenDataLoaderSubprocessProvider()
+        from app.services.pdf_parser_microservice import StrataReaderProvider
+        provider = StrataReaderProvider()
         assert provider.timeout == 90.0
 
     def test_custom_timeout(self):
         """Se puede configurar timeout personalizado."""
-        from app.services.pdf_parser_microservice import OpenDataLoaderSubprocessProvider
-        provider = OpenDataLoaderSubprocessProvider(timeout=45.0)
+        from app.services.pdf_parser_microservice import StrataReaderProvider
+        provider = StrataReaderProvider(timeout=45.0)
         assert provider.timeout == 45.0
 
     @pytest.mark.asyncio
     async def test_parse_nonexistent_pdf_raises(self):
         """parse con PDF inexistente lanza FileNotFoundError."""
-        from app.services.pdf_parser_microservice import OpenDataLoaderSubprocessProvider
-        provider = OpenDataLoaderSubprocessProvider()
+        from app.services.pdf_parser_microservice import StrataReaderProvider
+        provider = StrataReaderProvider()
         if not provider.is_available():
-            pytest.skip("OpenDataLoader no disponible")
+            pytest.skip("StrataReaderProvider no disponible")
         with pytest.raises(FileNotFoundError):
             await provider.parse(Path("/nonexistent.pdf"), {})
 
-    @pytest.mark.asyncio
-    async def test_parse_raises_when_jar_not_found(self):
-        """parse lanza ParserError si el JAR no existe."""
-        from app.services.pdf_parser_microservice import (
-            OpenDataLoaderSubprocessProvider, ParserError
-        )
-        provider = OpenDataLoaderSubprocessProvider()
-        provider._jar_path = "/nonexistent/jar/path.jar"
-        with pytest.raises(ParserError, match="JAR no encontrado"):
-            await provider.parse(Path("dummy.pdf"), {})
 
 
 # ──────────────────────────────────────────────

@@ -102,7 +102,7 @@ flowchart TD
 
 7. **Extracción Open Access** — Unpaywall interviene resolviendo URLs ausentes para registros con DOI.
 8. **Descarga PDFs** — Descarga automática de repositorios con rate-limiting. Si la descarga falla, interviene Sci-Hub (a petición manual).
-9. **Parseo Dual-Parser** — OpenDataLoader (PDFs científicos, benchmark #1: 0.907) + MarkItDown (DOCX, PPTX, HTML).
+9. **Parseo Dual-Parser** — Strata Reader (PDFs científicos, benchmark #1) + MarkItDown (DOCX, PPTX, HTML).
 10. **Enriquecimiento LLM** — Extracción de metadatos, metodología, variables agrícolas y descripción VLM de figuras.
 
 ### Fase 3: Cribado
@@ -122,9 +122,9 @@ flowchart TD
 | Componente | Tecnología |
 |------------|------------|
 | **Frontend** | Astro (SSR Híbrido), React, TypeScript, Tailwind CSS |
-| **Backend** | FastAPI (Python 3.11), SQLAlchemy Async, aiosqlite |
+| **Backend** | FastAPI (Python 3.12), SQLAlchemy Async, aiosqlite |
 | **Active Learning** | Rust 1.95, Axum 0.8, Tokio, linfa, rusqlite + sqlite-vec |
-| **Parsing PDF** | OpenDataLoader (artículos científicos), MarkItDown (multi-formato) |
+| **Parsing PDF** | Strata Reader (artículos científicos), MarkItDown (multi-formato) |
 | **IA** | LiteLLM, Ollama, Qdrant (vectorial local) |
 | **Búsqueda** | MCP Clients para 9 APIs científicas |
 | **Gestión Python** | [uv](https://docs.astral.sh/uv/) (recomendado) o pip |
@@ -167,14 +167,11 @@ AgriSearch/
 
 | Requisito | Versión | Propósito |
 |-----------|---------|-----------|
-| **Python** | 3.11+ | Backend (FastAPI) |
+| **Python** | 3.12+ | Backend (FastAPI) |
 | **Node.js** | 18+ | Frontend (Astro) |
 | **Rust** | 1.75+ | Active Learning Worker (Axum) |
-| **Java (JDK)** | 11+ | OpenDataLoader PDF (parser científico) |
 | **Ollama** | Última | LLM local para búsqueda y screening |
 | **uv** *(recomendado)* | Última | Gestión de dependencias Python |
-
-> ⚠️ **Java es necesario** para el parsing de PDFs científicos con OpenDataLoader. Verifica con `java -version`. Si no lo tienes, instálalo desde [Adoptium](https://adoptium.net/).
 
 > ⚠️ **Ollama debe estar ejecutándose** antes de iniciar el backend.
 
