@@ -37,7 +37,57 @@ export default function SearchWizardResults({
     const [isReparsing, setIsReparsing] = useState(false);
     const [showProgressModal, setShowProgressModal] = useState(false);
 
-    // Estadísticas de disponibilidad por artículo
+    // Filtros de columna
+    const [filterTitle, setFilterTitle] = useState("");
+    const [filterAuthors, setFilterAuthors] = useState("");
+    const [filterYear, setFilterYear] = useState("");
+    const [filterType, setFilterType] = useState("");
+    const [filterSource, setFilterSource] = useState("");
+    const [filterStatus, setFilterStatus] = useState("");
+    const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+    // Opciones únicas de filtros
+    const uniqueTypes = useMemo(() => {
+        const types = new Set(articles.map(a => a.document_type).filter(Boolean));
+        return Array.from(types).sort();
+    }, [articles]);
+
+    const uniqueSources = useMemo(() => {
+        const sources = new Set(articles.map(a => a.source_database).filter(Boolean));
+        return Array.from(sources).sort();
+    }, [articles]);
+
+    const uniqueStatuses = useMemo(() => {
+        const statuses = new Set(articles.map(a => a.download_status).filter(Boolean));
+        return Array.from(statuses).sort();
+    }, [articles]);
+
+    // Limpiar todos los filtros
+    const hasActiveFilters = !!(filterTitle || filterAuthors || filterYear || filterType || filterSource || filterStatus);
+    const clearFilters = () => {
+        setFilterTitle("");
+        setFilterAuthors("");
+        setFilterYear("");
+        setFilterType("");
+        setFilterSource("");
+        setFilterStatus("");
+        setOpenDropdown(null);
+    };
+
+    // Filtrado de artículos
+    const filteredArticles = useMemo(() => {
+        return articles.filter(a => {
+            const matchesTitle = !filterTitle || (a.title && a.title.toLowerCase().includes(filterTitle.toLowerCase()));
+            const matchesAuthors = !filterAuthors || (a.authors && a.authors.toLowerCase().includes(filterAuthors.toLowerCase()));
+            const matchesYear = !filterYear || (a.year && String(a.year).includes(filterYear));
+            const matchesType = !filterType || (a.document_type === filterType);
+            const matchesSource = !filterSource || (a.source_database === filterSource);
+            const matchesStatus = !filterStatus || (a.download_status === filterStatus);
+            return matchesTitle && matchesAuthors && matchesYear && matchesType && matchesSource && matchesStatus;
+        });
+    }, [articles, filterTitle, filterAuthors, filterYear, filterType, filterSource, filterStatus]);
+
+    // Estadísticas de disponibilidad por artículo (sobre todos los artículos)
     const downloadableCount = useMemo(() => articles.filter(a => a.open_access_url).length, [articles]);
     const doiOnlyCount = useMemo(() => articles.filter(a => !a.open_access_url && a.doi).length, [articles]);
     const noIdCount = useMemo(() => articles.filter(a => !a.open_access_url && !a.doi).length, [articles]);
@@ -96,20 +146,22 @@ export default function SearchWizardResults({
         }
     };
 
-    const sortedArticles = [...articles].sort((a, b) => {
-        let valA = a[sortField];
-        let valB = b[sortField];
+    const sortedArticles = useMemo(() => {
+        return [...filteredArticles].sort((a, b) => {
+            let valA = a[sortField];
+            let valB = b[sortField];
 
-        if (typeof valA === "string") valA = valA.toLowerCase();
-        if (typeof valB === "string") valB = valB.toLowerCase();
+            if (typeof valA === "string") valA = valA.toLowerCase();
+            if (typeof valB === "string") valB = valB.toLowerCase();
 
-        if (valA === valB) return 0;
-        if (valA === undefined || valA === null) return 1;
-        if (valB === undefined || valB === null) return -1;
+            if (valA === valB) return 0;
+            if (valA === undefined || valA === null) return 1;
+            if (valB === undefined || valB === null) return -1;
 
-        const comparison = valA < valB ? -1 : 1;
-        return sortDirection === "asc" ? comparison : -comparison;
-    });
+            const comparison = valA < valB ? -1 : 1;
+            return sortDirection === "asc" ? comparison : -comparison;
+        });
+    }, [filteredArticles, sortField, sortDirection]);
 
     const handleSort = (field: keyof Article) => {
         if (sortField === field) {
@@ -306,11 +358,19 @@ export default function SearchWizardResults({
                 >
                     📂 Abrir Carpeta Local
                 </button>
+                {hasActiveFilters && (
+                    <button
+                        onClick={clearFilters}
+                        className="px-4 py-2 bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500 hover:text-white font-medium rounded-xl transition-all flex items-center gap-1.5"
+                    >
+                        🧹 Limpiar Filtros
+                    </button>
+                )}
             </div>
 
             {/* Articles Table */}
-            <div className="border border-slate-700/50 rounded-2xl overflow-hidden mt-6 overflow-x-auto bg-slate-900/40 backdrop-blur-xl">
-                <table className="w-full text-sm">
+            <div className="border border-slate-700/50 rounded-2xl mt-6 overflow-x-auto bg-slate-900/40 backdrop-blur-xl">
+                <table className="w-full min-w-[1300px] text-sm table-layout-fixed">
                     <thead className="bg-slate-800/80 border-b border-slate-700/50">
                         <tr>
                             <th
@@ -358,6 +418,165 @@ export default function SearchWizardResults({
                                 Archivo Local
                             </th>
                             <th className="text-right px-6 py-4 text-slate-400 font-semibold uppercase tracking-wider w-24">Link</th>
+                        </tr>
+                        {/* Fila de Filtros */}
+                        <tr className="bg-slate-900/60 border-t border-slate-700/30">
+                            {/* Filtro Título */}
+                            <td className="px-6 py-2">
+                                <input
+                                    type="text"
+                                    placeholder="Filtrar título..."
+                                    value={filterTitle}
+                                    onChange={(e) => setFilterTitle(e.target.value)}
+                                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 rounded-lg px-2.5 py-1 text-xs text-slate-200 placeholder-slate-600 transition-all outline-none"
+                                />
+                            </td>
+                            {/* Filtro Autor */}
+                            <td className="px-4 py-2">
+                                <input
+                                    type="text"
+                                    placeholder="Filtrar autor..."
+                                    value={filterAuthors}
+                                    onChange={(e) => setFilterAuthors(e.target.value)}
+                                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 rounded-lg px-2.5 py-1 text-xs text-slate-200 placeholder-slate-600 transition-all outline-none"
+                                />
+                            </td>
+                            {/* Filtro Año */}
+                            <td className="px-4 py-2">
+                                <input
+                                    type="text"
+                                    placeholder="Año..."
+                                    value={filterYear}
+                                    onChange={(e) => setFilterYear(e.target.value)}
+                                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 rounded-lg px-2.5 py-1 text-xs text-slate-200 placeholder-slate-600 transition-all outline-none font-mono"
+                                />
+                            </td>
+                            {/* Filtro Tipo */}
+                            <td className="px-4 py-2">
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setOpenDropdown(openDropdown === "type" ? null : "type")}
+                                        className="w-full bg-slate-950/80 border border-slate-800 hover:border-slate-700 focus:border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 transition-all flex items-center justify-between gap-1.5 cursor-pointer"
+                                    >
+                                        <span className="truncate">
+                                            {filterType === "" ? "Todos" : (filterType === "journal-article" ? "Artículo" : filterType)}
+                                        </span>
+                                        <svg className={`w-3 h-3 text-slate-400 shrink-0 transition-transform duration-200 ${openDropdown === "type" ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+                                    {openDropdown === "type" && (
+                                        <>
+                                            <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
+                                            <div className="absolute left-0 mt-1.5 w-full bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/40">
+                                                <button
+                                                    onClick={() => { setFilterType(""); setOpenDropdown(null); }}
+                                                    className={`w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer hover:bg-emerald-500/10 hover:text-emerald-400 ${filterType === "" ? "bg-emerald-500/15 text-emerald-400 font-bold" : "text-slate-300"}`}
+                                                >
+                                                    Todos
+                                                </button>
+                                                {uniqueTypes.map(t => (
+                                                    <button
+                                                        key={t}
+                                                        onClick={() => { setFilterType(t); setOpenDropdown(null); }}
+                                                        className={`w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer hover:bg-emerald-500/10 hover:text-emerald-400 ${filterType === t ? "bg-emerald-500/15 text-emerald-400 font-bold" : "text-slate-300"}`}
+                                                    >
+                                                        {t === "journal-article" ? "Artículo" : t}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </td>
+                            {/* Disp. */}
+                            <td className="px-4 py-2 text-center">
+                                {/* Vacío */}
+                            </td>
+                            {/* Filtro Fuente */}
+                            <td className="px-4 py-2">
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setOpenDropdown(openDropdown === "source" ? null : "source")}
+                                        className="w-full bg-slate-950/80 border border-slate-800 hover:border-slate-700 focus:border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 transition-all flex items-center justify-between gap-1.5 cursor-pointer"
+                                    >
+                                        <span className="truncate">
+                                            {filterSource === "" ? "Todas" : filterSource}
+                                        </span>
+                                        <svg className={`w-3 h-3 text-slate-400 shrink-0 transition-transform duration-200 ${openDropdown === "source" ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+                                    {openDropdown === "source" && (
+                                        <>
+                                            <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
+                                            <div className="absolute left-0 mt-1.5 w-full bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/40">
+                                                <button
+                                                    onClick={() => { setFilterSource(""); setOpenDropdown(null); }}
+                                                    className={`w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer hover:bg-emerald-500/10 hover:text-emerald-400 ${filterSource === "" ? "bg-emerald-500/15 text-emerald-400 font-bold" : "text-slate-300"}`}
+                                                >
+                                                    Todas
+                                                </button>
+                                                {uniqueSources.map(s => (
+                                                    <button
+                                                        key={s}
+                                                        onClick={() => { setFilterSource(s); setOpenDropdown(null); }}
+                                                        className={`w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer hover:bg-emerald-500/10 hover:text-emerald-400 ${filterSource === s ? "bg-emerald-500/15 text-emerald-400 font-bold" : "text-slate-300"}`}
+                                                    >
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </td>
+                            {/* Filtro Estado */}
+                            <td className="px-4 py-2">
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setOpenDropdown(openDropdown === "status" ? null : "status")}
+                                        className="w-full bg-slate-950/80 border border-slate-800 hover:border-slate-700 focus:border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 transition-all flex items-center justify-between gap-1.5 cursor-pointer"
+                                    >
+                                        <span className="truncate">
+                                            {filterStatus === "" ? "Todos" : filterStatus}
+                                        </span>
+                                        <svg className={`w-3 h-3 text-slate-400 shrink-0 transition-transform duration-200 ${openDropdown === "status" ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+                                    {openDropdown === "status" && (
+                                        <>
+                                            <div className="fixed inset-0 z-10" onClick={() => setOpenDropdown(null)} />
+                                            <div className="absolute left-0 mt-1.5 w-full bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/40">
+                                                <button
+                                                    onClick={() => { setFilterStatus(""); setOpenDropdown(null); }}
+                                                    className={`w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer hover:bg-emerald-500/10 hover:text-emerald-400 ${filterStatus === "" ? "bg-emerald-500/15 text-emerald-400 font-bold" : "text-slate-300"}`}
+                                                >
+                                                    Todos
+                                                </button>
+                                                {uniqueStatuses.map(st => (
+                                                    <button
+                                                        key={st}
+                                                        onClick={() => { setFilterStatus(st); setOpenDropdown(null); }}
+                                                        className={`w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer hover:bg-emerald-500/10 hover:text-emerald-400 ${filterStatus === st ? "bg-emerald-500/15 text-emerald-400 font-bold" : "text-slate-300"}`}
+                                                    >
+                                                        {st}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </td>
+                            {/* Archivo Local */}
+                            <td className="px-4 py-2">
+                                {/* Vacío */}
+                            </td>
+                            {/* Link */}
+                            <td className="px-6 py-2">
+                                {/* Vacío */}
+                            </td>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-700/30">
